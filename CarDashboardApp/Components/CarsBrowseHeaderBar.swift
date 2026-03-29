@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 /// Coches / Buscador: misma fila que Inicio (avatar + pastilla + 2 círculos). Ordenar + filtros sustituyen a gráfico/campana con el **mismo** ancho útil para el buscador.
 struct CarsBrowseHeaderBar: View {
     let initials: String
+    var profileImage: UIImage? = nil
     @Binding var searchText: String
     var hasActiveFilters: Bool
     @FocusState.Binding var searchFieldFocused: Bool
@@ -12,6 +14,7 @@ struct CarsBrowseHeaderBar: View {
     var body: some View {
         AppChromeHeaderRow(
             initials: initials,
+            profileImage: profileImage,
             searchText: $searchText,
             prompt: Text("¿Qué estás buscando?")
                 .foregroundStyle(.white),

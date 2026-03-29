@@ -36,6 +36,7 @@ struct ChatView: View {
                 VStack(spacing: 0) {
                     AppChromeHeaderRow(
                         initials: auth.userInitials,
+                        profileImage: auth.profileAvatarImage,
                         searchText: $searchText,
                         prompt: Text("Buscar coches…").foregroundStyle(.white),
                         showsSearchClearButton: true,

@@ -106,6 +106,7 @@ struct SearchView: View {
     private var stickyBrowseChrome: some View {
         CarsBrowseHeaderBar(
             initials: auth.userInitials,
+            profileImage: auth.profileAvatarImage,
             searchText: $carsVM.browseSearchText,
             hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
             searchFieldFocused: $browseSearchFieldFocused,

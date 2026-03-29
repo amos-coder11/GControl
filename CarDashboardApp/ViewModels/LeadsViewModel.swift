@@ -13,6 +13,8 @@ final class LeadsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             leads = try await LeadsCrmService.fetchAll()
+        } catch is CancellationError {
+            // Tarea cancelada (ej. navegación) — no mostrar error
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -30,10 +30,8 @@ extension Car {
     }
 
     var imageURL: URL? {
-        guard let s = imageURLString?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty,
-              let u = URL(string: s), let scheme = u.scheme?.lowercased(),
-              scheme == "http" || scheme == "https" else { return nil }
-        return u
+        guard let s = imageURLString?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        return VehicleImageResolution.resolvedHTTPURL(from: s)
     }
 }
 
@@ -73,14 +71,13 @@ struct CarThumbnailView: View {
 
     @MainActor
     private func loadImage() async {
-        loadedImage = nil
-        print("🖼️ [\(car.name)] loadImage START — hasPayload=\(car.hasImagePayload) | b64=\(car.imageBase64 != nil) | publicFile=\(car.imagePublicVehiclesFileName ?? "nil") | signedPath=\(car.imageSignedStoragePath ?? "nil") | url=\(car.imageURLString ?? "nil")")
-
+        // No reseteamos loadedImage a nil para evitar el flash del spinner
+        // si la imagen ya estaba cargada (ej. al recomponer la vista).
         if let ui = await CarUIImageLoader.load(car: car, auth: auth) {
-            print("🖼️ [\(car.name)] ✅ loaded via CarUIImageLoader")
             loadedImage = ui
-        } else {
-            print("🖼️ [\(car.name)] ⚠️ no image source available — showing fallback icon")
+        } else if loadedImage == nil {
+            // Solo dejamos nil si no teníamos nada antes
+            loadedImage = nil
         }
     }
 

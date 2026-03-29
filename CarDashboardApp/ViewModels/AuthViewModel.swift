@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Supabase
+import UIKit
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -9,8 +10,11 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var session: Session?
     @Published private(set) var isRestoringSession = true
     @Published var lastErrorMessage: String?
+    /// Foto de perfil del usuario con sesión iniciada (`profiles.avatar_url` o metadatos OAuth).
+    @Published private(set) var profileAvatarImage: UIImage?
 
     private var authStateTask: Task<Void, Never>?
+    private var profileAvatarTask: Task<Void, Never>?
 
     init(client: SupabaseClient = SupabaseClientProvider.shared) {
         self.client = client
@@ -18,6 +22,7 @@ final class AuthViewModel: ObservableObject {
         isRestoringSession = session == nil
         startAuthStateListener()
         Task { await refreshSessionIfNeeded() }
+        scheduleProfileAvatarLoad()
     }
 
     deinit {
@@ -67,6 +72,7 @@ final class AuthViewModel: ObservableObject {
                 await MainActor.run {
                     self.session = newSession
                     self.isRestoringSession = false
+                    self.scheduleProfileAvatarLoad()
                 }
             }
         }
@@ -76,9 +82,43 @@ final class AuthViewModel: ObservableObject {
         defer { isRestoringSession = false }
         do {
             let s = try await client.auth.session
-            await MainActor.run { self.session = s }
+            await MainActor.run {
+                self.session = s
+                self.scheduleProfileAvatarLoad()
+            }
         } catch {
-            await MainActor.run { self.session = client.auth.currentSession }
+            await MainActor.run {
+                self.session = client.auth.currentSession
+                self.scheduleProfileAvatarLoad()
+            }
+        }
+    }
+
+    private func scheduleProfileAvatarLoad() {
+        profileAvatarTask?.cancel()
+        guard let session else {
+            profileAvatarImage = nil
+            return
+        }
+
+        let user = session.user
+        let userId = user.id
+        let token = session.accessToken
+
+        profileAvatarTask = Task { [client] in
+            let ref = await UserProfileService.resolveAvatarRef(user: user, client: client)
+            guard !Task.isCancelled else { return }
+            let image = await UserProfileService.loadProfileAvatarImage(
+                avatarRef: ref,
+                userId: userId,
+                client: client,
+                accessToken: token
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.session?.user.id == userId else { return }
+                self.profileAvatarImage = image
+            }
         }
     }
 
@@ -92,6 +132,7 @@ final class AuthViewModel: ObservableObject {
         do {
             let s = try await client.auth.signIn(email: trimmed, password: password)
             session = s
+            scheduleProfileAvatarLoad()
         } catch {
             lastErrorMessage = error.localizedDescription
         }
@@ -108,6 +149,7 @@ final class AuthViewModel: ObservableObject {
             let response = try await client.auth.signUp(email: trimmed, password: password)
             if let s = response.session {
                 session = s
+                scheduleProfileAvatarLoad()
             } else {
                 lastErrorMessage =
                     "Cuenta creada. Si el proyecto exige confirmar el correo, revisa tu bandeja de entrada."
@@ -121,6 +163,8 @@ final class AuthViewModel: ObservableObject {
         lastErrorMessage = nil
         do {
             try await client.auth.signOut()
+            profileAvatarTask?.cancel()
+            profileAvatarImage = nil
             session = nil
         } catch {
             lastErrorMessage = error.localizedDescription

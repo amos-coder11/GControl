@@ -20,6 +20,9 @@ struct CarImageSlot: Identifiable, Hashable {
             let s = u.absoluteString
             payload = .url(s)
             id = "u:" + s
+        case let .absoluteURLRawString(s):
+            payload = .url(s)
+            id = "u:" + s
         case let .publicVehiclesFileName(name):
             payload = .publicVehiclesFile(name)
             id = "p:" + name

@@ -1,8 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var auth: AuthViewModel
+
+    @AppStorage(VehicleImageDiagnostics.userDefaultsKey) private var logVehicleImageDiagnostics = false
 
     @State private var settingsSearchText = ""
     @FocusState private var settingsSearchFieldFocused: Bool
@@ -12,6 +15,7 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 AppChromeHeaderRow(
                     initials: auth.userInitials,
+                    profileImage: auth.profileAvatarImage,
                     searchText: $settingsSearchText,
                     prompt: Text("Buscar")
                         .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
@@ -36,6 +40,7 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         profileSection
+                        developerSection
                         accountSection
                         aboutSection
                     }
@@ -66,20 +71,26 @@ struct SettingsView: View {
         ChromeSettingsCard(cornerRadius: 24, padding: 20) {
             HStack(spacing: 16) {
                 ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.cyan.opacity(0.5), .purple.opacity(0.4)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if let photo = auth.profileAvatarImage {
+                        Image(uiImage: photo)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.cyan.opacity(0.5), .purple.opacity(0.4)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 60, height: 60)
-
-                    Text(String(auth.userDisplayName.prefix(1)).uppercased())
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        Text(String(auth.userDisplayName.prefix(1)).uppercased())
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
                 }
+                .frame(width: 60, height: 60)
+                .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(auth.userDisplayName)
@@ -96,6 +107,33 @@ struct SettingsView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.45))
+            }
+        }
+    }
+
+    // MARK: - Desarrollo (diagnóstico imágenes)
+
+    private var developerSection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Desarrollo")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+
+                Toggle(isOn: $logVehicleImageDiagnostics) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Diagnóstico de imágenes (consola Xcode)")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                        Text(
+                            "Al cargar Coches se imprimen columnas JSON, rutas Storage, user_id y cuántos slots ve la UI. Abre la consola con ⌘⇧Y y tira hacia abajo para refrescar el listado."
+                        )
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(PremiumAccent.tabActive)
             }
         }
     }

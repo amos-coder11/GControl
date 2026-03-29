@@ -58,8 +58,8 @@ struct CarsView: View {
                                 .padding(.vertical, 24)
                                 .padding(.horizontal, 16)
                             } else {
-                                VStack(spacing: 20) {
-                                    ForEach(displayedCars) { car in
+                                LazyVStack(spacing: 20) {
+                                    ForEach(Array(displayedCars.enumerated()), id: \.element.id) { idx, car in
                                         CarListingCard(
                                             car: car,
                                             isSelected: carsVM.isSelected(car)
@@ -67,9 +67,29 @@ struct CarsView: View {
                                             carsVM.selectCar(car)
                                         }
                                         .frame(maxWidth: .infinity)
+                                        .onAppear {
+                                            // Prefetch: precarga imágenes de coches cercanos al viewport
+                                            CarUIImageLoader.prefetch(
+                                                cars: displayedCars,
+                                                around: idx,
+                                                auth: auth,
+                                                window: 4
+                                            )
+                                        }
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
+                            }
+
+                            if carsVM.isLoadingMoreVehicles {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .tint(.white.opacity(0.7))
+                                    Text("Cargando más vehículos…")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.7))
+                                }
+                                .padding(.vertical, 12)
                             }
                         }
 
@@ -115,6 +135,7 @@ struct CarsView: View {
     private var stickyBrowseChrome: some View {
         CarsBrowseHeaderBar(
             initials: auth.userInitials,
+            profileImage: auth.profileAvatarImage,
             searchText: $carsVM.browseSearchText,
             hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
             searchFieldFocused: $browseSearchFieldFocused,

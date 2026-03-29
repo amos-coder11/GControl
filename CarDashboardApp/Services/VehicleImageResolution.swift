@@ -4,9 +4,26 @@ import Foundation
 /// rutas con `/` en bucket privado (`vehicle-media`) para `createSignedURL`, y `data:` / base64.
 enum VehicleImageResolution: Equatable {
     case absoluteURL(URL)
+    /// Reserva la cadena http(s) aunque `URL(string:)` estricto falle (URLs con espacios, Unicode, etc.).
+    case absoluteURLRawString(String)
     case publicVehiclesFileName(String)
     case signedStorage(bucket: String, path: String)
     case inlineBase64(String)
+
+    /// URL http(s) lista para `URLRequest`, con corrección de caracteres inválidos (iOS 17+).
+    static func resolvedHTTPURL(from string: String) -> URL? {
+        let t = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if let u = URL(string: t, encodingInvalidCharacters: true),
+           let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return u
+        }
+        if let u = URL(string: t),
+           let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return u
+        }
+        return nil
+    }
 
     private static let imageExtensionPattern =
         try? NSRegularExpression(pattern: #"\.(jpe?g|png|webp|gif|avif)$"#, options: [.caseInsensitive])
@@ -16,10 +33,16 @@ enum VehicleImageResolution: Equatable {
         guard !t.isEmpty else { return nil }
 
         if t.lowercased().hasPrefix("http://") || t.lowercased().hasPrefix("https://") {
-            return URL(string: t).map { .absoluteURL($0) }
+            if let u = Self.resolvedHTTPURL(from: t) {
+                return .absoluteURL(u)
+            }
+            return .absoluteURLRawString(t)
         }
         if t.hasPrefix("//") {
-            return URL(string: "https:\(t)").map { .absoluteURL($0) }
+            if let u = Self.resolvedHTTPURL(from: "https:\(t)") {
+                return .absoluteURL(u)
+            }
+            return .absoluteURLRawString("https:\(t)")
         }
         if t.lowercased().hasPrefix("data:image") {
             if let b64 = extractBase64(fromDataURL: t) { return .inlineBase64(b64) }

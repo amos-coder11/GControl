@@ -129,6 +129,10 @@ struct VehicleRow: Decodable, Sendable {
     var imageBase64Raw: String?
     var storagePathColumn: String?
     var storageBucketColumn: String?
+    /// Propietario (p. ej. carpeta Storage `user_id/vehicle_id/`).
+    var userId: UUID?
+    /// Id externo Dealcar u otro CRM si existe en la fila.
+    var dealcar_vehicle_id: String?
 
     /// Campos opcionales de ficha / marketplace (columnas habituales en Supabase).
     var listPriceEUR: Double?
@@ -154,6 +158,15 @@ struct VehicleRow: Decodable, Sendable {
         "images", "photos", "imagenes", "gallery", "media", "attachments", "pictures",
         "imageGallery", "image_gallery", "imageUrls", "image_urls", "photo_urls",
         "media_urls", "files", "assets",
+        "listing_images", "listingImages", "vehicle_photos", "vehiclePhotos",
+        "car_images", "carImages", "galeria", "galería",
+    ]
+
+    /// `image_url` y similares a menudo vienen como `[String]` o jsonb; no solo como `String`.
+    private static let flexibleMultiImageColumnKeys = [
+        "image_url", "imageUrl", "photo_url", "photoUrl", "thumbnail_url", "thumbnailUrl",
+        "primary_image_url", "primaryImageUrl", "cover_image", "coverImage", "main_image", "mainImage",
+        "picture", "vehicle_image", "vehicleImage", "foto", "imagen", "src", "hero_image", "heroImage",
     ]
 
     private static func dkey(_ s: String) -> DynamicKey { DynamicKey(stringValue: s)! }
@@ -205,6 +218,19 @@ struct VehicleRow: Decodable, Sendable {
         return nil
     }
 
+    private static func optUUID(_ c: KeyedDecodingContainer<DynamicKey>, _ keys: [String]) -> UUID? {
+        for k in keys {
+            let key = dkey(k)
+            if let u = try? c.decodeIfPresent(UUID.self, forKey: key) { return u }
+            if let s = try? c.decodeIfPresent(String.self, forKey: key),
+               let t = trimmedNonEmpty(s),
+               let u = UUID(uuidString: t) {
+                return u
+            }
+        }
+        return nil
+    }
+
     private static func firstStringInArrays(_ c: KeyedDecodingContainer<DynamicKey>, _ keys: [String]) -> String? {
         for k in keys {
             guard let arr = try? c.decodeIfPresent([String].self, forKey: dkey(k)) else { continue }
@@ -219,6 +245,27 @@ struct VehicleRow: Decodable, Sendable {
             guard let arr = try? c.decodeIfPresent([String].self, forKey: dkey(k)) else { continue }
             for s in arr {
                 if let t = trimmedNonEmpty(s) { out.append(t) }
+            }
+        }
+        return out
+    }
+
+    /// Decodifica columnas de imagen como texto, lista de textos o JSON arbitrario (galería).
+    private static func collectFlexibleImageStrings(_ c: KeyedDecodingContainer<DynamicKey>, keys: [String]) -> [String] {
+        var out: [String] = []
+        for k in keys {
+            guard let key = DynamicKey(stringValue: k) else { continue }
+            if let s = try? c.decodeIfPresent(String.self, forKey: key),
+               let t = trimmedNonEmpty(s) {
+                out.append(t)
+            }
+            if let arr = try? c.decodeIfPresent([String].self, forKey: key) {
+                for s in arr {
+                    if let t = trimmedNonEmpty(s) { out.append(t) }
+                }
+            }
+            if let loose = try? c.decodeIfPresent(LooseGalleryJSON.self, forKey: key) {
+                out.append(contentsOf: loose.allImageLikeStrings())
             }
         }
         return out
@@ -325,7 +372,7 @@ struct VehicleRow: Decodable, Sendable {
         icon = Self.optString(c, ["icon", "icon_sf_symbol", "sf_symbol"])
         color = Self.optString(c, ["color", "accent", "theme_color"])
 
-        var img = Self.optString(c, ["image_url"])
+        var img = Self.optString(c, ["main_image_url", "mainImageUrl", "image_url"])
         if img == nil {
             img = Self.optString(c, [
                 "photo_url", "thumbnail_url", "cover_url", "picture",
@@ -359,15 +406,25 @@ struct VehicleRow: Decodable, Sendable {
         storageBucketColumn = Self.optString(c, [
             "storage_bucket", "bucket", "bucket_id", "media_bucket", "storageBucket",
         ])
+        userId = Self.optUUID(c, [
+            "user_id", "userId", "owner_id", "ownerId", "auth_user_id", "authUserId",
+            "created_by", "createdBy", "profile_id", "profileId", "seller_id", "sellerId",
+            "account_id", "accountId", "uid",
+        ])
+        dealcar_vehicle_id = Self.optString(c, [
+            "dealcar_vehicle_id", "dealcarVehicleId", "dealcar_id", "dealcarId", "external_vehicle_id",
+        ])
 
         var galleryCandidates: [String] = []
         if let t = trimmedNonEmpty(img) {
             galleryCandidates.append(t)
         }
+        galleryCandidates.append(contentsOf: Self.collectFlexibleImageStrings(c, keys: Self.flexibleMultiImageColumnKeys))
         galleryCandidates.append(contentsOf: Self.allStringsInArrays(c, [
             "photos", "images", "imagenes", "image_urls", "imageUrls", "gallery", "media_urls", "mediaUrls",
             "attachments", "pictures", "fotos", "photo_urls", "photoUrls", "gallery_urls",
             "storage_paths", "storagePaths", "image_paths", "imagePaths", "media_paths", "mediaPaths",
+            "listing_images", "listingImages", "vehicle_photos", "vehiclePhotos", "car_images", "carImages",
         ]))
         galleryCandidates.append(contentsOf: Self.allURLsFromObjectArrays(c, [
             "photos", "images", "imagenes", "gallery", "media", "attachments",
@@ -386,6 +443,7 @@ struct VehicleRow: Decodable, Sendable {
         }
         galleryCandidates.append(contentsOf: Self.scavengeAllImageLikeStrings(from: c))
         let scalarImageColumns = [
+            "main_image_url", "mainImageUrl",
             "image_url", "photo_url", "thumbnail_url", "cover_url", "picture",
             "imagen_url", "main_image", "image", "foto", "url_foto", "url_imagen",
             "foto_url", "car_image", "vehicle_image", "imageUrl", "photoUrl", "thumbnailUrl",

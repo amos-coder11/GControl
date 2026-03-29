@@ -17,6 +17,7 @@ struct DashboardView: View {
                     // Cabecera fija (no se desplaza con el contenido), como en la referencia.
                     DashboardHomeTopBar(
                         initials: auth.userInitials,
+                        profileImage: auth.profileAvatarImage,
                         searchText: $homeSearchText,
                         onStats: {
                             withAnimation(.easeInOut(duration: 0.35)) {

@@ -64,6 +64,10 @@ struct CarListingCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.clear)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .onAppear {
+            // Prefetch todas las fotos de la galería de este coche
+            CarUIImageLoader.prefetchGallery(car: car, auth: auth)
+        }
         .onChange(of: car.id) { _, _ in galleryIndex = 0 }
         .onChange(of: imageSlots.count) { _, newCount in
             if newCount == 0 {
@@ -340,8 +344,11 @@ private struct CarHeroImageSlotView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .task(id: slot.id) {
-            image = nil
-            image = await CarUIImageLoader.load(payload: slot.payload, auth: auth)
+            // No reseteamos a nil para evitar flash del spinner si ya teníamos imagen
+            let loaded = await CarUIImageLoader.load(payload: slot.payload, auth: auth)
+            if let loaded {
+                image = loaded
+            }
         }
     }
 }

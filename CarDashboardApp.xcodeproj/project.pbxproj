@@ -56,12 +56,15 @@
 		AA000047 /* CarBrowseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000046 /* CarBrowseModels.swift */; };
 		AA000048 /* Car+Browse.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000047 /* Car+Browse.swift */; };
 		AA000049 /* CarUIImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000048 /* CarUIImageLoader.swift */; };
+		A1B2C3D401234567 /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D401234568 /* ImageCacheService.swift */; };
 		AA000050 /* CarListingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000049 /* CarListingCard.swift */; };
 		AA000051 /* CarBrowseSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000050 /* CarBrowseSheets.swift */; };
 		AA000052 /* CarImageSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000051 /* CarImageSlot.swift */; };
 		AA000053 /* CarsBrowseHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000052 /* CarsBrowseHeaderBar.swift */; };
 		AA000054 /* RevolutBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000053 /* RevolutBackgroundView.swift */; };
 		AA000055 /* DashboardHomeNotificationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000054 /* DashboardHomeNotificationsSection.swift */; };
+		AA000056 /* UserProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000055 /* UserProfileService.swift */; };
+		AA000057 /* VehicleImageDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000056 /* VehicleImageDiagnostics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -114,12 +117,15 @@
 		AB000046 /* CarBrowseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseModels.swift; sourceTree = "<group>"; };
 		AB000047 /* Car+Browse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Car+Browse.swift"; sourceTree = "<group>"; };
 		AB000048 /* CarUIImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarUIImageLoader.swift; sourceTree = "<group>"; };
+		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
 		AB000049 /* CarListingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarListingCard.swift; sourceTree = "<group>"; };
 		AB000050 /* CarBrowseSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseSheets.swift; sourceTree = "<group>"; };
 		AB000051 /* CarImageSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarImageSlot.swift; sourceTree = "<group>"; };
 		AB000052 /* CarsBrowseHeaderBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarsBrowseHeaderBar.swift; sourceTree = "<group>"; };
 		AB000053 /* RevolutBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevolutBackgroundView.swift; sourceTree = "<group>"; };
 		AB000054 /* DashboardHomeNotificationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeNotificationsSection.swift; sourceTree = "<group>"; };
+		AB000055 /* UserProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileService.swift; sourceTree = "<group>"; };
+		AB000056 /* VehicleImageDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleImageDiagnostics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -192,8 +198,11 @@
 			isa = PBXGroup;
 			children = (
 				AB000034 /* SupabaseClientProvider.swift */,
+				AB000055 /* UserProfileService.swift */,
 				AB000039 /* VehiclesService.swift */,
+				AB000056 /* VehicleImageDiagnostics.swift */,
 				AB000048 /* CarUIImageLoader.swift */,
+				A1B2C3D401234568 /* ImageCacheService.swift */,
 				AB000041 /* VehicleImageResolution.swift */,
 				AB000043 /* LeadsCrmService.swift */,
 				AB000008 /* TelemetryService.swift */,
@@ -375,11 +384,13 @@
 				AA000031 /* ChatConversationView.swift in Sources */,
 				AA000032 /* ChatAvatarViews.swift in Sources */,
 				AA000035 /* SupabaseClientProvider.swift in Sources */,
+				AA000056 /* UserProfileService.swift in Sources */,
 				AA000036 /* AuthViewModel.swift in Sources */,
 				AA000037 /* LoginView.swift in Sources */,
 				AA000038 /* AuthRootView.swift in Sources */,
 				AA000039 /* VehicleRow.swift in Sources */,
 				AA000040 /* VehiclesService.swift in Sources */,
+				AA000057 /* VehicleImageDiagnostics.swift in Sources */,
 				AA000041 /* CarThumbnailView.swift in Sources */,
 				AA000042 /* VehicleImageResolution.swift in Sources */,
 				AA000043 /* LeadCrm.swift in Sources */,
@@ -389,6 +400,7 @@
 				AA000047 /* CarBrowseModels.swift in Sources */,
 				AA000048 /* Car+Browse.swift in Sources */,
 				AA000049 /* CarUIImageLoader.swift in Sources */,
+				A1B2C3D401234567 /* ImageCacheService.swift in Sources */,
 				AA000050 /* CarListingCard.swift in Sources */,
 				AA000051 /* CarBrowseSheets.swift in Sources */,
 				AA000052 /* CarImageSlot.swift in Sources */,

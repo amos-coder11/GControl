@@ -267,40 +267,48 @@ private let dashboardTileCorner: CGFloat = 26
 /// Avatar → Ajustes (mismo que Inicio).
 struct AppChromeAvatarProfileButton: View {
     let initials: String
+    var profileImage: UIImage? = nil
 
     var body: some View {
         NavigationLink {
             SettingsView()
         } label: {
             ZStack(alignment: .topTrailing) {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                PremiumAccent.ice.opacity(0.9),
-                                PremiumAccent.tabActive.opacity(0.72),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: AppChromeHeaderMetrics.avatarSize, height: AppChromeHeaderMetrics.avatarSize)
-                    .overlay {
+                ZStack {
+                    if let profileImage {
+                        Image(uiImage: profileImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        PremiumAccent.ice.opacity(0.9),
+                                        PremiumAccent.tabActive.opacity(0.72),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                         Text(initials)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                     }
-                    .overlay {
-                        Circle()
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.75
-                            )
-                    }
+                }
+                .frame(width: AppChromeHeaderMetrics.avatarSize, height: AppChromeHeaderMetrics.avatarSize)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                }
 
                 Circle()
                     .fill(Color.red.opacity(0.92))
@@ -383,6 +391,7 @@ struct AppChromeHeaderCircleIconButton: View {
 /// Fila: [avatar 48] [buscador flexible] [trailing]. `trailing` debe ocupar el mismo ancho que 2× círculo + spacing (Inicio).
 struct AppChromeHeaderRow<Trailing: View>: View {
     let initials: String
+    var profileImage: UIImage? = nil
     @Binding var searchText: String
     var prompt: Text
     var showsSearchClearButton: Bool
@@ -391,7 +400,7 @@ struct AppChromeHeaderRow<Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppChromeHeaderMetrics.hStackSpacing) {
-            AppChromeAvatarProfileButton(initials: initials)
+            AppChromeAvatarProfileButton(initials: initials, profileImage: profileImage)
             AppChromeSearchCapsuleField(
                 text: $searchText,
                 prompt: prompt,
@@ -406,6 +415,7 @@ struct AppChromeHeaderRow<Trailing: View>: View {
 /// Cabecera inicio: estadísticas + notificaciones a la derecha.
 struct DashboardHomeTopBar: View {
     let initials: String
+    var profileImage: UIImage? = nil
     @Binding var searchText: String
     @FocusState private var searchFieldFocused: Bool
     var onStats: () -> Void = {}
@@ -414,6 +424,7 @@ struct DashboardHomeTopBar: View {
     var body: some View {
         AppChromeHeaderRow(
             initials: initials,
+            profileImage: profileImage,
             searchText: $searchText,
             prompt: Text("Buscar")
                 .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),

@@ -24,4 +24,31 @@ enum SupabaseClientProvider {
         guard let v = fromInfoPlist, !v.isEmpty else { return "vehicle-media" }
         return v
     }
+
+    /// Tabla pública de perfiles (columna típica `avatar_url`).
+    static var profilesTableName: String {
+        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "USER_PROFILES_TABLE") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let v = fromInfoPlist, !v.isEmpty else { return "profiles" }
+        return v
+    }
+
+    /// Bucket Storage para fotos de perfil (ruta relativa guardada en `avatar_url`).
+    static var userAvatarBucket: String {
+        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "USER_AVATAR_BUCKET") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let v = fromInfoPlist, !v.isEmpty else { return "avatars" }
+        return v
+    }
+
+    /// URL pública de objeto: `{supabaseURL}/storage/v1/object/public/{bucket}/{path}` (p. ej. `vehicle-media/{user_id}/{vehicle_id}/001.jpg`).
+    static func publicStorageObjectURL(bucket: String? = nil, path relativePath: String) -> String {
+        let b = (bucket ?? vehicleMediaBucket).trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let encoded = clean.split(separator: "/").map(String.init).map { seg -> String in
+            seg.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? seg
+        }.joined(separator: "/")
+        let base = supabaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(base)/storage/v1/object/public/\(b)/\(encoded)"
+    }
 }
