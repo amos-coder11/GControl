@@ -9,6 +9,15 @@ struct Car: Identifiable, Hashable {
     var icon: String
     var isConnected: Bool
     var color: String
+    /// URL absoluta lista para descargar (externa o ya resuelta).
+    var imageURLString: String?
+    /// Solo nombre de archivo con extensión de imagen → `storage.from("vehicles").getPublicURL`.
+    var imagePublicVehiclesFileName: String?
+    /// Clave dentro del bucket privado (p. ej. `{user_id}/{vehicle_id}/foto.jpg`).
+    var imageSignedStoragePath: String?
+    var imageSignedStorageBucket: String?
+    /// Payload base64 (sin prefijo `data:image/...;base64,`).
+    var imageBase64: String?
 
     init(
         id: UUID = UUID(),
@@ -18,7 +27,12 @@ struct Car: Identifiable, Hashable {
         year: Int,
         icon: String = "car.fill",
         isConnected: Bool = false,
-        color: String = "cyan"
+        color: String = "cyan",
+        imageURLString: String? = nil,
+        imagePublicVehiclesFileName: String? = nil,
+        imageSignedStoragePath: String? = nil,
+        imageSignedStorageBucket: String? = nil,
+        imageBase64: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -28,5 +42,10 @@ struct Car: Identifiable, Hashable {
         self.icon = icon
         self.isConnected = isConnected
         self.color = color
+        self.imageURLString = imageURLString
+        self.imagePublicVehiclesFileName = imagePublicVehiclesFileName
+        self.imageSignedStoragePath = imageSignedStoragePath
+        self.imageSignedStorageBucket = imageSignedStorageBucket
+        self.imageBase64 = imageBase64
     }
 }

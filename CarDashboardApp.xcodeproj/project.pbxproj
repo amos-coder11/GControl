@@ -40,6 +40,19 @@
 		AA000033 /* ChatInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000033 /* ChatInboxStore.swift */; };
 		AA000031 /* ChatConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000031 /* ChatConversationView.swift */; };
 		AA000032 /* ChatAvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000032 /* ChatAvatarViews.swift */; };
+		AA000034 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = AG000002 /* Supabase */; };
+		AA000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000034 /* SupabaseClientProvider.swift */; };
+		AA000036 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000035 /* AuthViewModel.swift */; };
+		AA000037 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000036 /* LoginView.swift */; };
+		AA000038 /* AuthRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000037 /* AuthRootView.swift */; };
+		AA000039 /* VehicleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000038 /* VehicleRow.swift */; };
+		AA000040 /* VehiclesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000039 /* VehiclesService.swift */; };
+		AA000041 /* CarThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000040 /* CarThumbnailView.swift */; };
+		AA000042 /* VehicleImageResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000041 /* VehicleImageResolution.swift */; };
+		AA000043 /* LeadCrm.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000042 /* LeadCrm.swift */; };
+		AA000044 /* LeadsCrmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000043 /* LeadsCrmService.swift */; };
+		AA000045 /* LeadsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000044 /* LeadsViewModel.swift */; };
+		AA000046 /* LeadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000045 /* LeadsListView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -77,6 +90,18 @@
 		AB000033 /* ChatInboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInboxStore.swift; sourceTree = "<group>"; };
 		AB000031 /* ChatConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConversationView.swift; sourceTree = "<group>"; };
 		AB000032 /* ChatAvatarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAvatarViews.swift; sourceTree = "<group>"; };
+		AB000034 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
+		AB000035 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		AB000036 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		AB000037 /* AuthRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRootView.swift; sourceTree = "<group>"; };
+		AB000038 /* VehicleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleRow.swift; sourceTree = "<group>"; };
+		AB000039 /* VehiclesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesService.swift; sourceTree = "<group>"; };
+		AB000040 /* CarThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarThumbnailView.swift; sourceTree = "<group>"; };
+		AB000041 /* VehicleImageResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleImageResolution.swift; sourceTree = "<group>"; };
+		AB000042 /* LeadCrm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadCrm.swift; sourceTree = "<group>"; };
+		AB000043 /* LeadsCrmService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsCrmService.swift; sourceTree = "<group>"; };
+		AB000044 /* LeadsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsViewModel.swift; sourceTree = "<group>"; };
+		AB000045 /* LeadsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsListView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +109,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000034 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -120,6 +146,8 @@
 				AB000002 /* Car.swift */,
 				AB000003 /* CarMetric.swift */,
 				AB000004 /* CarStatus.swift */,
+				AB000038 /* VehicleRow.swift */,
+				AB000042 /* LeadCrm.swift */,
 				AB000030 /* ChatThread.swift */,
 				AB000033 /* ChatInboxStore.swift */,
 			);
@@ -133,6 +161,8 @@
 				AB000025 /* DealershipStatsViewModel.swift */,
 				AB000006 /* CarsViewModel.swift */,
 				AB000007 /* SettingsViewModel.swift */,
+				AB000035 /* AuthViewModel.swift */,
+				AB000044 /* LeadsViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -140,6 +170,10 @@
 		AD000005 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				AB000034 /* SupabaseClientProvider.swift */,
+				AB000039 /* VehiclesService.swift */,
+				AB000041 /* VehicleImageResolution.swift */,
+				AB000043 /* LeadsCrmService.swift */,
 				AB000008 /* TelemetryService.swift */,
 				AB000009 /* MockTelemetryService.swift */,
 			);
@@ -149,6 +183,8 @@
 		AD000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				AB000037 /* AuthRootView.swift */,
+				AB000036 /* LoginView.swift */,
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
 				AB000012 /* CarsView.swift */,
@@ -156,6 +192,7 @@
 				AB000031 /* ChatConversationView.swift */,
 				AB000029 /* SearchView.swift */,
 				AB000013 /* SettingsView.swift */,
+				AB000045 /* LeadsListView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -169,6 +206,7 @@
 				AB000017 /* StatusBadge.swift */,
 				AB000018 /* LiquidGlassTabBar.swift */,
 				AB000019 /* CarRow.swift */,
+				AB000040 /* CarThumbnailView.swift */,
 				AB000020 /* SectionHeader.swift */,
 				AB000024 /* ShowroomBannerView.swift */,
 				AB000026 /* DealershipStatComponents.swift */,
@@ -218,6 +256,9 @@
 			dependencies = (
 			);
 			name = CarDashboardApp;
+			packageProductDependencies = (
+				AG000002 /* Supabase */,
+			);
 			productName = CarDashboardApp;
 			productReference = AB000000 /* CarDashboardApp.app */;
 			productType = "com.apple.product-type.application";
@@ -246,6 +287,9 @@
 				Base,
 			);
 			mainGroup = AD000001;
+			packageReferences = (
+				AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = AD000009 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -303,6 +347,18 @@
 				AA000033 /* ChatInboxStore.swift in Sources */,
 				AA000031 /* ChatConversationView.swift in Sources */,
 				AA000032 /* ChatAvatarViews.swift in Sources */,
+				AA000035 /* SupabaseClientProvider.swift in Sources */,
+				AA000036 /* AuthViewModel.swift in Sources */,
+				AA000037 /* LoginView.swift in Sources */,
+				AA000038 /* AuthRootView.swift in Sources */,
+				AA000039 /* VehicleRow.swift in Sources */,
+				AA000040 /* VehiclesService.swift in Sources */,
+				AA000041 /* CarThumbnailView.swift in Sources */,
+				AA000042 /* VehicleImageResolution.swift in Sources */,
+				AA000043 /* LeadCrm.swift in Sources */,
+				AA000044 /* LeadsCrmService.swift in Sources */,
+				AA000045 /* LeadsViewModel.swift in Sources */,
+				AA000046 /* LeadsListView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -504,6 +560,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.18.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AG000002 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AE000000 /* Project object */;
 }

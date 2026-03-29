@@ -17,16 +17,7 @@ struct CarRow: View {
         Button(action: onTap) {
             GlassCard(cornerRadius: 22, padding: 16) {
                 HStack(spacing: 16) {
-                    // Car icon
-                    ZStack {
-                        Circle()
-                            .fill(accentColor.opacity(0.15))
-                            .frame(width: 52, height: 52)
-
-                        Image(systemName: car.icon)
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(accentColor)
-                    }
+                    CarThumbnailView(car: car, size: 52)
 
                     // Info
                     VStack(alignment: .leading, spacing: 4) {
@@ -87,4 +78,5 @@ struct CarRow: View {
         }
         .padding()
     }
+    .environmentObject(AuthViewModel())
 }

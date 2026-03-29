@@ -123,4 +123,5 @@ struct SearchView: View {
 #Preview {
     SearchView(query: .constant(""), embeddedInTabView: true)
         .environmentObject(CarsViewModel())
+        .environmentObject(AuthViewModel())
 }

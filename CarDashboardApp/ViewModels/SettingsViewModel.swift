@@ -7,6 +7,8 @@ final class SettingsViewModel: ObservableObject {
     @Published var useMph: Bool = false
     @Published var animationsEnabled: Bool = true
     @Published var simulatedData: Bool = true
+    @Published var leadsNotificationsEnabled: Bool = true
+    @Published var leadsFollowUpReminders: Bool = true
     /// Default: light so the dashboard matches a white background out of the box.
     @Published var theme: AppTheme = .light
 

@@ -12,6 +12,19 @@ struct CarsView: View {
                     subtitle: "\(carsVM.cars.count) vehículos registrados"
                 )
 
+                if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
+                    ProgressView()
+                        .padding(.vertical, 32)
+                }
+
+                if let err = carsVM.vehiclesError {
+                    Text(err)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+
                 // Active car highlight
                 if let activeCar = carsVM.selectedCar {
                     activeCarCard(activeCar)
@@ -38,6 +51,16 @@ struct CarsView: View {
             .frame(minWidth: 0, maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
+        .task {
+            // Carga automática para que las miniaturas (Storage) se muestren sin que el usuario
+            // tenga que hacer pull-to-refresh.
+            if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
+                await carsVM.loadVehicles()
+            }
+        }
+        .refreshable {
+            await carsVM.loadVehicles()
+        }
     }
 
     // MARK: - Active Car Card
@@ -48,7 +71,7 @@ struct CarsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Vehículo activo")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(car.accentSwiftUIColor)
                             .textCase(.uppercase)
                             .tracking(1.2)
 
@@ -59,15 +82,7 @@ struct CarsView: View {
 
                     Spacer()
 
-                    ZStack {
-                        Circle()
-                            .fill(.cyan.opacity(0.15))
-                            .frame(width: 60, height: 60)
-
-                        Image(systemName: car.icon)
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.cyan)
-                    }
+                    CarThumbnailView(car: car, size: 60)
                 }
 
                 Divider()
@@ -82,7 +97,7 @@ struct CarsView: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(.cyan.opacity(0.2), lineWidth: 1)
+                .stroke(car.accentSwiftUIColor.opacity(0.2), lineWidth: 1)
         }
     }
 
@@ -138,5 +153,6 @@ struct CarsView: View {
         Color.white.ignoresSafeArea()
         CarsView()
             .environmentObject(CarsViewModel())
+            .environmentObject(AuthViewModel())
     }
 }

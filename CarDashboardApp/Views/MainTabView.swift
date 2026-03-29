@@ -50,6 +50,9 @@ struct MainTabView: View {
         .environmentObject(chatInbox)
         .searchable(text: $carSearchText, prompt: Self.searchPrompt)
         .tabBarMinimizeBehavior(.onScrollDown)
+        .task {
+            await carsVM.loadVehicles()
+        }
     }
 }
 
@@ -57,4 +60,5 @@ struct MainTabView: View {
     MainTabView()
         .environmentObject(CarsViewModel())
         .environmentObject(SettingsViewModel())
+        .environmentObject(AuthViewModel())
 }

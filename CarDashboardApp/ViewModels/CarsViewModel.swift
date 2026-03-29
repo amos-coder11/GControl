@@ -3,15 +3,31 @@ import SwiftUI
 
 @MainActor
 final class CarsViewModel: ObservableObject {
-    @Published var cars: [Car] = MockData.cars
+    @Published var cars: [Car] = []
     @Published var selectedCarId: UUID?
+    @Published var isLoadingVehicles = false
+    @Published var vehiclesError: String?
 
-    init() {
-        selectedCarId = cars.first?.id
-    }
+    init() {}
 
     var selectedCar: Car? {
         cars.first { $0.id == selectedCarId }
+    }
+
+    func loadVehicles() async {
+        isLoadingVehicles = true
+        vehiclesError = nil
+        defer { isLoadingVehicles = false }
+
+        do {
+            let rows = try await VehiclesService.fetchAll()
+            cars = rows.enumerated().map { idx, row in row.toCar(index: idx) }
+            if selectedCarId == nil || cars.first(where: { $0.id == selectedCarId }) == nil {
+                selectedCarId = cars.first?.id
+            }
+        } catch {
+            vehiclesError = error.localizedDescription
+        }
     }
 
     func selectCar(_ car: Car) {

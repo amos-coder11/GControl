@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
+    @EnvironmentObject var auth: AuthViewModel
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -9,6 +10,8 @@ struct SettingsView: View {
                 SectionHeader(title: "Ajustes", subtitle: "Configura tu experiencia")
 
                 profileSection
+                accountSection
+                crmSection
                 preferencesSection
                 dataSection
                 aboutSection
@@ -36,17 +39,17 @@ struct SettingsView: View {
                         )
                         .frame(width: 60, height: 60)
 
-                    Text(String(settingsVM.userName.prefix(1)))
+                    Text(String(auth.userDisplayName.prefix(1)).uppercased())
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(settingsVM.userName)
+                    Text(auth.userDisplayName)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.primary)
 
-                    Text("Plan Premium")
+                    Text("Sesión Supabase")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.cyan)
                 }
@@ -56,6 +59,72 @@ struct SettingsView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    // MARK: - Cuenta
+    private var accountSection: some View {
+        GlassCard(cornerRadius: 22, padding: 4) {
+            VStack(spacing: 0) {
+                Button {
+                    Task { await auth.signOut() }
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.red.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.red)
+                        }
+                        Text("Cerrar sesión")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - CRM / Leads (Supabase `leads_crm`, misma fuente que Flutter)
+    private var crmSection: some View {
+        GlassCard(cornerRadius: 22, padding: 4) {
+            VStack(spacing: 0) {
+                NavigationLink {
+                    LeadsListView()
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(PremiumAccent.tabActive.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(PremiumAccent.tabActive)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Centro de leads")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Text("Supabase · public.leads_crm")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -220,5 +289,6 @@ struct SettingsView: View {
         Color.white.ignoresSafeArea()
         SettingsView()
             .environmentObject(SettingsViewModel())
+            .environmentObject(AuthViewModel())
     }
 }
