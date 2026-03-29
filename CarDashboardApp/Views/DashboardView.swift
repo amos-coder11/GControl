@@ -6,6 +6,7 @@ private enum DashboardScrollID {
 
 struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var carsVM: CarsViewModel
     @StateObject private var vm = DealershipStatsViewModel()
     @State private var homeSearchText = ""
 
@@ -39,6 +40,8 @@ struct DashboardView: View {
                                 onBudgets: {},
                                 onMore: {}
                             )
+
+                            DashboardHomeNotificationsSection(cars: carsVM.cars)
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 36)
@@ -244,4 +247,5 @@ private struct DashboardQuickActionsRow: View {
 #Preview {
     DashboardView()
         .environmentObject(AuthViewModel())
+        .environmentObject(CarsViewModel())
 }

@@ -61,6 +61,7 @@
 		AA000052 /* CarImageSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000051 /* CarImageSlot.swift */; };
 		AA000053 /* CarsBrowseHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000052 /* CarsBrowseHeaderBar.swift */; };
 		AA000054 /* RevolutBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000053 /* RevolutBackgroundView.swift */; };
+		AA000055 /* DashboardHomeNotificationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000054 /* DashboardHomeNotificationsSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -118,6 +119,7 @@
 		AB000051 /* CarImageSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarImageSlot.swift; sourceTree = "<group>"; };
 		AB000052 /* CarsBrowseHeaderBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarsBrowseHeaderBar.swift; sourceTree = "<group>"; };
 		AB000053 /* RevolutBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevolutBackgroundView.swift; sourceTree = "<group>"; };
+		AB000054 /* DashboardHomeNotificationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeNotificationsSection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -229,6 +231,7 @@
 				AB000019 /* CarRow.swift */,
 				AB000040 /* CarThumbnailView.swift */,
 				AB000049 /* CarListingCard.swift */,
+				AB000054 /* DashboardHomeNotificationsSection.swift */,
 				AB000052 /* CarsBrowseHeaderBar.swift */,
 				AB000020 /* SectionHeader.swift */,
 				AB000024 /* ShowroomBannerView.swift */,
@@ -391,6 +394,7 @@
 				AA000052 /* CarImageSlot.swift in Sources */,
 				AA000053 /* CarsBrowseHeaderBar.swift in Sources */,
 				AA000054 /* RevolutBackgroundView.swift in Sources */,
+				AA000055 /* DashboardHomeNotificationsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

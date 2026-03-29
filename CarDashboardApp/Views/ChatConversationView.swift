@@ -64,18 +64,19 @@ struct ChatConversationView: View {
     @State private var inputBarHorizontalPadding = ChatHorizontalPadding(leading: 20, trailing: 20)
 
     private var allMessages: [ChatMessage] {
-        Self.mockMessages(for: thread.title) + liveMessages
+        Self.mockMessages(for: thread) + liveMessages
     }
 
     private var draftIsEmpty: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Cabecera conversación (legible sobre fondo Revolut).
+    /// Cabecera conversación: título blanco y estado en gris más marcado.
     private let chatToolbarNameColor = Color.white
-    private let chatToolbarStatusColor = Color.white.opacity(0.55)
-    private let incomingBubbleTextColor = Color(red: 0.06, green: 0.07, blue: 0.1)
-    private let incomingBubbleMetaColor = Color(red: 0.42, green: 0.44, blue: 0.48)
+    private let chatToolbarStatusColor = Color(red: 0.62, green: 0.66, blue: 0.72)
+    /// Entrantes: fondo pizarra azulada; texto blanco; hora en gris claro visible.
+    private let incomingBubbleTextColor = Color.white
+    private let incomingBubbleMetaColor = Color(red: 0.72, green: 0.76, blue: 0.82)
 
     /// Margen desde el borde seguro hasta el contenido del chat, alineado visualmente con barra de navegación (atrás / avatar ~40pt).
     private let navBarContentInset: CGFloat = 20
@@ -217,10 +218,20 @@ struct ChatConversationView: View {
 
     // MARK: - Burbujas
 
-    private let outgoingBubbleFill = Color(red: 0.52, green: 0.78, blue: 0.98)
-    private let incomingBubbleFill = Color(white: 0.97)
-    /// Hora y checks en salientes (azul tipo referencia).
-    private let outgoingMetaTint = Color(red: 0.22, green: 0.52, blue: 0.82)
+    /// Salientes: azul intenso → cian (degradado horizontal).
+    private let outgoingBubbleGradient = LinearGradient(
+        colors: [
+            Color(red: 0.0, green: 0.38, blue: 0.98),
+            Color(red: 0.15, green: 0.78, blue: 0.95),
+        ],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+    /// Entrantes: gris carbón con matiz fría (referencia burbuja oscura).
+    private let incomingBubbleFill = Color(red: 0.12, green: 0.15, blue: 0.20)
+    /// Hora y checks en salientes: blanco suavizado sobre el degradado.
+    private let outgoingMetaTint = Color.white.opacity(0.78)
+    private let outgoingMetaTintMuted = Color.white.opacity(0.52)
     private let bubblePadH: CGFloat = 11
     private let bubblePadV: CGFloat = 8
     private let bubbleCorner: CGFloat = 16
@@ -305,13 +316,13 @@ struct ChatConversationView: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     Text(text)
                         .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white)
                         .lineLimit(1)
                     outgoingMetaRow(time: time, receipt: receipt)
                 }
                 .padding(.horizontal, bubblePadH)
                 .padding(.vertical, bubblePadV)
-                .background { shape.fill(outgoingBubbleFill) }
+                .background { shape.fill(outgoingBubbleGradient) }
             } else {
                 outgoingTextMultiline(text: text, time: time, receipt: receipt, contentCap: contentCap, shape: shape)
             }
@@ -346,7 +357,7 @@ struct ChatConversationView: View {
         VStack(alignment: .trailing, spacing: 6) {
             Text(text)
                 .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.black)
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.trailing)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -357,7 +368,7 @@ struct ChatConversationView: View {
         }
         .padding(.horizontal, bubblePadH)
         .padding(.vertical, bubblePadV)
-        .background { shape.fill(outgoingBubbleFill) }
+        .background { shape.fill(outgoingBubbleGradient) }
     }
 
     private func outgoingMetaRow(time: String, receipt: OutgoingReceipt) -> some View {
@@ -377,9 +388,9 @@ struct ChatConversationView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(outgoingMetaTint)
         case .delivered:
-            outgoingDoubleCheckmarks(foreground: Color(white: 0.45))
+            outgoingDoubleCheckmarks(foreground: outgoingMetaTintMuted)
         case .read:
-            outgoingDoubleCheckmarks(foreground: outgoingMetaTint)
+            outgoingDoubleCheckmarks(foreground: Color.white.opacity(0.92))
         }
     }
 
@@ -409,7 +420,7 @@ struct ChatConversationView: View {
             .padding(6)
             .background {
                 RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-                    .fill(outgoingBubbleFill)
+                    .fill(outgoingBubbleGradient)
             }
             .fixedSize(horizontal: true, vertical: false)
             .frame(maxWidth: maxBubbleWidth, alignment: .trailing)
@@ -437,8 +448,14 @@ struct ChatConversationView: View {
 
     // MARK: - Barra de entrada unificada
 
-    /// Mismo cromado que la pastilla del buscador (`AppChromeSearchCapsuleField`).
     private let composerFontSize: CGFloat = 17
+    /// Radio fijo: con texto multilínea no parece “cápsula” vertical; mismo lenguaje que tarjetas cromadas.
+    private let composerChromeCorner: CGFloat = 22
+    private let composerSendBlue = Color(red: 0.0, green: 0.48, blue: 1.0)
+    private let composerVerticalPadding: CGFloat = 5
+    /// Insets simétricos: la línea queda centrada en el UITextView; el marco exterior centra en los 44 pt.
+    private let composerTextTopInset: CGFloat = 2
+    private let composerTextBottomInset: CGFloat = 2
 
     /// ~mitad de pantalla: el texto hace scroll dentro si supera este alto.
     private var composerTextScrollMaxHeight: CGFloat {
@@ -450,51 +467,67 @@ struct ChatConversationView: View {
         HStack(alignment: .bottom, spacing: AppChromeHeaderMetrics.hStackSpacing) {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 ZStack {
-                    DashboardChromeHeaderCircleBackground()
+                    DashboardChromeHeaderCircleBackground(size: AppChromeHeaderMetrics.circleButtonSize)
                     Image(systemName: "paperclip")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.95))
                 }
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
 
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 6) {
                 ZStack(alignment: .topLeading) {
                     ComposerTextView(
                         text: $draft,
                         maxHeight: composerTextScrollMaxHeight,
-                        fontSize: composerFontSize
+                        fontSize: composerFontSize,
+                        textTopInset: composerTextTopInset,
+                        textBottomInset: composerTextBottomInset
                     )
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
-                    if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if draftIsEmpty {
                         Text("Mensaje")
                             .font(.system(size: composerFontSize))
                             .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
-                            .padding(.top, 8)
+                            .padding(.top, composerTextTopInset)
                             .allowsHitTesting(false)
                     }
                 }
 
+                if !draft.isEmpty {
+                    Button {
+                        draft = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Limpiar mensaje")
+                }
+
                 Button { sendMessage() } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(
-                            draftIsEmpty
-                                ? Color.white.opacity(0.35)
-                                : Color.white.opacity(0.95)
-                        )
-                        .frame(width: 28, height: 28, alignment: .center)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background {
+                            Circle()
+                                .fill(draftIsEmpty ? Color.white.opacity(0.14) : composerSendBlue)
+                        }
                 }
                 .buttonStyle(.plain)
                 .disabled(draftIsEmpty)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, minHeight: AppChromeHeaderMetrics.circleButtonSize, alignment: .bottom)
+            .padding(.horizontal, 12)
+            .padding(.vertical, composerVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: AppChromeHeaderMetrics.circleButtonSize, alignment: .center)
             .background {
-                DashboardChromeSearchCapsuleBackground()
+                DashboardChromeCardBackground(cornerRadius: composerChromeCorner)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: draftIsEmpty)
@@ -558,25 +591,55 @@ struct ChatConversationView: View {
 
     // MARK: - Mock
 
-    private static func mockMessages(for title: String) -> [ChatMessage] {
-        switch title {
-        case "Taller central":
+    private static func mockMessages(for thread: ChatThread) -> [ChatMessage] {
+        switch thread.id.uuidString {
+        case "10000000-0000-0000-0000-000000000001":
             return [
-                ChatMessage(text: "Hola, el taller confirma cita para mañana 10:00.", isOutgoing: false, time: "9:38"),
-                ChatMessage(text: "Perfecto, llevo el coche entonces.", isOutgoing: true, time: "9:40", receipt: .read),
-                ChatMessage(text: "El vehículo está listo para recogida.", isOutgoing: false, time: "9:42")
+                ChatMessage(text: "Hola, vi el XC60 en Instagram. ¿Sigue disponible?", isOutgoing: false, time: "9:38"),
+                ChatMessage(text: "Sí, lo tienes reservado. Mañana lo dejamos impecable.", isOutgoing: true, time: "9:39", receipt: .read),
+                ChatMessage(text: "El Volvo está listo para entrega en el concesionario.", isOutgoing: false, time: "9:42")
             ]
-        case "María · Ventas":
+        case "10000000-0000-0000-0000-000000000002":
             return [
-                ChatMessage(text: "Buenos días, te paso el PDF del mes.", isOutgoing: false, time: "Ayer 18:02"),
-                ChatMessage(text: "Gracias María.", isOutgoing: true, time: "Ayer 18:15", receipt: .read),
-                ChatMessage(text: "Te envío el informe de comisiones del mes.", isOutgoing: false, time: "Ayer 18:20"),
-                ChatMessage(text: "Cualquier duda me escribes.", isOutgoing: false, time: "Ayer 18:22")
+                ChatMessage(text: "Buenas, me interesa el RS6 del anuncio.", isOutgoing: false, time: "Ayer 18:02"),
+                ChatMessage(text: "Hola, te paso condiciones y cuota orientativa.", isOutgoing: true, time: "Ayer 18:10", receipt: .read),
+                ChatMessage(text: "¿Sigues con el RS6 publicado? Me interesa financiación.", isOutgoing: false, time: "Ayer 18:20"),
+                ChatMessage(text: "Sí, cuando quieras te mando simulación.", isOutgoing: true, time: "Ayer 18:22", receipt: .read)
             ]
-        case "DealCar Bot":
+        case "10000000-0000-0000-0000-000000000003":
+            return [
+                ChatMessage(text: "Hola, ¿en qué podemos ayudarte?", isOutgoing: false, time: "10:12"),
+                ChatMessage(text: "¿Podemos ver el Serie 3 el jueves por la tarde?", isOutgoing: false, time: "10:14"),
+                ChatMessage(text: "Perfecto, te agendo a las 17:30.", isOutgoing: true, time: "10:18", receipt: .read)
+            ]
+        case "10000000-0000-0000-0000-000000000004":
+            return [
+                ChatMessage(text: "No veíamos el Cupra Formentor en el panel tras la importación.", isOutgoing: false, time: "18/03"),
+                ChatMessage(text: "Ya está sincronizado. ¿Lo ves ahora?", isOutgoing: true, time: "18/03", receipt: .read),
+                ChatMessage(text: "Sí, todo correcto. Gracias.", isOutgoing: false, time: "18/03")
+            ]
+        case "10000000-0000-0000-0000-000000000005":
             return [
                 ChatMessage(text: "Bienvenido al asistente DealCar. Escribe *stock* o *cita*.", isOutgoing: false, time: "15/03"),
                 ChatMessage(text: "/start", isOutgoing: true, time: "15/03", receipt: .delivered)
+            ]
+        case "10000000-0000-0000-0000-000000000006":
+            return [
+                ChatMessage(text: "Integración financiación — dealerId para el Mustang.", isOutgoing: false, time: "4:20"),
+                ChatMessage(text: "const dealerId = process.env.DEALCAR_DEALER_ID ?? \"b7c179e3…\"", isOutgoing: false, time: "4:23"),
+                ChatMessage(text: "Recibido, lo revisamos en staging.", isOutgoing: true, time: "4:25", receipt: .read)
+            ]
+        case "10000000-0000-0000-0000-000000000007":
+            return [
+                ChatMessage(text: "Hola, el 320d sigue en venta?", isOutgoing: false, time: "mar 11:02"),
+                ChatMessage(text: "Sí, disponible. ¿Quieres más fotos?", isOutgoing: true, time: "mar 11:08", receipt: .read),
+                ChatMessage(text: "¿Sigue disponible el 320d? Puedo pasar mañana.", isOutgoing: false, time: "mar 18:40")
+            ]
+        case "10000000-0000-0000-0000-000000000008":
+            return [
+                ChatMessage(text: "Interesado en el A4 del Marketplace.", isOutgoing: false, time: "lun 9:05"),
+                ChatMessage(text: "Te dejo el enlace al informe CARFAX del A4.", isOutgoing: false, time: "lun 9:12"),
+                ChatMessage(text: "Gracias, lo miro y te digo.", isOutgoing: true, time: "lun 9:20", receipt: .read)
             ]
         default:
             return [
@@ -625,6 +688,8 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     var maxHeight: CGFloat
     var fontSize: CGFloat
+    var textTopInset: CGFloat
+    var textBottomInset: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -639,7 +704,7 @@ private struct ComposerTextView: UIViewRepresentable {
         tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
         tv.textColor = UIColor(white: 0.96, alpha: 1)
         tv.backgroundColor = .clear
-        tv.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+        tv.textContainerInset = UIEdgeInsets(top: textTopInset, left: 0, bottom: textBottomInset, right: 0)
         tv.textContainer.lineFragmentPadding = 0
         tv.isScrollEnabled = false
         tv.keyboardDismissMode = .interactive
@@ -653,6 +718,7 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ tv: ComposerSizingTextView, context: Context) {
         tv.maxComposerHeight = maxHeight
+        tv.textContainerInset = UIEdgeInsets(top: textTopInset, left: 0, bottom: textBottomInset, right: 0)
         let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
         tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
         tv.textColor = UIColor(white: 0.96, alpha: 1)
