@@ -1,0 +1,36 @@
+# Xcode / Swift
+DerivedData/
+DerivedData*/
+build/
+*.xcuserstate
+xcuserdata/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# CocoaPods (si se usa en el futuro)
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
