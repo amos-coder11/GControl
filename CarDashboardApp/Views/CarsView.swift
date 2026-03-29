@@ -2,157 +2,167 @@ import SwiftUI
 
 struct CarsView: View {
     @EnvironmentObject var carsVM: CarsViewModel
+    @EnvironmentObject private var auth: AuthViewModel
+
+    @State private var showSortSheet = false
+    @State private var showFilterSheet = false
+    @FocusState private var browseSearchFieldFocused: Bool
+
+    private var displayedCars: [Car] {
+        carsVM.displayedBrowseCars()
+    }
+
+    private var resultCountText: String {
+        displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
+    }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 20) {
-                // Header
-                SectionHeader(
-                    title: "Mis Coches",
-                    subtitle: "\(carsVM.cars.count) vehículos registrados"
-                )
+        RevolutChromeContainer {
+            VStack(spacing: 0) {
+                stickyBrowseChrome
 
-                if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
-                    ProgressView()
-                        .padding(.vertical, 32)
-                }
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        Text("\(resultCountText) resultados")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 6)
 
-                if let err = carsVM.vehiclesError {
-                    Text(err)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-
-                // Active car highlight
-                if let activeCar = carsVM.selectedCar {
-                    activeCarCard(activeCar)
-                }
-
-                // Car list
-                VStack(spacing: 12) {
-                    ForEach(carsVM.cars) { car in
-                        CarRow(
-                            car: car,
-                            isSelected: carsVM.isSelected(car)
-                        ) {
-                            carsVM.selectCar(car)
+                        if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
+                            ProgressView()
+                                .tint(.white)
+                                .padding(.vertical, 32)
                         }
+
+                        if let err = carsVM.vehiclesError {
+                            Text(err)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
+                        }
+
+                        if !carsVM.isLoadingVehicles || !carsVM.cars.isEmpty {
+                            if displayedCars.isEmpty {
+                                ContentUnavailableView(
+                                    "Sin resultados",
+                                    systemImage: "line.3.horizontal.decrease.circle",
+                                    description: Text("Prueba a limpiar filtros o cambiar la búsqueda.")
+                                )
+                                .foregroundStyle(.white)
+                                .symbolRenderingMode(.hierarchical)
+                                .tint(.white.opacity(0.85))
+                                .padding(.vertical, 24)
+                                .padding(.horizontal, 16)
+                            } else {
+                                VStack(spacing: 20) {
+                                    ForEach(displayedCars) { car in
+                                        CarListingCard(
+                                            car: car,
+                                            isSelected: carsVM.isSelected(car)
+                                        ) {
+                                            carsVM.selectCar(car)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+
+                        addCarButton
+                            .padding(.horizontal, 16)
+                    }
+                    .padding(.bottom, 28)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                }
+                .refreshable {
+                    await carsVM.loadVehicles()
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    LiquidGlassKeyboardAccessoryBar {
+                        browseSearchFieldFocused = false
                     }
                 }
-
-                // Add car button
-                addCarButton
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 24)
-            .frame(minWidth: 0, maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity)
-        .task {
-            // Carga automática para que las miniaturas (Storage) se muestren sin que el usuario
-            // tenga que hacer pull-to-refresh.
-            if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
-                await carsVM.loadVehicles()
+            .sheet(isPresented: $showSortSheet) {
+                CarsSortSheet(sort: $carsVM.browseSort)
+                    .presentationDetents([.medium, .large])
             }
-        }
-        .refreshable {
-            await carsVM.loadVehicles()
-        }
-    }
-
-    // MARK: - Active Car Card
-    private func activeCarCard(_ car: Car) -> some View {
-        GlassCard(cornerRadius: 26, padding: 20) {
-            VStack(spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Vehículo activo")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(car.accentSwiftUIColor)
-                            .textCase(.uppercase)
-                            .tracking(1.2)
-
-                        Text(car.name)
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(.primary)
-                    }
-
-                    Spacer()
-
-                    CarThumbnailView(car: car, size: 60)
-                }
-
-                Divider()
-                    .overlay(Color.primary.opacity(0.12))
-
-                HStack(spacing: 20) {
-                    infoChip(icon: "car.fill", label: car.model)
-                    infoChip(icon: "calendar", label: String(car.year))
-                    infoChip(icon: "rectangle.fill", label: car.plate)
+            .sheet(isPresented: $showFilterSheet) {
+                CarsFilterSheet(
+                    filters: $carsVM.browseFilters,
+                    sourceCars: carsVM.cars,
+                    resultCount: carsVM.displayedBrowseCars().count,
+                    onClear: {}
+                )
+            }
+            .task {
+                if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
+                    await carsVM.loadVehicles()
                 }
             }
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(car.accentSwiftUIColor.opacity(0.2), lineWidth: 1)
-        }
     }
 
-    private func infoChip(icon: String, label: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
+    private var stickyBrowseChrome: some View {
+        CarsBrowseHeaderBar(
+            initials: auth.userInitials,
+            searchText: $carsVM.browseSearchText,
+            hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
+            searchFieldFocused: $browseSearchFieldFocused,
+            onSort: { showSortSheet = true },
+            onFilter: { showFilterSheet = true }
+        )
+        .appChromeHeaderOuterPadding()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Add Car Button
     private var addCarButton: some View {
         GlassCard(cornerRadius: 20, padding: 16) {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(Color.primary.opacity(0.08))
+                        .fill(Color.white.opacity(0.12))
                         .frame(width: 44, height: 44)
 
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Añadir vehículo")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary.opacity(0.85))
+                        .foregroundStyle(.white)
 
                     Text("Conecta un nuevo coche")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.white.opacity(0.72))
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.white.opacity(0.55))
             }
         }
     }
 }
 
 #Preview {
-    ZStack {
-        Color.white.ignoresSafeArea()
+    NavigationStack {
         CarsView()
             .environmentObject(CarsViewModel())
             .environmentObject(AuthViewModel())
     }
 }
+

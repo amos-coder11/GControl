@@ -11,7 +11,7 @@ struct CarDashboardAppApp: App {
             AuthRootView(auth: authVM)
                 .environmentObject(carsVM)
                 .environmentObject(settingsVM)
-                .preferredColorScheme(settingsVM.preferredColorScheme)
+                .preferredColorScheme(.dark)
         }
     }
 }

@@ -1,127 +1,124 @@
 import SwiftUI
 
-/// Buscador global (vehículos del concesionario).
+/// Pestaña Buscador: mismo criterio que Coches (`browseSearchText`, filtros y orden).
 struct SearchView: View {
     @EnvironmentObject var carsVM: CarsViewModel
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var auth: AuthViewModel
 
-    @Binding var query: String
-    /// En pestaña con `role: .search`, el texto lo gestiona `.searchable` del `TabView`.
-    var embeddedInTabView: Bool = false
+    @State private var showSortSheet = false
+    @State private var showFilterSheet = false
+    @FocusState private var browseSearchFieldFocused: Bool
 
-    init(query: Binding<String>, embeddedInTabView: Bool = false) {
-        _query = query
-        self.embeddedInTabView = embeddedInTabView
+    private var displayedCars: [Car] {
+        carsVM.displayedBrowseCars()
     }
 
-    private var filteredCars: [Car] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return carsVM.cars }
-        return carsVM.cars.filter {
-            $0.name.lowercased().contains(q)
-                || $0.model.lowercased().contains(q)
-                || $0.plate.lowercased().contains(q)
-                || String($0.year).contains(q)
-        }
+    private var resultCountText: String {
+        displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
     }
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                if !embeddedInTabView {
-                    searchField
-                }
+            RevolutChromeContainer {
+                VStack(spacing: 0) {
+                    stickyBrowseChrome
 
-                if filteredCars.isEmpty {
-                    ContentUnavailableView(
-                        "Sin resultados",
-                        systemImage: "magnifyingglass",
-                        description: Text(query.isEmpty ? "Escribe matrícula, modelo o nombre." : "Prueba con otro término.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 10) {
-                            ForEach(filteredCars) { car in
-                                CarRow(
-                                    car: car,
-                                    isSelected: carsVM.isSelected(car)
-                                ) {
-                                    carsVM.selectCar(car)
-                                    dismiss()
+                        VStack(spacing: 18) {
+                            Text("\(resultCountText) resultados")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 6)
+
+                            if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
+                                ProgressView()
+                                    .tint(.white)
+                                    .padding(.vertical, 32)
+                            }
+
+                            if !carsVM.isLoadingVehicles || !carsVM.cars.isEmpty {
+                                if displayedCars.isEmpty {
+                                    ContentUnavailableView(
+                                        "Sin resultados",
+                                        systemImage: "magnifyingglass",
+                                        description: Text(
+                                            carsVM.browseSearchText.isEmpty
+                                                ? "Escribe en el buscador o ajusta filtros."
+                                                : "Prueba con otro término o limpia filtros."
+                                        )
+                                    )
+                                    .foregroundStyle(.white)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .tint(.white.opacity(0.85))
+                                    .padding(.vertical, 24)
+                                    .padding(.horizontal, 16)
+                                } else {
+                                    VStack(spacing: 20) {
+                                        ForEach(displayedCars) { car in
+                                            CarListingCard(
+                                                car: car,
+                                                isSelected: carsVM.isSelected(car)
+                                            ) {
+                                                carsVM.selectCar(car)
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
                                 }
                             }
                         }
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 28)
+                        .frame(minWidth: 0, maxWidth: .infinity)
+                    }
+                    .refreshable {
+                        await carsVM.loadVehicles()
                     }
                 }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Buscador")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !embeddedInTabView {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cerrar") { dismiss() }
-                            .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        LiquidGlassKeyboardAccessoryBar {
+                            browseSearchFieldFocused = false
+                        }
                     }
+                }
+                .sheet(isPresented: $showSortSheet) {
+                    CarsSortSheet(sort: $carsVM.browseSort)
+                        .presentationDetents([.medium, .large])
+                }
+                .sheet(isPresented: $showFilterSheet) {
+                    CarsFilterSheet(
+                        filters: $carsVM.browseFilters,
+                        sourceCars: carsVM.cars,
+                        resultCount: carsVM.displayedBrowseCars().count,
+                        onClear: {}
+                    )
                 }
             }
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(PremiumAccent.ice)
-
-            TextField("Buscar coches…", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .background {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.7),
-                                    Color.white.opacity(0.15)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.85), lineWidth: 0.65)
-                }
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
-        }
+    private var stickyBrowseChrome: some View {
+        CarsBrowseHeaderBar(
+            initials: auth.userInitials,
+            searchText: $carsVM.browseSearchText,
+            hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
+            searchFieldFocused: $browseSearchFieldFocused,
+            onSort: { showSortSheet = true },
+            onFilter: { showFilterSheet = true }
+        )
+        .appChromeHeaderOuterPadding()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 #Preview {
-    SearchView(query: .constant(""), embeddedInTabView: true)
+    SearchView()
         .environmentObject(CarsViewModel())
         .environmentObject(AuthViewModel())
 }

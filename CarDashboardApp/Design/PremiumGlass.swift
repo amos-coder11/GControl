@@ -85,6 +85,249 @@ struct LiquidGlassCardBackground: View {
     }
 }
 
+// MARK: - Cabecera Inicio = Coches / Buscador (material oscuro + bisel, sin velo claro extra)
+
+/// Píldora de búsqueda igual que `DashboardHomeTopBar`.
+struct DashboardChromeSearchCapsuleBackground: View {
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.38),
+                                Color.white.opacity(0.1),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.65
+                    )
+            }
+    }
+}
+
+/// Tarjeta con el **mismo** cristal oscuro y bisel que la pastilla del buscador (Ajustes y similares).
+struct DashboardChromeCardBackground: View {
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.38),
+                                Color.white.opacity(0.1),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.65
+                    )
+            }
+    }
+}
+
+/// Contenedor de ajustes: mismo lenguaje visual que el buscador de cabecera.
+struct ChromeSettingsCard<Content: View>: View {
+    var cornerRadius: CGFloat
+    var padding: CGFloat
+    @ViewBuilder var content: () -> Content
+
+    init(
+        cornerRadius: CGFloat = 22,
+        padding: CGFloat = 16,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.cornerRadius = cornerRadius
+        self.padding = padding
+        self.content = content
+    }
+
+    var body: some View {
+        content()
+            .padding(padding)
+            .background {
+                DashboardChromeCardBackground(cornerRadius: cornerRadius)
+            }
+    }
+}
+
+/// Botón circular de cabecera (estadísticas, notificaciones, ordenar, filtros…).
+struct DashboardChromeHeaderCircleBackground: View {
+    var size: CGFloat = 44
+
+    var body: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+            .frame(width: size, height: size)
+            .overlay {
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.35),
+                                Color.white.opacity(0.08),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.65
+                    )
+            }
+            .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+    }
+}
+
+/// Colores del campo de búsqueda de Inicio (reutilizar en Coches/Buscador).
+enum DashboardChromeSearchFieldStyle {
+    static let iconOpacity: Double = 0.92
+    static let promptOpacity: Double = 0.48
+    static let iconClearOpacity: Double = 0.48
+}
+
+/// Misma posición y anchura del buscador que en Inicio (avatar + pastilla flexible + 2 círculos).
+enum AppChromeHeaderMetrics {
+    static let horizontalPadding: CGFloat = 16
+    static let topPadding: CGFloat = 8
+    static let bottomPadding: CGFloat = 12
+    static let hStackSpacing: CGFloat = 10
+    static let avatarSize: CGFloat = 48
+    static let circleButtonSize: CGFloat = 44
+}
+
+extension View {
+    /// Padding exterior de la fila cabecera (Inicio, Coches, Chat, Ajustes, Buscador).
+    func appChromeHeaderOuterPadding() -> some View {
+        padding(.horizontal, AppChromeHeaderMetrics.horizontalPadding)
+            .padding(.top, AppChromeHeaderMetrics.topPadding)
+            .padding(.bottom, AppChromeHeaderMetrics.bottomPadding)
+    }
+}
+
+// MARK: - Buscador Coches (píldora + botones circulares)
+
+private let liquidGlassFill = LinearGradient(
+    colors: [
+        Color.white.opacity(0.78),
+        Color.white.opacity(0.28),
+        Color.white.opacity(0.08),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+private let liquidGlassStroke = LinearGradient(
+    colors: [
+        Color.white.opacity(0.95),
+        Color.white.opacity(0.4),
+        Color.gray.opacity(0.14),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+/// Campo de búsqueda tipo pastilla (referencia Liquid Glass).
+struct LiquidGlassSearchPillBackground: View {
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(liquidGlassFill)
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(liquidGlassStroke, lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+    }
+}
+
+private let keyboardAccessoryShape = UnevenRoundedRectangle(
+    cornerRadii: RectangleCornerRadii(
+        topLeading: 14,
+        bottomLeading: 0,
+        bottomTrailing: 0,
+        topTrailing: 14
+    ),
+    style: .continuous
+)
+
+/// Franja encima del teclado (accesorio del sistema): mismo lenguaje visual que la pastilla de búsqueda, sin borde inferior.
+struct LiquidGlassKeyboardAccessoryBar: View {
+    var onDismiss: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            keyboardAccessoryShape
+                .fill(.ultraThinMaterial)
+                .background {
+                    keyboardAccessoryShape
+                        .fill(liquidGlassFill)
+                }
+                .overlay {
+                    keyboardAccessoryShape
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.88),
+                                    Color.white.opacity(0.38),
+                                    Color.white.opacity(0.06),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.65
+                        )
+                }
+                .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 4)
+            .accessibilityLabel("Cerrar teclado")
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 48)
+    }
+}
+
+/// Botón circular ordenar / filtros / destacados.
+struct LiquidGlassCircleButtonBackground: View {
+    var body: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .background {
+                Circle()
+                    .fill(liquidGlassFill)
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(liquidGlassStroke, lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 5)
+            .shadow(color: .black.opacity(0.03), radius: 1, x: 0, y: 1)
+    }
+}
+
 /// Badge glass sobre fotos oscuras (mini cápsula legible).
 struct GlassPhotoBadge: View {
     let text: String

@@ -8,14 +8,10 @@ private enum MainAppTab: Hashable {
 
 struct MainTabView: View {
     @State private var selectedTab: MainAppTab = .home
-    @State private var carSearchText = ""
     @State private var chatSearchText = ""
 
     @StateObject private var chatInbox = ChatInboxStore()
     @EnvironmentObject var carsVM: CarsViewModel
-
-    /// Mismo hint que el buscador de vehículos (UI unificada en toda la app).
-    private static let searchPrompt = "Buscar coches…"
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -42,13 +38,12 @@ struct MainTabView: View {
                 }
             }
 
-            Tab("Buscador", systemImage: "magnifyingglass", value: MainAppTab.search, role: .search) {
-                SearchView(query: $carSearchText, embeddedInTabView: true)
+            Tab("Buscador", systemImage: "magnifyingglass", value: MainAppTab.search) {
+                SearchView()
                     .environmentObject(carsVM)
             }
         }
         .environmentObject(chatInbox)
-        .searchable(text: $carSearchText, prompt: Self.searchPrompt)
         .tabBarMinimizeBehavior(.onScrollDown)
         .task {
             await carsVM.loadVehicles()

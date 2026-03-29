@@ -1,22 +1,25 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Lista mensajería clara (estilo Telegram iOS)
+// MARK: - Lista de chat (fondo Revolut / liquid glass como Inicio)
 
-private enum ChatListLightTheme {
-    static let background = Color(white: 0.96)
-    static let rowSeparator = Color.black.opacity(0.08)
-    static let primaryText = Color.black
-    static let secondaryText = Color(red: 0.56, green: 0.56, blue: 0.58)
-    static let accentBlue = Color(red: 0.0, green: 0.478, blue: 1.0)
-    static let readGreen = Color(red: 0.31, green: 0.78, blue: 0.47)
+private enum ChatListChromeTheme {
+    static let listBackground = Color.clear
+    static let rowBackground = Color.clear
+    static let rowSeparator = Color.white.opacity(0.14)
+    static let primaryText = Color.white
+    static let secondaryText = Color.white
+    static let accentBlue = Color(red: 0.45, green: 0.72, blue: 1.0)
+    static let readGreen = Color(red: 0.45, green: 0.88, blue: 0.62)
 }
 
 struct ChatView: View {
     @Binding var searchText: String
 
     @EnvironmentObject private var inbox: ChatInboxStore
+    @EnvironmentObject private var auth: AuthViewModel
     @State private var path = NavigationPath()
+    @FocusState private var chatSearchFieldFocused: Bool
 
     private var filteredThreads: [ChatThread] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -28,67 +31,101 @@ struct ChatView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                ForEach(filteredThreads) { thread in
-                    Button {
-                        path.append(thread)
-                    } label: {
-                        telegramLightRow(thread)
+        RevolutChromeContainer {
+            NavigationStack(path: $path) {
+                VStack(spacing: 0) {
+                    AppChromeHeaderRow(
+                        initials: auth.userInitials,
+                        searchText: $searchText,
+                        prompt: Text("Buscar coches…").foregroundStyle(.white),
+                        showsSearchClearButton: true,
+                        searchFieldFocused: $chatSearchFieldFocused
+                    ) {
+                        HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
+                            AppChromeHeaderCircleIconButton(
+                                systemName: "chart.bar.fill",
+                                accessibilityLabel: "Estadísticas",
+                                action: {}
+                            )
+                            AppChromeHeaderCircleIconButton(
+                                systemName: "bell.fill",
+                                accessibilityLabel: "Notificaciones",
+                                action: {}
+                            )
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(ChatListLightTheme.background)
-                    .listRowSeparatorTint(ChatListLightTheme.rowSeparator)
-                    // Deslizar izquierda: corto → Silenciar + Eliminar; largo (full swipe) → Archivar (1.º en el closure).
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button {
-                            archiveThread(thread)
-                        } label: {
-                            Label("Archivar", systemImage: "archivebox.fill")
-                        }
-                        .tint(Color(white: 0.55))
+                    .appChromeHeaderOuterPadding()
 
-                        Button(role: .destructive) {
-                            deleteThread(thread)
-                        } label: {
-                            Label("Eliminar", systemImage: "trash.fill")
-                        }
+                    List {
+                        ForEach(filteredThreads) { thread in
+                            Button {
+                                path.append(thread)
+                            } label: {
+                                chatListRow(thread)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .listRowBackground(ChatListChromeTheme.rowBackground)
+                            .listRowSeparatorTint(ChatListChromeTheme.rowSeparator)
+                            // Deslizar izquierda: corto → Silenciar + Eliminar; largo (full swipe) → Archivar (1.º en el closure).
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button {
+                                    archiveThread(thread)
+                                } label: {
+                                    Label("Archivar", systemImage: "archivebox.fill")
+                                }
+                                .tint(Color(white: 0.55))
 
-                        Button {
-                            muteThread(thread)
-                        } label: {
-                            Label("Silenciar", systemImage: "speaker.slash.fill")
+                                Button(role: .destructive) {
+                                    deleteThread(thread)
+                                } label: {
+                                    Label("Eliminar", systemImage: "trash.fill")
+                                }
+
+                                Button {
+                                    muteThread(thread)
+                                } label: {
+                                    Label("Silenciar", systemImage: "speaker.slash.fill")
+                                }
+                                .tint(.orange)
+                            }
+                            // Deslizar derecha: corto → Fijar + No leído; largo (full swipe) → No leído (1.º en el closure).
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    markUnread(thread)
+                                } label: {
+                                    Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
+                                }
+                                .tint(Color(red: 0.0, green: 0.48, blue: 1.0))
+
+                                Button {
+                                    togglePin(thread)
+                                } label: {
+                                    Label("Fijar", systemImage: "pin.fill")
+                                }
+                                .tint(Color(red: 0.2, green: 0.78, blue: 0.35))
+                            }
                         }
-                        .tint(.orange)
                     }
-                    // Deslizar derecha: corto → Fijar + No leído; largo (full swipe) → No leído (1.º en el closure).
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        Button {
-                            markUnread(thread)
-                        } label: {
-                            Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(ChatListChromeTheme.listBackground)
+                }
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        LiquidGlassKeyboardAccessoryBar {
+                            chatSearchFieldFocused = false
                         }
-                        .tint(Color(red: 0.0, green: 0.48, blue: 1.0))
-
-                        Button {
-                            togglePin(thread)
-                        } label: {
-                            Label("Fijar", systemImage: "pin.fill")
-                        }
-                        .tint(Color(red: 0.2, green: 0.78, blue: 0.35))
                     }
                 }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(ChatListLightTheme.background)
-            .navigationTitle("Chats")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchText, prompt: "Buscar coches…")
-            .navigationDestination(for: ChatThread.self) { thread in
-                ChatConversationView(thread: thread)
-                    .toolbar(.hidden, for: .tabBar)
+                .navigationDestination(for: ChatThread.self) { thread in
+                    ChatConversationView(thread: thread)
+                        .toolbar(.hidden, for: .tabBar)
+                }
             }
         }
     }
@@ -129,7 +166,7 @@ struct ChatView: View {
         inbox.effectiveUnread(thread)
     }
 
-    private func telegramLightRow(_ thread: ChatThread) -> some View {
+    private func chatListRow(_ thread: ChatThread) -> some View {
         let pinned = effectivePinned(thread)
         let unread = effectiveUnread(thread)
 
@@ -141,33 +178,33 @@ struct ChatView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(thread.title)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(ChatListLightTheme.primaryText)
+                        .foregroundStyle(ChatListChromeTheme.primaryText)
                         .lineLimit(1)
 
                     if thread.isVerified {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(ChatListLightTheme.accentBlue)
+                            .foregroundStyle(ChatListChromeTheme.accentBlue)
                     }
 
                     Spacer(minLength: 8)
 
                     Text(thread.time)
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(ChatListLightTheme.secondaryText)
+                        .foregroundStyle(ChatListChromeTheme.secondaryText)
                 }
 
                 HStack(alignment: .bottom, spacing: 6) {
                     if pinned {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(ChatListLightTheme.secondaryText)
+                            .foregroundStyle(ChatListChromeTheme.secondaryText)
                             .rotationEffect(.degrees(35))
                     }
 
                     Text(thread.preview)
                         .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(ChatListLightTheme.secondaryText)
+                        .foregroundStyle(ChatListChromeTheme.secondaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -196,7 +233,7 @@ struct ChatView: View {
                 .padding(.vertical, 5)
                 .background {
                     Capsule(style: .continuous)
-                        .fill(ChatListLightTheme.accentBlue)
+                        .fill(ChatListChromeTheme.accentBlue)
                 }
         } else if let n = unread, n > 0 {
             Text("\(n)")
@@ -205,7 +242,7 @@ struct ChatView: View {
                 .frame(minWidth: 22, minHeight: 22)
                 .background {
                     Circle()
-                        .fill(ChatListLightTheme.accentBlue)
+                        .fill(ChatListChromeTheme.accentBlue)
                 }
         } else {
             readReceiptView(thread.readReceipt)
@@ -220,7 +257,7 @@ struct ChatView: View {
         case .sent:
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(ChatListLightTheme.accentBlue)
+                .foregroundStyle(ChatListChromeTheme.accentBlue)
         case .read:
             HStack(spacing: -5) {
                 Image(systemName: "checkmark")
@@ -228,7 +265,7 @@ struct ChatView: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
             }
-            .foregroundStyle(ChatListLightTheme.readGreen)
+            .foregroundStyle(ChatListChromeTheme.readGreen)
         }
     }
 }
@@ -236,4 +273,5 @@ struct ChatView: View {
 #Preview {
     ChatView(searchText: .constant(""))
         .environmentObject(ChatInboxStore())
+        .environmentObject(AuthViewModel())
 }

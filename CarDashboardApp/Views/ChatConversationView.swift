@@ -71,9 +71,11 @@ struct ChatConversationView: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Colores cabecera conversación (referencia Telegram).
-    private let chatToolbarNameColor = Color.black
-    private let chatToolbarStatusColor = Color(red: 0.44, green: 0.44, blue: 0.44)
+    /// Cabecera conversación (legible sobre fondo Revolut).
+    private let chatToolbarNameColor = Color.white
+    private let chatToolbarStatusColor = Color.white.opacity(0.55)
+    private let incomingBubbleTextColor = Color(red: 0.06, green: 0.07, blue: 0.1)
+    private let incomingBubbleMetaColor = Color(red: 0.42, green: 0.44, blue: 0.48)
 
     /// Margen desde el borde seguro hasta el contenido del chat, alineado visualmente con barra de navegación (atrás / avatar ~40pt).
     private let navBarContentInset: CGFloat = 20
@@ -161,12 +163,12 @@ struct ChatConversationView: View {
                 .padding(.vertical, 7)
                 .background {
                     Capsule(style: .continuous)
-                        .fill(Color(red: 0.99, green: 0.97, blue: 0.93))
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
                         .overlay {
                             Capsule(style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.95), lineWidth: 1)
+                                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.65)
                         }
-                        .shadow(color: .black.opacity(0.07), radius: 5, x: 0, y: 2)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -194,22 +196,13 @@ struct ChatConversationView: View {
     /// Mismos márgenes horizontales que el hilo de mensajes (atrás / avatar).
     private func inputBarChrome(leadingPad: CGFloat, trailingPad: CGFloat) -> some View {
         messageInputBar
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .background {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.75), lineWidth: 1)
-                    }
-                    .shadow(color: .black.opacity(0.1), radius: 14, x: 0, y: 6)
-            }
             .padding(.leading, leadingPad)
             .padding(.trailing, trailingPad)
-            .padding(.top, 4)
-            .padding(.bottom, 4)
+            .padding(.top, 6)
+            .padding(.bottom, 6)
     }
 
     // MARK: - Avatar (derecha toolbar)
@@ -267,11 +260,11 @@ struct ChatConversationView: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     Text(text)
                         .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.primary)
+                        .foregroundStyle(incomingBubbleTextColor)
                         .lineLimit(1)
                     Text(time)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(incomingBubbleMetaColor)
                 }
                 .padding(.horizontal, bubblePadH)
                 .padding(.vertical, bubblePadV)
@@ -287,7 +280,7 @@ struct ChatConversationView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(text)
                 .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(incomingBubbleTextColor)
                 .multilineTextAlignment(.leading)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -295,7 +288,7 @@ struct ChatConversationView: View {
 
             Text(time)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(incomingBubbleMetaColor)
                 .frame(maxWidth: contentCap, alignment: .leading)
         }
         .padding(.horizontal, bubblePadH)
@@ -430,7 +423,7 @@ struct ChatConversationView: View {
 
                 Text(msg.time)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(incomingBubbleMetaColor)
             }
             .padding(6)
             .background {
@@ -444,68 +437,64 @@ struct ChatConversationView: View {
 
     // MARK: - Barra de entrada unificada
 
-    private let iconGray = Color(red: 0.22, green: 0.24, blue: 0.26)
-    private let accentBlue = Color(red: 0.0, green: 0.478, blue: 1.0)
-
-    private let attachmentButtonSize: CGFloat = 36
-    private let composerFieldCorner: CGFloat = 20
+    /// Mismo cromado que la pastilla del buscador (`AppChromeSearchCapsuleField`).
+    private let composerFontSize: CGFloat = 17
 
     /// ~mitad de pantalla: el texto hace scroll dentro si supera este alto.
     private var composerTextScrollMaxHeight: CGFloat {
         let h = UIScreen.main.bounds.height
-        return max(100, h * 0.42)
+        return max(120, h * 0.42)
     }
 
     private var messageInputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: AppChromeHeaderMetrics.hStackSpacing) {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Image(systemName: "paperclip")
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(iconGray)
-                    .frame(width: attachmentButtonSize, height: attachmentButtonSize)
-                    .background {
-                        Circle()
-                            .fill(Color.white.opacity(0.92))
-                            .shadow(color: .black.opacity(0.06), radius: 3, x: 0, y: 1)
-                    }
+                ZStack {
+                    DashboardChromeHeaderCircleBackground()
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                }
             }
             .buttonStyle(.plain)
 
-            HStack(alignment: .bottom, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 8) {
                 ZStack(alignment: .topLeading) {
-                    ComposerTextView(text: $draft, maxHeight: composerTextScrollMaxHeight)
-                        .frame(maxWidth: .infinity)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ComposerTextView(
+                        text: $draft,
+                        maxHeight: composerTextScrollMaxHeight,
+                        fontSize: composerFontSize
+                    )
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
                     if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("Mensaje")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.secondary)
-                            .padding(.top, 7)
+                            .font(.system(size: composerFontSize))
+                            .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
+                            .padding(.top, 8)
                             .allowsHitTesting(false)
                     }
                 }
 
                 Button { sendMessage() } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background {
-                            Circle()
-                                .fill(draftIsEmpty ? Color.gray.opacity(0.35) : accentBlue)
-                        }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(
+                            draftIsEmpty
+                                ? Color.white.opacity(0.35)
+                                : Color.white.opacity(0.95)
+                        )
+                        .frame(width: 28, height: 28, alignment: .center)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(draftIsEmpty)
             }
-            .padding(.leading, 12)
-            .padding(.trailing, 6)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, minHeight: attachmentButtonSize, alignment: .bottom)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: AppChromeHeaderMetrics.circleButtonSize, alignment: .bottom)
             .background {
-                RoundedRectangle(cornerRadius: composerFieldCorner, style: .continuous)
-                    .fill(Color.white.opacity(0.92))
-                    .shadow(color: .black.opacity(0.06), radius: 3, x: 0, y: 1)
+                DashboardChromeSearchCapsuleBackground()
             }
         }
         .animation(.easeInOut(duration: 0.2), value: draftIsEmpty)
@@ -635,6 +624,7 @@ private final class ComposerSizingTextView: UITextView {
 private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     var maxHeight: CGFloat
+    var fontSize: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -644,10 +634,12 @@ private struct ComposerTextView: UIViewRepresentable {
         let tv = ComposerSizingTextView()
         tv.maxComposerHeight = maxHeight
         tv.delegate = context.coordinator
-        tv.font = .systemFont(ofSize: 16)
-        tv.textColor = .label
+        tv.adjustsFontForContentSizeCategory = true
+        let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
+        tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
+        tv.textColor = UIColor(white: 0.96, alpha: 1)
         tv.backgroundColor = .clear
-        tv.textContainerInset = UIEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
+        tv.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         tv.textContainer.lineFragmentPadding = 0
         tv.isScrollEnabled = false
         tv.keyboardDismissMode = .interactive
@@ -661,6 +653,9 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ tv: ComposerSizingTextView, context: Context) {
         tv.maxComposerHeight = maxHeight
+        let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
+        tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
+        tv.textColor = UIColor(white: 0.96, alpha: 1)
         if tv.text != text {
             let range = tv.selectedRange
             tv.text = text
@@ -691,55 +686,23 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 }
 
-// MARK: - Fondo conversación
+// MARK: - Fondo conversación (oscuro fijo; el mesh Revolut solo en la lista de chats)
 
 private struct ConversationBackdrop: View {
-    /// < 1 = motivo más fino / más mosaico.
-    private let patternVisualScale: CGFloat = 0.28
+    private static let base = Color(red: 4 / 255, green: 4 / 255, blue: 7 / 255)
 
     var body: some View {
         ZStack {
-            // Degradado tipo Telegram (cian → lima suave) sobre la base
+            Self.base
             LinearGradient(
                 colors: [
-                    Color(red: 0.72, green: 0.88, blue: 0.90),
-                    Color(red: 0.82, green: 0.93, blue: 0.82),
-                    Color(red: 0.90, green: 0.95, blue: 0.78)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Image("ChatBackdropBase")
-                .resizable()
-                .scaledToFill()
-                .opacity(0.35)
-                .clipped()
-
-            GeometryReader { proxy in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                let s = patternVisualScale
-                Image("ChatBackgroundPattern")
-                    .resizable(resizingMode: .tile)
-                    .frame(width: w / s, height: h / s)
-                    .scaleEffect(s, anchor: .topLeading)
-                    .frame(width: w, height: h, alignment: .topLeading)
-                    .clipped()
-            }
-            .allowsHitTesting(false)
-            .opacity(0.55)
-
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.08),
-                    Color.clear,
-                    Color.white.opacity(0.04)
+                    Color.black.opacity(0.55),
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.62),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .allowsHitTesting(false)
         }
         .ignoresSafeArea()
     }

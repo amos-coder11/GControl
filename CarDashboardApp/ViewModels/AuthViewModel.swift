@@ -39,6 +39,27 @@ final class AuthViewModel: ObservableObject {
         return "Invitado"
     }
 
+    /// Nombre corto para saludo (parte local del correo, legible).
+    var shortGreetingName: String {
+        guard let email = userEmail, !email.isEmpty else { return "Invitado" }
+        guard let at = email.firstIndex(of: "@") else { return email }
+        let local = String(email[..<at])
+        let parts = local.split { $0 == "." || $0 == "_" || $0 == "-" }
+        let words = parts.map { String($0).capitalized }.filter { !$0.isEmpty }
+        if words.isEmpty { return "Invitado" }
+        return words.joined(separator: " ")
+    }
+
+    var userInitials: String {
+        let name = shortGreetingName
+        let parts = name.split(separator: " ")
+        if parts.count >= 2, let a = parts[0].first, let b = parts[1].first {
+            return "\(a)\(b)".uppercased()
+        }
+        if let f = name.first { return String(f).uppercased() }
+        return "?"
+    }
+
     private func startAuthStateListener() {
         authStateTask?.cancel()
         authStateTask = Task { [client] in

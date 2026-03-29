@@ -35,6 +35,37 @@ private enum VehicleJSONImageFinder {
                 }
             }
         }
+
+        var jsonGallery: [String] = []
+        collectAllImageStrings(from: rowJSON, into: &jsonGallery)
+        row.imageGalleryRaws = VehicleRow.mergeImageGalleryRaws(row.imageGalleryRaws, jsonGallery)
+    }
+
+    private static func collectAllImageStrings(from obj: JSONObject, into out: inout [String]) {
+        for (_, v) in obj {
+            collectFromAnyJSON(v, into: &out)
+        }
+    }
+
+    private static func collectFromAnyJSON(_ j: AnyJSON, into out: inout [String]) {
+        switch j {
+        case let .string(s):
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, t.count <= 4096 else { return }
+            if VehicleImageResolution.looksLikeImageReference(t) {
+                out.append(t)
+            }
+        case let .array(a):
+            for item in a {
+                collectFromAnyJSON(item, into: &out)
+            }
+        case let .object(o):
+            for (_, v) in o {
+                collectFromAnyJSON(v, into: &out)
+            }
+        default:
+            break
+        }
     }
 
     /// Prioriza columnas habituales; en columnas “de imagen” acepta el texto aunque la heurística sea floja.

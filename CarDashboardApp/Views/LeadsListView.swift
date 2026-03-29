@@ -5,46 +5,49 @@ struct LeadsListView: View {
     @StateObject private var vm = LeadsViewModel()
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 16) {
-                SectionHeader(
-                    title: "Leads",
-                    subtitle: vm.isLoading ? "Cargando…" : "\(vm.leads.count) contactos (leads_crm)"
-                )
+        RevolutChromeContainer {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 16) {
+                    SectionHeader(
+                        title: "Leads",
+                        subtitle: vm.isLoading ? "Cargando…" : "\(vm.leads.count) contactos (leads_crm)",
+                        lightOnDark: true
+                    )
 
-                if let err = vm.errorMessage {
-                    Text(err)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    if let err = vm.errorMessage {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+
+                        Button("Reintentar") {
+                            Task { await vm.load() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(PremiumAccent.tabActive)
+                    } else if !vm.isLoading, vm.leads.isEmpty {
+                        Text(
+                            "No hay filas en leads_crm o RLS no devuelve datos para tu sesión. Inicia sesión y revisa políticas en Supabase."
+                        )
+                        .font(.body)
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-
-                    Button("Reintentar") {
-                        Task { await vm.load() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(PremiumAccent.tabActive)
-                } else if !vm.isLoading, vm.leads.isEmpty {
-                    Text(
-                        "No hay filas en leads_crm o RLS no devuelve datos para tu sesión. Inicia sesión y revisa políticas en Supabase."
-                    )
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(vm.leads) { lead in
-                            leadRow(lead)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(vm.leads) { lead in
+                                leadRow(lead)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 28)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 28)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
         .navigationTitle("Leads")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {

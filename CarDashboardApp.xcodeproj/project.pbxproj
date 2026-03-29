@@ -53,6 +53,14 @@
 		AA000044 /* LeadsCrmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000043 /* LeadsCrmService.swift */; };
 		AA000045 /* LeadsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000044 /* LeadsViewModel.swift */; };
 		AA000046 /* LeadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000045 /* LeadsListView.swift */; };
+		AA000047 /* CarBrowseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000046 /* CarBrowseModels.swift */; };
+		AA000048 /* Car+Browse.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000047 /* Car+Browse.swift */; };
+		AA000049 /* CarUIImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000048 /* CarUIImageLoader.swift */; };
+		AA000050 /* CarListingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000049 /* CarListingCard.swift */; };
+		AA000051 /* CarBrowseSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000050 /* CarBrowseSheets.swift */; };
+		AA000052 /* CarImageSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000051 /* CarImageSlot.swift */; };
+		AA000053 /* CarsBrowseHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000052 /* CarsBrowseHeaderBar.swift */; };
+		AA000054 /* RevolutBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000053 /* RevolutBackgroundView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -102,6 +110,14 @@
 		AB000043 /* LeadsCrmService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsCrmService.swift; sourceTree = "<group>"; };
 		AB000044 /* LeadsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsViewModel.swift; sourceTree = "<group>"; };
 		AB000045 /* LeadsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsListView.swift; sourceTree = "<group>"; };
+		AB000046 /* CarBrowseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseModels.swift; sourceTree = "<group>"; };
+		AB000047 /* Car+Browse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Car+Browse.swift"; sourceTree = "<group>"; };
+		AB000048 /* CarUIImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarUIImageLoader.swift; sourceTree = "<group>"; };
+		AB000049 /* CarListingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarListingCard.swift; sourceTree = "<group>"; };
+		AB000050 /* CarBrowseSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseSheets.swift; sourceTree = "<group>"; };
+		AB000051 /* CarImageSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarImageSlot.swift; sourceTree = "<group>"; };
+		AB000052 /* CarsBrowseHeaderBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarsBrowseHeaderBar.swift; sourceTree = "<group>"; };
+		AB000053 /* RevolutBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevolutBackgroundView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,6 +160,9 @@
 			isa = PBXGroup;
 			children = (
 				AB000002 /* Car.swift */,
+				AB000047 /* Car+Browse.swift */,
+				AB000046 /* CarBrowseModels.swift */,
+				AB000051 /* CarImageSlot.swift */,
 				AB000003 /* CarMetric.swift */,
 				AB000004 /* CarStatus.swift */,
 				AB000038 /* VehicleRow.swift */,
@@ -172,6 +191,7 @@
 			children = (
 				AB000034 /* SupabaseClientProvider.swift */,
 				AB000039 /* VehiclesService.swift */,
+				AB000048 /* CarUIImageLoader.swift */,
 				AB000041 /* VehicleImageResolution.swift */,
 				AB000043 /* LeadsCrmService.swift */,
 				AB000008 /* TelemetryService.swift */,
@@ -193,6 +213,7 @@
 				AB000029 /* SearchView.swift */,
 				AB000013 /* SettingsView.swift */,
 				AB000045 /* LeadsListView.swift */,
+				AB000050 /* CarBrowseSheets.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -207,6 +228,8 @@
 				AB000018 /* LiquidGlassTabBar.swift */,
 				AB000019 /* CarRow.swift */,
 				AB000040 /* CarThumbnailView.swift */,
+				AB000049 /* CarListingCard.swift */,
+				AB000052 /* CarsBrowseHeaderBar.swift */,
 				AB000020 /* SectionHeader.swift */,
 				AB000024 /* ShowroomBannerView.swift */,
 				AB000026 /* DealershipStatComponents.swift */,
@@ -235,6 +258,7 @@
 		AD000010 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				AB000053 /* RevolutBackgroundView.swift */,
 				AB000027 /* PremiumGlass.swift */,
 			);
 			path = Design;
@@ -359,6 +383,14 @@
 				AA000044 /* LeadsCrmService.swift in Sources */,
 				AA000045 /* LeadsViewModel.swift in Sources */,
 				AA000046 /* LeadsListView.swift in Sources */,
+				AA000047 /* CarBrowseModels.swift in Sources */,
+				AA000048 /* Car+Browse.swift in Sources */,
+				AA000049 /* CarUIImageLoader.swift in Sources */,
+				AA000050 /* CarListingCard.swift in Sources */,
+				AA000051 /* CarBrowseSheets.swift in Sources */,
+				AA000052 /* CarImageSlot.swift in Sources */,
+				AA000053 /* CarsBrowseHeaderBar.swift in Sources */,
+				AA000054 /* RevolutBackgroundView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
