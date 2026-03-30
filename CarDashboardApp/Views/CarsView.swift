@@ -58,7 +58,7 @@ struct CarsView: View {
                                 .padding(.vertical, 24)
                                 .padding(.horizontal, 16)
                             } else {
-                                LazyVStack(spacing: 20) {
+                                LazyVStack(spacing: 14) {
                                     ForEach(Array(displayedCars.enumerated()), id: \.element.id) { idx, car in
                                         CarListingCard(
                                             car: car,

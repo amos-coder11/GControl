@@ -6,9 +6,19 @@ private enum ListingPalette {
     static let primary = Color.white
     static let secondary = Color.white.opacity(0.82)
     static let tertiary = Color.white.opacity(0.68)
-    static let accentLine = Color.white.opacity(0.5)
     static let tagFill = Color.white.opacity(0.12)
     static let tagStroke = Color.white.opacity(0.22)
+
+    static let pricePillFill = Color.black.opacity(0.88)
+    static let goldBorder = LinearGradient(
+        colors: [
+            Color(red: 0.76, green: 0.58, blue: 0.22),
+            Color(red: 0.95, green: 0.84, blue: 0.42),
+            Color(red: 0.70, green: 0.52, blue: 0.18),
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
 struct CarListingCard: View {
@@ -18,54 +28,39 @@ struct CarListingCard: View {
     var isSelected: Bool = false
     var onSelect: () -> Void = {}
 
-    @State private var isFavorite = false
     @State private var galleryIndex = 0
 
     private var imageSlots: [CarImageSlot] {
         car.resolvedImageSlots
     }
 
+    private let cardCornerRadius: CGFloat = 18
+    private let horizontalPadding: CGFloat = 11
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            hero
-
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: 14) {
-                    titleRow
-
-                    priceBlock
-
-                    specRow
-
-                    tagsRow
-
-                    if car.isConnected {
-                        HStack(spacing: 6) {
-                            Image(systemName: "link.circle.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(ListingPalette.secondary)
-                            Text("Vehículo conectado en tu cuenta")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(ListingPalette.tertiary)
-                        }
-                    }
-
-                    Text("* Financiación orientativa. Cuota y TAE sujetas a estudio.")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundStyle(ListingPalette.tertiary)
-                        .padding(.top, 2)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+        Button(action: onSelect) {
+            listingCardInterior
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                DashboardChromeCardBackground(cornerRadius: cardCornerRadius)
             }
-            .buttonStyle(.plain)
+            .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.26), lineWidth: 0.5)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.clear)
+        .buttonStyle(.plain)
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+                    .stroke(car.accentSwiftUIColor.opacity(0.5), lineWidth: 1.25)
+            }
+        }
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .onAppear {
-            // Prefetch todas las fotos de la galería de este coche
             CarUIImageLoader.prefetchGallery(car: car, auth: auth)
         }
         .onChange(of: car.id) { _, _ in galleryIndex = 0 }
@@ -78,146 +73,141 @@ struct CarListingCard: View {
         }
     }
 
-    private var hero: some View {
-        ZStack(alignment: .bottomLeading) {
-            Color.clear
-                .aspectRatio(1.15, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .overlay {
-                    Group {
-                        if imageSlots.isEmpty {
-                            heroPlaceholder
-                        } else if imageSlots.count == 1, let only = imageSlots.first {
-                            CarHeroImageSlotView(slot: only, car: car)
-                        } else {
-                            TabView(selection: $galleryIndex) {
-                                ForEach(Array(imageSlots.enumerated()), id: \.element.id) { idx, slot in
-                                    CarHeroImageSlotView(slot: slot, car: car)
-                                        .tag(idx)
-                                }
-                            }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
+    private var listingCardInterior: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            listingCardMainRow
+
+            VStack(alignment: .leading, spacing: 6) {
+                tagsRow
+
+                if car.isConnected {
+                    HStack(spacing: 6) {
+                        Image(systemName: "link.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(ListingPalette.secondary)
+                        Text("Vehículo conectado en tu cuenta")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(ListingPalette.tertiary)
+                    }
+                }
+            }
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, 4)
+            .padding(.bottom, 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var listingCardMainRow: some View {
+        HStack(alignment: .top, spacing: 0) {
+            listingThumbnailFlushLeft
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(car.name)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(ListingPalette.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !car.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(car.model)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ListingPalette.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                }
+
+                goldPricePill
+
+                secondaryPriceLine
+
+                if let meta = metaDetailLine {
+                    Text(meta)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(ListingPalette.tertiary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.88)
+                }
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, horizontalPadding)
+        }
+    }
+
+    // MARK: - Miniatura a ras del borde izquierdo; ancho ~52 %; alto = fila de texto
+
+    private var listingThumbnailFlushLeft: some View {
+        listingThumbnailCore
+            .containerRelativeFrame(.horizontal) { width, _ in
+                min(210, max(132, width * 0.52))
+            }
+            .aspectRatio(1 / 0.66, contentMode: .fit)
+            .clipped()
+    }
+
+    private var listingThumbnailCore: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if imageSlots.isEmpty {
+                    ZStack {
+                        Rectangle().fill(Color.white.opacity(0.08))
+                        Image(systemName: car.icon)
+                            .font(.system(size: 30, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.42))
+                    }
+                } else if imageSlots.count == 1, let only = imageSlots.first {
+                    CarHeroImageSlotView(slot: only)
+                } else {
+                    TabView(selection: $galleryIndex) {
+                        ForEach(Array(imageSlots.enumerated()), id: \.element.id) { idx, slot in
+                            CarHeroImageSlotView(slot: slot)
+                                .tag(idx)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 }
-                .clipped()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            LinearGradient(
-                colors: [.black.opacity(0.45), .clear],
-                startPoint: .bottom,
-                endPoint: .center
-            )
-            .allowsHitTesting(false)
-
-            if !imageSlots.isEmpty {
+            if imageSlots.count > 1 {
                 Text("\(galleryIndex + 1)/\(imageSlots.count)")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.black.opacity(0.35), in: Capsule())
-                    .padding(12)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .clipShape(
-            UnevenRoundedRectangle(
-                cornerRadii: RectangleCornerRadii(
-                    topLeading: 10,
-                    bottomLeading: 0,
-                    bottomTrailing: 0,
-                    topTrailing: 10
-                ),
-                style: .continuous
-            )
-        )
-    }
-
-    private var heroPlaceholder: some View {
-        ZStack {
-            Rectangle().fill(Color.white.opacity(0.08))
-            Image(systemName: car.icon)
-                .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(.white.opacity(0.45))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var titleRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(car.name)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(ListingPalette.primary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
-
-            HStack(spacing: 14) {
-                Button {
-                    isFavorite.toggle()
-                } label: {
-                    Image(systemName: isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(isFavorite ? Color.red : Color.white.opacity(0.85))
-                }
-                .buttonStyle(.plain)
-
-                Menu {
-                    Button("Marcar como vehículo activo", action: onSelect)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(width: 28, height: 28)
-                }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.48), in: Capsule())
+                    .padding(4)
             }
         }
     }
 
-    private var priceBlock: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(ListingPalette.accentLine)
-                    .frame(width: 36, height: 4)
+    // MARK: - Precio (pastilla negra + borde dorado)
 
-                Text("Precio al contado")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(ListingPalette.secondary)
-
-                Text(listPriceText)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(ListingPalette.primary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("IVA y gestión según anuncio")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(ListingPalette.secondary)
+    private var goldPricePill: some View {
+        Text(listPriceText)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(ListingPalette.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(ListingPalette.pricePillFill, in: Capsule())
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(ListingPalette.goldBorder, lineWidth: 1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            VStack(alignment: .trailing, spacing: 4) {
-                if let fin = car.financedPriceEUR {
-                    Text("Precio financiado")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(ListingPalette.secondary)
-                    Text(formatEUR(fin))
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(ListingPalette.primary)
-                }
-
-                if let cuota = car.monthlyPaymentEUR {
-                    Text("\(formatDecimalES(cuota)) €/mes*")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(ListingPalette.primary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+    @ViewBuilder
+    private var secondaryPriceLine: some View {
+        if let cuota = car.monthlyPaymentEUR {
+            Text("\(formatDecimalES(cuota)) €/mes*")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ListingPalette.secondary)
+        } else if let fin = car.financedPriceEUR {
+            Text("Financiado \(formatEUR(fin))")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ListingPalette.tertiary)
         }
     }
 
@@ -226,32 +216,19 @@ struct CarListingCard: View {
         return "\(formatIntegerES(Int(p.rounded()))) €"
     }
 
-    private var specRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(ListingPalette.accentLine)
-                .frame(width: 7, height: 7)
-                .padding(.top, 6)
-
-            Text(specLine)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(ListingPalette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var specLine: String {
+    /// Transmisión, color exterior y ubicación cuando existan en datos.
+    private var metaDetailLine: String? {
         var parts: [String] = []
-        if let f = car.fuelType, !f.isEmpty { parts.append(f) }
-        parts.append(String(car.year))
-        if let km = car.mileageKm {
-            parts.append("\(km.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))) km")
-        } else {
-            parts.append("Km —")
+        if let t = car.transmission?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+            parts.append(t)
         }
-        if let cv = car.powerCv { parts.append("\(cv) cv") }
-        if let loc = car.locationText, !loc.isEmpty { parts.append(loc) }
-        if parts.isEmpty { return "\(car.model) · \(car.plate)" }
+        if let c = car.exteriorColorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+            parts.append(c)
+        }
+        if let loc = car.locationText?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
+            parts.append(loc)
+        }
+        if parts.isEmpty { return nil }
         return parts.joined(separator: " · ")
     }
 
@@ -318,12 +295,11 @@ struct CarListingCard: View {
     }
 }
 
-// MARK: - Hero (una foto de la galería)
+// MARK: - Imagen de slot (miniatura o página de galería)
 
 private struct CarHeroImageSlotView: View {
     @EnvironmentObject private var auth: AuthViewModel
     let slot: CarImageSlot
-    let car: Car
 
     @State private var image: UIImage?
 
@@ -335,16 +311,16 @@ private struct CarHeroImageSlotView: View {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFill()
-                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
             } else {
                 ProgressView()
+                    .scaleEffect(0.8)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .task(id: slot.id) {
-            // No reseteamos a nil para evitar flash del spinner si ya teníamos imagen
             let loaded = await CarUIImageLoader.load(payload: slot.payload, auth: auth)
             if let loaded {
                 image = loaded
@@ -367,10 +343,15 @@ private struct FlowTagRow<Content: View>: View {
 }
 
 #Preview {
-    ScrollView {
-        CarListingCard(car: MockData.cars[0], isSelected: true)
+    ZStack {
+        Color.black.ignoresSafeArea()
+        ScrollView {
+            VStack(spacing: 20) {
+                CarListingCard(car: MockData.cars[0], isSelected: true)
+                CarListingCard(car: MockData.cars[1], isSelected: false)
+            }
             .padding()
+        }
     }
-    .background(Color(.systemGroupedBackground))
     .environmentObject(AuthViewModel())
 }

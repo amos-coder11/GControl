@@ -65,6 +65,8 @@
 		AA000055 /* DashboardHomeNotificationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000054 /* DashboardHomeNotificationsSection.swift */; };
 		AA000056 /* UserProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000055 /* UserProfileService.swift */; };
 		AA000057 /* VehicleImageDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000056 /* VehicleImageDiagnostics.swift */; };
+		AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */; };
+		AA000059 /* DashboardHomeVideoBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000058 /* DashboardHomeVideoBackdrop.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -126,6 +128,8 @@
 		AB000054 /* DashboardHomeNotificationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeNotificationsSection.swift; sourceTree = "<group>"; };
 		AB000055 /* UserProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileService.swift; sourceTree = "<group>"; };
 		AB000056 /* VehicleImageDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleImageDiagnostics.swift; sourceTree = "<group>"; };
+		AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = cab6b0cf98f7935fc0365a8ee1191735.mp4; sourceTree = "<group>"; };
+		AB000058 /* DashboardHomeVideoBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeVideoBackdrop.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -255,6 +259,7 @@
 			children = (
 				AB000021 /* MockData.swift */,
 				AB000023 /* RemoteAssets.swift */,
+				AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -271,6 +276,7 @@
 			isa = PBXGroup;
 			children = (
 				AB000053 /* RevolutBackgroundView.swift */,
+				AB000058 /* DashboardHomeVideoBackdrop.swift */,
 				AB000027 /* PremiumGlass.swift */,
 			);
 			path = Design;
@@ -341,6 +347,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000022 /* Assets.xcassets in Resources */,
+				AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -406,6 +413,7 @@
 				AA000052 /* CarImageSlot.swift in Sources */,
 				AA000053 /* CarsBrowseHeaderBar.swift in Sources */,
 				AA000054 /* RevolutBackgroundView.swift in Sources */,
+				AA000059 /* DashboardHomeVideoBackdrop.swift in Sources */,
 				AA000055 /* DashboardHomeNotificationsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

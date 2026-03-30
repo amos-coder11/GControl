@@ -32,7 +32,9 @@ struct ChatView: View {
 
     var body: some View {
         RevolutChromeContainer {
-            NavigationStack(path: $path) {
+            ZStack {
+                ChatBackgroundPatternOverlay(opacity: 0.38)
+                NavigationStack(path: $path) {
                 VStack(spacing: 0) {
                     AppChromeHeaderRow(
                         initials: auth.userInitials,
@@ -127,6 +129,7 @@ struct ChatView: View {
                     ChatConversationView(thread: thread)
                         .toolbar(.hidden, for: .tabBar)
                 }
+            }
             }
         }
     }

@@ -12,7 +12,8 @@ final class CarsViewModel: ObservableObject {
 
     /// Listado tipo marketplace (pestaña Coches): búsqueda, orden y filtros sobre `cars` ya cargados.
     @Published var browseSearchText = ""
-    @Published var browseSort: CarSortOption = .relevance
+    /// Por defecto: precio al contado más alto primero al abrir la app.
+    @Published var browseSort: CarSortOption = .priceDesc
     @Published var browseFilters = CarListFilters()
 
     private let pageSize = 50

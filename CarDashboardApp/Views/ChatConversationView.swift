@@ -769,6 +769,7 @@ private struct ConversationBackdrop: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            ChatBackgroundPatternOverlay(opacity: 0.4)
         }
         .ignoresSafeArea()
     }

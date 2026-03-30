@@ -11,7 +11,8 @@ struct DashboardView: View {
     @State private var homeSearchText = ""
 
     var body: some View {
-        RevolutChromeContainer {
+        ZStack {
+            DashboardHomeBackdropImage()
             ScrollViewReader { proxy in
                 VStack(spacing: 0) {
                     // Cabecera fija (no se desplaza con el contenido), como en la referencia.
@@ -51,7 +52,9 @@ struct DashboardView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .navigationBar)
     }
 }
