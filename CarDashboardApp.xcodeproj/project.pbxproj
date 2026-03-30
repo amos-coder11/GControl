@@ -67,6 +67,10 @@
 		AA000057 /* VehicleImageDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000056 /* VehicleImageDiagnostics.swift */; };
 		AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */; };
 		AA000059 /* DashboardHomeVideoBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000058 /* DashboardHomeVideoBackdrop.swift */; };
+		AA000060 /* AppPINKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000059 /* AppPINKeychain.swift */; };
+		AA000061 /* AppLockManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000060 /* AppLockManager.swift */; };
+		AA000062 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000061 /* LockScreenView.swift */; };
+		AA000063 /* PINSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000062 /* PINSetupView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -130,6 +134,10 @@
 		AB000056 /* VehicleImageDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleImageDiagnostics.swift; sourceTree = "<group>"; };
 		AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = cab6b0cf98f7935fc0365a8ee1191735.mp4; sourceTree = "<group>"; };
 		AB000058 /* DashboardHomeVideoBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeVideoBackdrop.swift; sourceTree = "<group>"; };
+		AB000059 /* AppPINKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPINKeychain.swift; sourceTree = "<group>"; };
+		AB000060 /* AppLockManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockManager.swift; sourceTree = "<group>"; };
+		AB000061 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
+		AB000062 /* PINSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PINSetupView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -194,6 +202,7 @@
 				AB000007 /* SettingsViewModel.swift */,
 				AB000035 /* AuthViewModel.swift */,
 				AB000044 /* LeadsViewModel.swift */,
+				AB000060 /* AppLockManager.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -211,6 +220,7 @@
 				AB000043 /* LeadsCrmService.swift */,
 				AB000008 /* TelemetryService.swift */,
 				AB000009 /* MockTelemetryService.swift */,
+				AB000059 /* AppPINKeychain.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -229,6 +239,8 @@
 				AB000013 /* SettingsView.swift */,
 				AB000045 /* LeadsListView.swift */,
 				AB000050 /* CarBrowseSheets.swift */,
+				AB000061 /* LockScreenView.swift */,
+				AB000062 /* PINSetupView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -415,6 +427,10 @@
 				AA000054 /* RevolutBackgroundView.swift in Sources */,
 				AA000059 /* DashboardHomeVideoBackdrop.swift in Sources */,
 				AA000055 /* DashboardHomeNotificationsSection.swift in Sources */,
+				AA000060 /* AppPINKeychain.swift in Sources */,
+				AA000061 /* AppLockManager.swift in Sources */,
+				AA000062 /* LockScreenView.swift in Sources */,
+				AA000063 /* PINSetupView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -554,6 +570,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -581,6 +598,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
