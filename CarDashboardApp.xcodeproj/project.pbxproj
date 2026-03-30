@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D401234567 /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D401234568 /* ImageCacheService.swift */; };
 		AA000001 /* CarDashboardAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000001 /* CarDashboardAppApp.swift */; };
 		AA000002 /* Car.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000002 /* Car.swift */; };
 		AA000003 /* CarMetric.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000003 /* CarMetric.swift */; };
@@ -37,9 +38,9 @@
 		AA000028 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000028 /* ChatView.swift */; };
 		AA000029 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000029 /* SearchView.swift */; };
 		AA000030 /* ChatThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000030 /* ChatThread.swift */; };
-		AA000033 /* ChatInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000033 /* ChatInboxStore.swift */; };
 		AA000031 /* ChatConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000031 /* ChatConversationView.swift */; };
 		AA000032 /* ChatAvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000032 /* ChatAvatarViews.swift */; };
+		AA000033 /* ChatInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000033 /* ChatInboxStore.swift */; };
 		AA000034 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = AG000002 /* Supabase */; };
 		AA000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000034 /* SupabaseClientProvider.swift */; };
 		AA000036 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000035 /* AuthViewModel.swift */; };
@@ -56,7 +57,6 @@
 		AA000047 /* CarBrowseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000046 /* CarBrowseModels.swift */; };
 		AA000048 /* Car+Browse.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000047 /* Car+Browse.swift */; };
 		AA000049 /* CarUIImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000048 /* CarUIImageLoader.swift */; };
-		A1B2C3D401234567 /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D401234568 /* ImageCacheService.swift */; };
 		AA000050 /* CarListingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000049 /* CarListingCard.swift */; };
 		AA000051 /* CarBrowseSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000050 /* CarBrowseSheets.swift */; };
 		AA000052 /* CarImageSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000051 /* CarImageSlot.swift */; };
@@ -71,9 +71,18 @@
 		AA000061 /* AppLockManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000060 /* AppLockManager.swift */; };
 		AA000062 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000061 /* LockScreenView.swift */; };
 		AA000063 /* PINSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000062 /* PINSetupView.swift */; };
+		AA000064 /* AIContractGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000063 /* AIContractGeneratorView.swift */; };
+		AA000065 /* AnthropicContractClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000064 /* AnthropicContractClient.swift */; };
+		AA000066 /* AIContractDocumentKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000067 /* AIContractDocumentKind.swift */; };
+		AA000067 /* ContratoVentaModelo.pdf in Resources */ = {isa = PBXBuildFile; fileRef = AB000068 /* ContratoVentaModelo.pdf */; };
+		AA000068 /* ContratoCompraModelo.pdf in Resources */ = {isa = PBXBuildFile; fileRef = AB000069 /* ContratoCompraModelo.pdf */; };
+		AA000069 /* GarantiaGVModelo.pdf in Resources */ = {isa = PBXBuildFile; fileRef = AB000070 /* GarantiaGVModelo.pdf */; };
+		AA000070 /* ContractTemplateLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000071 /* ContractTemplateLoader.swift */; };
+		AA000071 /* ContractPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000072 /* ContractPDFExporter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
 		AB000000 /* CarDashboardApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CarDashboardApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000001 /* CarDashboardAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarDashboardAppApp.swift; sourceTree = "<group>"; };
 		AB000002 /* Car.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Car.swift; sourceTree = "<group>"; };
@@ -105,9 +114,9 @@
 		AB000028 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		AB000029 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		AB000030 /* ChatThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThread.swift; sourceTree = "<group>"; };
-		AB000033 /* ChatInboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInboxStore.swift; sourceTree = "<group>"; };
 		AB000031 /* ChatConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConversationView.swift; sourceTree = "<group>"; };
 		AB000032 /* ChatAvatarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAvatarViews.swift; sourceTree = "<group>"; };
+		AB000033 /* ChatInboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInboxStore.swift; sourceTree = "<group>"; };
 		AB000034 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
 		AB000035 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		AB000036 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -123,7 +132,6 @@
 		AB000046 /* CarBrowseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseModels.swift; sourceTree = "<group>"; };
 		AB000047 /* Car+Browse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Car+Browse.swift"; sourceTree = "<group>"; };
 		AB000048 /* CarUIImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarUIImageLoader.swift; sourceTree = "<group>"; };
-		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
 		AB000049 /* CarListingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarListingCard.swift; sourceTree = "<group>"; };
 		AB000050 /* CarBrowseSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarBrowseSheets.swift; sourceTree = "<group>"; };
 		AB000051 /* CarImageSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarImageSlot.swift; sourceTree = "<group>"; };
@@ -138,6 +146,16 @@
 		AB000060 /* AppLockManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockManager.swift; sourceTree = "<group>"; };
 		AB000061 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		AB000062 /* PINSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PINSetupView.swift; sourceTree = "<group>"; };
+		AB000063 /* AIContractGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContractGeneratorView.swift; sourceTree = "<group>"; };
+		AB000064 /* AnthropicContractClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicContractClient.swift; sourceTree = "<group>"; };
+		AB000065 /* DeveloperSettings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DeveloperSettings.xcconfig; sourceTree = "<group>"; };
+		AB000066 /* ExtraInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ExtraInfo.plist; sourceTree = "<group>"; };
+		AB000067 /* AIContractDocumentKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContractDocumentKind.swift; sourceTree = "<group>"; };
+		AB000068 /* ContratoVentaModelo.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = ContratoVentaModelo.pdf; sourceTree = "<group>"; };
+		AB000069 /* ContratoCompraModelo.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = ContratoCompraModelo.pdf; sourceTree = "<group>"; };
+		AB000070 /* GarantiaGVModelo.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = GarantiaGVModelo.pdf; sourceTree = "<group>"; };
+		AB000071 /* ContractTemplateLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTemplateLoader.swift; sourceTree = "<group>"; };
+		AB000072 /* ContractPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractPDFExporter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -163,6 +181,8 @@
 		AD000002 /* CarDashboardApp */ = {
 			isa = PBXGroup;
 			children = (
+				AB000065 /* DeveloperSettings.xcconfig */,
+				AB000066 /* ExtraInfo.plist */,
 				AB000001 /* CarDashboardAppApp.swift */,
 				AD000003 /* Models */,
 				AD000004 /* ViewModels */,
@@ -182,6 +202,7 @@
 				AB000002 /* Car.swift */,
 				AB000047 /* Car+Browse.swift */,
 				AB000046 /* CarBrowseModels.swift */,
+				AB000067 /* AIContractDocumentKind.swift */,
 				AB000051 /* CarImageSlot.swift */,
 				AB000003 /* CarMetric.swift */,
 				AB000004 /* CarStatus.swift */,
@@ -211,6 +232,9 @@
 			isa = PBXGroup;
 			children = (
 				AB000034 /* SupabaseClientProvider.swift */,
+				AB000064 /* AnthropicContractClient.swift */,
+				AB000071 /* ContractTemplateLoader.swift */,
+				AB000072 /* ContractPDFExporter.swift */,
 				AB000055 /* UserProfileService.swift */,
 				AB000039 /* VehiclesService.swift */,
 				AB000056 /* VehicleImageDiagnostics.swift */,
@@ -232,6 +256,7 @@
 				AB000036 /* LoginView.swift */,
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
+				AB000063 /* AIContractGeneratorView.swift */,
 				AB000012 /* CarsView.swift */,
 				AB000028 /* ChatView.swift */,
 				AB000031 /* ChatConversationView.swift */,
@@ -269,6 +294,7 @@
 		AD000008 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				AD000011 /* ContractTemplates */,
 				AB000021 /* MockData.swift */,
 				AB000023 /* RemoteAssets.swift */,
 				AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */,
@@ -292,6 +318,16 @@
 				AB000027 /* PremiumGlass.swift */,
 			);
 			path = Design;
+			sourceTree = "<group>";
+		};
+		AD000011 /* ContractTemplates */ = {
+			isa = PBXGroup;
+			children = (
+				AB000068 /* ContratoVentaModelo.pdf */,
+				AB000069 /* ContratoCompraModelo.pdf */,
+				AB000070 /* GarantiaGVModelo.pdf */,
+			);
+			path = ContractTemplates;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -359,6 +395,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000022 /* Assets.xcassets in Resources */,
+				AA000067 /* ContratoVentaModelo.pdf in Resources */,
+				AA000068 /* ContratoCompraModelo.pdf in Resources */,
+				AA000069 /* GarantiaGVModelo.pdf in Resources */,
 				AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -381,6 +420,7 @@
 				AA000009 /* MockTelemetryService.swift in Sources */,
 				AA000010 /* MainTabView.swift in Sources */,
 				AA000011 /* DashboardView.swift in Sources */,
+				AA000064 /* AIContractGeneratorView.swift in Sources */,
 				AA000012 /* CarsView.swift in Sources */,
 				AA000013 /* SettingsView.swift in Sources */,
 				AA000014 /* GlassCard.swift in Sources */,
@@ -403,6 +443,9 @@
 				AA000031 /* ChatConversationView.swift in Sources */,
 				AA000032 /* ChatAvatarViews.swift in Sources */,
 				AA000035 /* SupabaseClientProvider.swift in Sources */,
+				AA000065 /* AnthropicContractClient.swift in Sources */,
+				AA000070 /* ContractTemplateLoader.swift in Sources */,
+				AA000071 /* ContractPDFExporter.swift in Sources */,
 				AA000056 /* UserProfileService.swift in Sources */,
 				AA000036 /* AuthViewModel.swift in Sources */,
 				AA000037 /* LoginView.swift in Sources */,
@@ -417,6 +460,7 @@
 				AA000045 /* LeadsViewModel.swift in Sources */,
 				AA000046 /* LeadsListView.swift in Sources */,
 				AA000047 /* CarBrowseModels.swift in Sources */,
+				AA000066 /* AIContractDocumentKind.swift in Sources */,
 				AA000048 /* Car+Browse.swift in Sources */,
 				AA000049 /* CarUIImageLoader.swift in Sources */,
 				A1B2C3D401234567 /* ImageCacheService.swift in Sources */,
@@ -558,19 +602,22 @@
 		};
 		AF000002D /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AB000065 /* DeveloperSettings.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -578,6 +625,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cardashboard.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -586,19 +634,22 @@
 		};
 		AF000002R /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AB000065 /* DeveloperSettings.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -606,6 +657,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cardashboard.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

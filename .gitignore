@@ -1,3 +1,6 @@
+# Claves locales (Anthropic, etc.)
+CarDashboardApp/DeveloperSettings.local.xcconfig
+
 # Xcode / Swift
 DerivedData/
 DerivedData*/

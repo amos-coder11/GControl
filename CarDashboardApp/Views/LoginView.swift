@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Revolut-style auth (bienvenida + inicio / registro)
 
@@ -74,9 +75,23 @@ struct LoginView: View {
 
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
-                Text("CarDashboard")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                Group {
+                    if let ui = UIImage(named: "AccarLogo") ?? UIImage(named: "CarHubLogo") {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 40)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
+                    } else {
+                        Text("CarDashboard")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+                }
                 Spacer(minLength: 0)
 
                 VStack(spacing: 14) {

@@ -1,0 +1,4 @@
+// Valores por defecto; opcionalmente sobrescribe con DeveloperSettings.local.xcconfig (no versionado).
+ANTHROPIC_API_KEY =
+ANTHROPIC_MODEL =
+#include? "DeveloperSettings.local.xcconfig"

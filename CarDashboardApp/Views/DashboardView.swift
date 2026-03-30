@@ -9,6 +9,7 @@ struct DashboardView: View {
     @EnvironmentObject private var carsVM: CarsViewModel
     @StateObject private var vm = DealershipStatsViewModel()
     @State private var homeSearchText = ""
+    @State private var showAIContract = false
 
     var body: some View {
         ZStack {
@@ -39,7 +40,7 @@ struct DashboardView: View {
                             DashboardQuickActionsRow(
                                 onAddCar: {},
                                 onRanking: {},
-                                onBudgets: {},
+                                onBudgets: { showAIContract = true },
                                 onMore: {}
                             )
 
@@ -56,6 +57,9 @@ struct DashboardView: View {
         .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showAIContract) {
+            AIContractGeneratorView()
+        }
     }
 }
 
