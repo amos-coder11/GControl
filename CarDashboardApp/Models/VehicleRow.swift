@@ -346,8 +346,24 @@ struct VehicleRow: Decodable, Sendable {
         if let s = try? c.decode(String.self, forKey: k) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             if let u = UUID(uuidString: t) { return u }
+            if t.allSatisfy({ $0.isNumber }), let n = Int64(t) {
+                return deterministicUUID(fromInt64: n)
+            }
+        }
+        if let n = try? c.decode(Int.self, forKey: k) {
+            return deterministicUUID(fromInt64: Int64(n))
+        }
+        if let n = try? c.decode(Int64.self, forKey: k) {
+            return deterministicUUID(fromInt64: n)
         }
         throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: "id no es un UUID válido"))
+    }
+
+    /// UUID estable para `id` numérico (filas legibles por PostgREST pero sin tipo UUID).
+    private static func deterministicUUID(fromInt64 value: Int64) -> UUID {
+        let u = UInt64(bitPattern: value) & 0xFFFFFFFFFFFF
+        let str = String(format: "00000000-0000-4000-8000-%012llx", u)
+        return UUID(uuidString: str)!
     }
 
     init(from decoder: Decoder) throws {
@@ -571,8 +587,6 @@ struct VehicleRow: Decodable, Sendable {
 
         let imageSlots = buildImageSlots()
 
-        print("🚗 [\(displayName)] imageGalleryRaws=\(imageGalleryRaws.count) imageSlots=\(imageSlots.count) | storagePathColumn=\(storagePathColumn ?? "nil")")
-
         var urlString: String?
         var publicVehiclesFile: String?
         var signedPath: String?
@@ -628,7 +642,6 @@ struct VehicleRow: Decodable, Sendable {
             onlineListing: onlineListingDecoded,
             isReservable: reservableDecoded
         )
-        print("✅ [\(displayName)] Car image config → slots=\(imageSlots.count) url=\(urlString ?? "nil") | publicFile=\(publicVehiclesFile ?? "nil") | signedPath=\(signedPath ?? "nil") | hasImagePayload=\(car.hasImagePayload)")
         return car
     }
 

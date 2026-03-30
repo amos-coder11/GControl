@@ -14,6 +14,37 @@ enum SupabaseClientProvider {
         )
     }()
 
+    /// Cliente sin compartir almacén de sesión con `shared`: las peticiones REST van solo con la clave `anon`
+    /// (no adjuntan el JWT del usuario). Útil para combinar con `shared` cuando RLS devuelve filas distintas
+    /// por rol (`anon` vs `authenticated`).
+    static let catalogAnon: SupabaseClient = {
+        let ref = supabaseURL.host!.split(separator: ".")[0]
+        return SupabaseClient(
+            supabaseURL: supabaseURL,
+            supabaseKey: anonKey,
+            options: SupabaseClientOptions(
+                auth: .init(storageKey: "sb-\(ref)-auth-token-catalog-anon")
+            )
+        )
+    }()
+
+    /// Tabla PostgREST del inventario (por si en tu proyecto no se llama `vehicles`).
+    static var vehiclesTableName: String {
+        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "VEHICLES_TABLE") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let v = fromInfoPlist, !v.isEmpty else { return "vehicles" }
+        return v
+    }
+
+    /// Nombre de la RPC en Supabase (`supabase/migrations/20260330140000_marketplace_vehicles_rpc.sql`).
+    static let marketplaceVehiclesRPCName = "marketplace_vehicles_page"
+
+    /// Si es `false` (Info.plist `USE_MARKETPLACE_VEHICLES_RPC`), se omite la RPC y solo se usa el listado por tabla.
+    static var prefersMarketplaceVehiclesRPC: Bool {
+        if let b = Bundle.main.object(forInfoDictionaryKey: "USE_MARKETPLACE_VEHICLES_RPC") as? Bool { return b }
+        return true
+    }
+
     /// Bucket donde la app espera URLs/descargas de miniaturas públicas.
     static let publicVehiclesBucket = "vehicles"
 

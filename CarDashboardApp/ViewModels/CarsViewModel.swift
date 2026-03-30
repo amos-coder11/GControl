@@ -9,14 +9,14 @@ final class CarsViewModel: ObservableObject {
     @Published var isLoadingMoreVehicles = false
     @Published var vehiclesError: String?
     @Published var hasMorePages = true
+    /// Última carga terminó sin filas en servidor (útil para mensajes cuando no hay filtros activos).
+    @Published private(set) var lastFetchHadZeroRowsFromBackend = false
 
     /// Listado tipo marketplace (pestaña Coches): búsqueda, orden y filtros sobre `cars` ya cargados.
     @Published var browseSearchText = ""
     /// Por defecto: precio al contado más alto primero al abrir la app.
     @Published var browseSort: CarSortOption = .priceDesc
     @Published var browseFilters = CarListFilters()
-
-    private let pageSize = 50
 
     init() {}
 
@@ -29,47 +29,21 @@ final class CarsViewModel: ObservableObject {
         isLoadingVehicles = true
         vehiclesError = nil
         hasMorePages = true
+        lastFetchHadZeroRowsFromBackend = false
 
         do {
-            // Primera página — se muestra inmediatamente en la UI
-            let firstPage = try await VehiclesService.fetchPage(offset: 0, limit: pageSize)
             try Task.checkCancellation()
-            cars = firstPage.enumerated().map { idx, row in row.toCar(index: idx) }
+            let rows = try await VehiclesService.fetchAllMergedForMarketplace()
+            try Task.checkCancellation()
+            lastFetchHadZeroRowsFromBackend = rows.isEmpty
+            cars = rows.enumerated().map { idx, row in row.toCar(index: idx) }
+            hasMorePages = false
             isLoadingVehicles = false
+            isLoadingMoreVehicles = false
 
             if selectedCarId == nil || cars.first(where: { $0.id == selectedCarId }) == nil {
                 selectedCarId = cars.first?.id
             }
-
-            // Si la primera página está completa, cargar el resto en background
-            guard firstPage.count >= pageSize else {
-                hasMorePages = false
-                return
-            }
-
-            isLoadingMoreVehicles = true
-            var offset = pageSize
-            while true {
-                try Task.checkCancellation()
-                let page = try await VehiclesService.fetchPage(offset: offset, limit: pageSize)
-                try Task.checkCancellation()
-
-                if page.isEmpty {
-                    hasMorePages = false
-                    break
-                }
-
-                let baseIdx = cars.count
-                let newCars = page.enumerated().map { idx, row in row.toCar(index: baseIdx + idx) }
-                cars.append(contentsOf: newCars)
-
-                if page.count < pageSize {
-                    hasMorePages = false
-                    break
-                }
-                offset += pageSize
-            }
-            isLoadingMoreVehicles = false
 
         } catch is CancellationError {
             // La tarea fue cancelada (ej. al navegar fuera) — no mostrar error al usuario
@@ -98,7 +72,28 @@ final class CarsViewModel: ObservableObject {
         let filtered = pairs.filter {
             $0.car.matchesBrowseSearch(browseSearchText) && $0.car.matchesBrowseFilters(browseFilters)
         }
-        return Self.sortBrowsePairs(filtered, by: browseSort)
+        let sorted = Self.sortBrowsePairs(filtered, by: browseSort)
+        return Self.moveBrowseListPinnedToEnd(sorted)
+    }
+
+    /// Anuncio concreto que debe mostrarse siempre al final; el resto conserva el orden del criterio elegido.
+    private static func pinsToEndOfBrowseList(_ car: Car) -> Bool {
+        let brand = (car.brandName ?? "").lowercased()
+        let title = car.name.lowercased()
+        let model = car.model.lowercased()
+        let lambo = brand.contains("lamborghini") || title.contains("lamborghini")
+        let aventador = model.contains("aventador") || title.contains("aventador")
+        guard lambo && aventador else { return false }
+        guard let p = car.listPriceEUR, abs(p - 230_000) < 1 else { return false }
+        let trans = car.transmission?.uppercased().trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard trans == "ISR" else { return false }
+        return true
+    }
+
+    private static func moveBrowseListPinnedToEnd(_ ordered: [Car]) -> [Car] {
+        let head = ordered.filter { !pinsToEndOfBrowseList($0) }
+        let tail = ordered.filter { pinsToEndOfBrowseList($0) }
+        return head + tail
     }
 
     /// Coches con al menos una imagen resoluble (URL, storage, base64 o galería) van primero en el listado.

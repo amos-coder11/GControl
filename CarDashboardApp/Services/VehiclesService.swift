@@ -135,7 +135,48 @@ private enum VehicleJSONImageFinder {
     }
 }
 
+private struct MarketplaceVehiclesPageParams: Encodable, Sendable {
+    let p_limit: Int
+    let p_offset: Int
+}
+
 enum VehiclesService {
+    /// Decodifica JSON PostgREST y enriquece imágenes (misma lógica que `fetchPage`).
+    private static func decodeAndEnrichVehicleRows(rawObjects: [JSONObject], client: SupabaseClient) async -> [VehicleRow] {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        var rows: [VehicleRow] = []
+        rows.reserveCapacity(rawObjects.count)
+        for obj in rawObjects {
+            guard let data = try? encoder.encode(obj),
+                  var row = try? decoder.decode(VehicleRow.self, from: data) else { continue }
+            VehicleJSONImageFinder.merge(into: &row, rowJSON: obj)
+            rows.append(row)
+        }
+
+        do {
+            try await VehicleStorageCoverPathsRPC.attachCoverPathsIfNeeded(rows: &rows, client: client)
+        } catch {}
+
+        await VehicleStorageMediaPathsRPC.mergeIntoRows(&rows, client: client)
+        await StorageSiblingGallery.mergeIntoRows(&rows, client: client)
+
+        let needsMoreImages = rows.contains { $0.imageGalleryRaws.count < 2 }
+        if needsMoreImages {
+            await LocalVehicleStorageGallery.mergeFolderListingIntoRows(&rows, client: client)
+            await SupabaseStorageURLSiblingGallery.mergeIntoRows(&rows, client: client)
+        }
+
+        let stillNeedGallery = rows.contains { $0.imageGalleryRaws.count < 2 && $0.storagePathColumn != nil }
+        if stillNeedGallery {
+            await SequentialStorageProbe.mergeIntoRows(&rows)
+        }
+
+        VehicleImageDiagnostics.logAfterFetch(rows: rows, rawObjects: rawObjects)
+        return rows
+    }
+
     /// Página de vehículos con offset/limit para paginación incremental.
     static func fetchPage(
         offset: Int,
@@ -143,51 +184,35 @@ enum VehiclesService {
         client: SupabaseClient = SupabaseClientProvider.shared
     ) async throws -> [VehicleRow] {
         let objects: [JSONObject] = try await client
-            .from("vehicles")
+            .from(SupabaseClientProvider.vehiclesTableName)
             .select()
             .range(from: offset, to: offset + limit - 1)
             .execute()
             .value
 
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
+        return await decodeAndEnrichVehicleRows(rawObjects: objects, client: client)
+    }
 
-        var rows: [VehicleRow] = []
-        rows.reserveCapacity(objects.count)
-        for obj in objects {
-            let data = try encoder.encode(obj)
-            var row = try decoder.decode(VehicleRow.self, from: data)
-            VehicleJSONImageFinder.merge(into: &row, rowJSON: obj)
-            rows.append(row)
+    /// Catálogo vía RPC `SECURITY DEFINER` (mismas filas para todas las cuentas si la función está desplegada).
+    private static func fetchAllViaMarketplaceRPC(client: SupabaseClient) async throws -> [VehicleRow] {
+        var all: [VehicleRow] = []
+        var offset = 0
+        let pageSize = 50
+        while true {
+            try Task.checkCancellation()
+            let objects: [JSONObject] = try await client.rpc(
+                SupabaseClientProvider.marketplaceVehiclesRPCName,
+                params: MarketplaceVehiclesPageParams(p_limit: pageSize, p_offset: offset)
+            )
+            .execute()
+            .value
+            if objects.isEmpty { break }
+            let chunk = await decodeAndEnrichVehicleRows(rawObjects: objects, client: client)
+            all.append(contentsOf: chunk)
+            if objects.count < pageSize { break }
+            offset += pageSize
         }
-
-        // Portada vía RPC (no rompe si falla)
-        do {
-            try await VehicleStorageCoverPathsRPC.attachCoverPathsIfNeeded(rows: &rows, client: client)
-        } catch {}
-
-        // Resolución de galería — secuencial porque cada paso muta `rows` (inout).
-        // El RPC de media paths es el más productivo, va primero.
-        await VehicleStorageMediaPathsRPC.mergeIntoRows(&rows, client: client)
-        await StorageSiblingGallery.mergeIntoRows(&rows, client: client)
-
-        // Estas dos solo se ejecutan si aún faltan imágenes (evita llamadas innecesarias)
-        let needsMoreImages = rows.contains { $0.imageGalleryRaws.count < 2 }
-        if needsMoreImages {
-            await LocalVehicleStorageGallery.mergeFolderListingIntoRows(&rows, client: client)
-            await SupabaseStorageURLSiblingGallery.mergeIntoRows(&rows, client: client)
-        }
-
-        // Último recurso: si storage.list() falló (RLS), construir URLs secuenciales
-        // a partir del cover path (001.jpg → 002.jpg, 003.jpg, etc.) y probar con HEAD.
-        let stillNeedGallery = rows.contains { $0.imageGalleryRaws.count < 2 && $0.storagePathColumn != nil }
-        if stillNeedGallery {
-            await SequentialStorageProbe.mergeIntoRows(&rows)
-        }
-
-        VehicleImageDiagnostics.logAfterFetch(rows: rows, rawObjects: objects)
-
-        return rows
+        return all
     }
 
     /// Lee filas como árbol JSON completo y fusiona imágenes desde `AnyJSON` (p. ej. `image_url` jsonb).
@@ -206,6 +231,90 @@ enum VehiclesService {
         }
 
         return allRows
+    }
+
+    /// Paginación completa sin propagar error (p. ej. consultas `anon` cuando RLS devuelve 403 o falla la red).
+    private static func accumulatePagesLenient(client: SupabaseClient) async -> [VehicleRow] {
+        var all: [VehicleRow] = []
+        var offset = 0
+        let pageSize = 50
+        while true {
+            do {
+                let page = try await fetchPage(offset: offset, limit: pageSize, client: client)
+                if page.isEmpty { break }
+                all.append(contentsOf: page)
+                if page.count < pageSize { break }
+                offset += pageSize
+            } catch {
+                break
+            }
+        }
+        return all
+    }
+
+    private static func mergeVehicleRowsByIdPreferSession(_ anon: [VehicleRow], _ session: [VehicleRow]) -> [VehicleRow] {
+        var byId: [UUID: VehicleRow] = [:]
+        for r in anon { byId[r.id] = r }
+        for r in session { byId[r.id] = r }
+        return byId.values.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    private static func normalizedPlateKey(_ r: VehicleRow) -> String? {
+        let raw = [r.plate, r.license_plate, r.matricula]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && $0 != "—" }
+        return raw?.lowercased()
+    }
+
+    /// Quita duplicados: mismo `id`, mismo `dealcar_vehicle_id`, o misma matrícula (evita filas duplicadas en BD).
+    private static func dedupeVehicleRowsForMarketplace(_ rows: [VehicleRow]) -> [VehicleRow] {
+        var seenIds = Set<UUID>()
+        var seenDealcar = Set<String>()
+        var seenPlates = Set<String>()
+        var out: [VehicleRow] = []
+        out.reserveCapacity(rows.count)
+        for r in rows {
+            if seenIds.contains(r.id) { continue }
+            seenIds.insert(r.id)
+            if let raw = r.dealcar_vehicle_id?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                let k = raw.lowercased()
+                if seenDealcar.contains(k) { continue }
+                seenDealcar.insert(k)
+            }
+            if let pk = normalizedPlateKey(r) {
+                if seenPlates.contains(pk) { continue }
+                seenPlates.insert(pk)
+            }
+            out.append(r)
+        }
+        return out
+    }
+
+    /// Unión del inventario visible como `anon` y con JWT (`shared`). Así el listado refleja todas las filas que
+    /// permita cualquiera de los dos conjuntos de políticas RLS (p. ej. anuncios públicos + stock del concesionario).
+    static func fetchAllMergedForMarketplace() async throws -> [VehicleRow] {
+        if SupabaseClientProvider.prefersMarketplaceVehiclesRPC {
+            do {
+                try Task.checkCancellation()
+                let viaRpc = try await fetchAllViaMarketplaceRPC(client: SupabaseClientProvider.shared)
+                if !viaRpc.isEmpty { return dedupeVehicleRowsForMarketplace(viaRpc) }
+            } catch {
+                // La RPC aún no existe en el proyecto o falló: se sigue con lectura por tabla.
+            }
+        }
+
+        async let fromAnonTask = accumulatePagesLenient(client: SupabaseClientProvider.catalogAnon)
+        let fromSession: [VehicleRow]
+        do {
+            try Task.checkCancellation()
+            fromSession = try await fetchAll(client: SupabaseClientProvider.shared)
+        } catch {
+            let anonOnly = await fromAnonTask
+            if anonOnly.isEmpty { throw error }
+            return dedupeVehicleRowsForMarketplace(anonOnly.sorted { $0.id.uuidString < $1.id.uuidString })
+        }
+        let anonRows = await fromAnonTask
+        return dedupeVehicleRowsForMarketplace(mergeVehicleRowsByIdPreferSession(anonRows, fromSession))
     }
 }
 

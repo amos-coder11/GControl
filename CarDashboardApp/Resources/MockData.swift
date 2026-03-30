@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 
+/// Solo para **previews** de SwiftUI y ejemplos en `#Preview`; el listado real viene de Supabase (`CarsViewModel`).
 enum MockData {
     private static func imageSlots(urls: [String]) -> [CarImageSlot] {
         urls.compactMap { CarImageSlot(classifyingRaw: $0) }

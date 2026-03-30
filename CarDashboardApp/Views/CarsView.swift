@@ -16,6 +16,18 @@ struct CarsView: View {
         displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
     }
 
+    private var browseContextEmpty: Bool {
+        carsVM.browseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !carsVM.browseFilters.hasActiveFilters
+    }
+
+    private var carsEmptyFootnote: String {
+        if carsVM.lastFetchHadZeroRowsFromBackend, browseContextEmpty {
+            return "Prueba a limpiar filtros o cambiar la búsqueda.\n\nEl servidor devolvió 0 filas: en Supabase revisa RLS de «vehicles». Para el mismo catálogo en todas las cuentas, permite SELECT a «anon» y «authenticated». Ejemplo en el repo: supabase/migrations/20260330130000_vehicles_marketplace_read_all.sql"
+        }
+        return "Prueba a limpiar filtros o cambiar la búsqueda."
+    }
+
     var body: some View {
         RevolutChromeContainer {
             VStack(spacing: 0) {
@@ -50,7 +62,7 @@ struct CarsView: View {
                                 ContentUnavailableView(
                                     "Sin resultados",
                                     systemImage: "line.3.horizontal.decrease.circle",
-                                    description: Text("Prueba a limpiar filtros o cambiar la búsqueda.")
+                                    description: Text(carsEmptyFootnote)
                                 )
                                 .foregroundStyle(.white)
                                 .symbolRenderingMode(.hierarchical)

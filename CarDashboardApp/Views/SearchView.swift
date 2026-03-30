@@ -17,6 +17,16 @@ struct SearchView: View {
         displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
     }
 
+    private var searchEmptyFootnote: String {
+        let qEmpty = carsVM.browseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if qEmpty, !carsVM.browseFilters.hasActiveFilters, carsVM.lastFetchHadZeroRowsFromBackend {
+            return "Si esperabas anuncios aquí también, el listado llega vacío desde Supabase (tabla «vehicles» / RLS). Escribe para buscar o revisa filtros."
+        }
+        return carsVM.browseSearchText.isEmpty
+            ? "Escribe en el buscador o ajusta filtros."
+            : "Prueba con otro término o limpia filtros."
+    }
+
     var body: some View {
         NavigationStack {
             RevolutChromeContainer {
@@ -44,11 +54,7 @@ struct SearchView: View {
                                     ContentUnavailableView(
                                         "Sin resultados",
                                         systemImage: "magnifyingglass",
-                                        description: Text(
-                                            carsVM.browseSearchText.isEmpty
-                                                ? "Escribe en el buscador o ajusta filtros."
-                                                : "Prueba con otro término o limpia filtros."
-                                        )
+                                        description: Text(searchEmptyFootnote)
                                     )
                                     .foregroundStyle(.white)
                                     .symbolRenderingMode(.hierarchical)
