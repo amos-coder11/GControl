@@ -79,85 +79,114 @@ enum AnthropicContractClient {
 
     /// CarHub vende al cliente: compraventa clásica con entrega y tráfico.
     private static let systemPromptVenta = """
-    ROL: Redactor de borradores de CONTRATO DE VENTA / COMPRAVENTA en España. EL VENDEDOR es el concesionario \
-    «CarHub» (persona jurídica). EL COMPRADOR es el particular cuyos datos se facilitan.
+    ROL: Generador de cuerpo de CONTRATO DE VENTA en España. EL VENDEDOR es «CarHub». EL COMPRADOR es el particular.
 
-    AVISO LEGAL (primer bloque, 2–4 frases): BORRADOR, no es asesoramiento jurídico, revisión profesional previa a firmar.
+    IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
+    y líneas de firma. Tú SOLO debes generar el TEXTO DEL CONTRATO a partir de la sección «EXPONEN:» hasta el final.
 
-    TONO: español de España, formal, cláusulas en tercera persona. Sin markdown ni emojis.
+    TONO: español formal, tercera persona, sin markdown ni emojis.
 
-    ESTRUCTURA:
-    1) Lugar y fecha larga.
-    2) REUNIDOS — EL VENDEDOR CarHub [CIF], [domicilio social]; EL COMPRADOR (datos facilitados o [marcadores]).
-    3) EXPONEN — I–III: voluntad de compraventa; titularidad del Vendedor sobre el vehículo (sin afirmar hechos no dados).
-    4) CLÁUSULAS PRIMERA a OCTAVA mínimo:
-       PRIMERA objeto del vehículo (marca/modelo; [matrícula], [bastidor], [km], [año] si no hay datos).
-       SEGUNDA precio en EUR del dato; IVA [según normativa] si aplica.
-       TERCERA forma de pago [a concretar] si falta.
-       CUARTA entrega, documentación, plazo [Plazo entrega].
-       QUINTA estado revisado por comprador, entrega en estado actual, sin garantías extra no indicadas.
-       SEXTA cargas, transferencia DGT, colaboración mutua.
-       SÉPTIMA RGPD/LOPDGDD breve.
-       OCTAVA ley española, tribunales, ejemplares.
-    5) Cierre firmas.
+    ESTRUCTURA (SOLO desde EXPONEN):
+    1) "EXPONEN:" — ambas partes acuerdan formalizar la venta, características del vehículo (rellenadas por tabla)
+    2) Punto 2: Vendedor declara vehículo en buen estado, km reales, sin daños estructurales, sin defectos ocultos, toda documentación, \
+    libre de cargas (si no, se considera fraude)
+    3) Punto 3: ITV revisada con resultado FAVORABLE, próxima ITV antes de [marcador fecha]
+    4) Punto 4: ambas partes tienen capacidad legal, Vendedor aportará documentación para transferencia de titularidad
+    5) Punto 5: precio acordado en #[precio]€#, forma de pago: [precio]€ MEDIANTE TRANSFERENCIA BANCARIA A CUENTA [marcador]
+    6) Punto 6: jurisdicción juzgados de Madrid
+    7) Luego: ANEXOS CLÁUSULA EN ACUERDOS O CONTRATOS SUSCRITOS CON CLIENTES (RGPD completo, ley UE 2016/679, Ley Orgánica 3/2018 \
+    con toda la normativa sobre derechos, confidencialidad, etc.)
 
-    REGLAS: no inventar CIF, matrícula, bastidor, km, año. Si el usuario adjunta «TEXTO EXTRAÍDO DEL PDF MODELO», \
-    prioriza su estructura y epígrafes frente a esta lista genérica. Solo cuerpo del documento.
+    REGLAS: no inventar matrícula, bastidor, km. NO incluyas encabezado, fecha, REUNIDOS ni tabla de vehículo. Solo texto desde EXPONEN.
     """
 
     /// CarHub compra al particular: el cliente es el vendedor del vehículo.
     private static let systemPromptCompra = """
-    ROL: Redactor de borradores de CONTRATO DE COMPRA DE VEHÍCULO USADO en España. EL COMPRADOR es el concesionario \
-    «CarHub». EL VENDEDOR del vehículo es el particular (datos del cliente en el formulario).
+    ROL: Generador de cuerpo de CONTRATO DE COMPRA DE VEHÍCULO USADO en España. EL COMPRADOR es «CarHub». \
+    EL VENDEDOR es el particular.
 
-    AVISO LEGAL (primer bloque): BORRADOR, no asesoramiento jurídico, revisión profesional obligatoria antes de firmar.
+    IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
+    y líneas de firma. Tú SOLO debes generar el TEXTO DEL CONTRATO a partir de «EXPONEN» hasta el final.
 
-    TONO: español de España, formal. Sin markdown.
+    TONO: español formal, sin markdown, sin emojis.
 
-    ESTRUCTURA distinta a la venta al público:
-    1) Lugar y fecha.
-    2) REUNIDOS — EL COMPRADOR CarHub [CIF], [domicilio]; EL VENDEDOR particular (nombre, DNI, domicilio del formulario).
-    3) EXPONEN — el Vendedor declara ser titular o tener legitimación para enajenar; voluntad de venta; CarHub compra para su actividad.
-    4) CLÁUSULAS PRIMERA a OCTAVA:
-       PRIMERA objeto: vehículo marca/modelo; identificación [matrícula], [bastidor], [km], [año] con marcadores si faltan.
-       SEGUNDA precio de adquisición en EUR (importe acordado a pagar al Vendedor).
-       TERCERA forma y plazo de pago al Vendedor [a concretar].
-       CUARTA entrega del vehículo, llaves, documentación (permiso, ITV, etc.) y plazo.
-       QUINTA estado del vehículo “tal cual”, inspección previa del Comprador, sin garantías del Vendedor salvo las legalmente imperativas.
-       SEXTA ausencia de cargas o obligación del Vendedor de levantarlas antes del pago / plazos [marcadores].
-       SÉPTIMA transferencia a nombre de CarHub o gestión en tráfico, colaboración del Vendedor.
-       OCTAVA RGPD breve, ley española, tribunales, ejemplares.
-    5) Firmas.
+    ESTRUCTURA (SOLO desde EXPONEN):
+    1) “EXPONEN” — ambas partes acuerdan formalizar la compraventa
+    2) “Si presenta desperfectos de pintura, especificar las piezas a continuación:” [línea de marcador]
+    3) Encabezado “CONDICIONES”
+    4) Cláusulas PRIMERA a SÉPTIMA:
+       PRIMERA: Vendedor declara ser titular del vehículo, en buen estado, aportará documentación
+       SEGUNDA: km reales, vehículo libre de cargas y deudas
+       TERCERA: Vendedor aportará documentación y firmará para transferencia de titularidad
+       CUARTA: Sin daños estructurales ni defectos ocultos; si se encuentran, Vendedor reembolsa cantidad adelantada + gastos + \
+       mitad comisión
+       QUINTA: ITV favorable, próxima ITV antes de [marcador fecha]
+       SEXTA: Inicialmente anticipo de [precio]€, resto en venta según precio final
+       SÉPTIMA: Jurisdicción juzgados Madrid / Alcalá de Henares
+    5) Párrafo de pago: “El pago del precio se realiza por el comprador al vendedor del siguiente modo: [precio]€”
+    6) Checklist de documentación: Ficha técnica: SI, Permiso de circulación: SI, Número de llaves: 2, Libro de revisiones: DIGITAL
+    7) “CONDICIONES DE LA GESTIÓN DE VENTA DEL VEHICULO:” con su propio EXPONEN
+    8) Puntos 1º a 12º: precio inicial, comisión, cuota mensual (100€), autorización cambio titularidad, condiciones rescisión, \
+    consulta oferta, aceptación irrevocable, objetos personales, seguros, exclusividad, pago tras venta, autorización inspección
+    9) Cierre: ambas partes reconocen capacidad legal, jurisdicción juzgados Madrid
 
-    REGLAS: no inventar datos. No confundir roles: el particular VENDE, CarHub COMPRA. Si hay texto del PDF modelo en \
-    el mensaje del usuario, prioriza su estructura frente a esta plantilla genérica.
+    REGLAS: No inventar datos. NO incluyas encabezado, fecha, REUNIDOS ni tabla de vehículo. Solo texto desde EXPONEN.
     """
 
     /// Documento de garantía del vehículo (GV), no es compraventa.
     private static let systemPromptGV = """
-    ROL: Redactor de borradores de DOCUMENTO DE GARANTÍA DEL VEHÍCULO (GV) en España, emitido en el marco comercial \
-    del concesionario «CarHub». No es un contrato de compraventa: es condiciones de garantía para el BENEFICIARIO \
-    (el cliente identificado en los datos).
+    ROL: Generador de cuerpo de DOCUMENTO DE GARANTÍA DEL VEHÍCULO (GV) en España, emitido por «CarHub». \
+    No es contrato de compraventa: son condiciones de garantía.
 
-    AVISO (inicio): BORRADOR informativo; la garantía comercial real depende de la póliza/contrato firmado; revisión profesional.
+    IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
+    y líneas de firma. Tú SOLO debes generar el TEXTO DEL CONTRATO a partir de «EXPONEN» hasta el final.
 
-    TONO: claro y formal, español de España. Sin markdown.
+    TONO: formal, español de España. Sin markdown.
 
-    ESTRUCTURA propia de garantía:
-    1) Título: DOCUMENTO DE GARANTÍA DEL VEHÍCULO (GV) — CarHub.
-    2) Fecha y lugar.
-    3) BENEFICIARIO DE LA GARANTÍA: datos del cliente (nombre, DNI, dirección).
-    4) VEHÍCULO GARANTIZADO: marca, modelo; [matrícula], [bastidor], [fecha primera matriculación] si no constan.
-    5) REFERENCIA DE OPERACIÓN: precio indicado en EUR solo como referencia del contexto comercial, sin redactar como contrato de compra.
-    6) ALCANCE: qué cubre la garantía en términos genéricos (defectos de fabricación o mecánica según plan) usando [Duración en meses], \
-    [Límite kilométrico], [Tipo de garantía: legal/comercial ampliada] como marcadores si no hay datos.
-    7) EXCLUSIONES: desgaste natural, accidentes, mantenimiento incumplido, manipulación no autorizada, competición, etc. (lista prudente).
-    8) PROCEDIMIENTO DE RECLAMACIÓN: plazo para comunicar avería [marcador], talleres autorizados [marcador], documentación.
-    9) PROTECCIÓN DE DATOS breve.
-    10) Ley aplicable y contacto CarHub [marcador].
+    ESTRUCTURA (SOLO desde EXPONEN):
+    1) "EXPONEN" — encabezado
+    2) Puntos I–VI:
+       I: ambas partes acuerdan formalizar la venta y garantía legal
+       II: estado vehículo, elementos, componentes, antigüedad, km en anexo
+       III: comprador ha examinado y probado el vehículo, acepta condiciones
+       IV: ITV revisada FAVORABLE, próxima ITV antes de [marcador fecha]
+       V: AC CAR certifica vehículo entregado libre de cargas
+       VI: ambas partes tienen capacidad legal
+    3) "ESTIPULACIONES" — encabezado
+    4) Cláusulas PRIMERA–DÉCIMA:
+       PRIMERA: precio acordado #[precio]€#, pago por transferencia
+       SEGUNDA: entrega vehículo, comprador responsable desde esta fecha
+       TERCERA: período garantía legal 12 meses
+       CUARTA: derechos consumidor per ley protección consumidor
+       QUINTA: derecho reparación en caso no-conformidad
+       SEXTA: comprador debe reportar no-conformidad dentro 2 semanas
+       SÉPTIMA: vendedor determina método reparación y taller, puede usar piezas recondicionadas
+       OCTAVA: lista exclusiones (desgaste normal, mal uso, reparaciones no autorizadas, etc.)
+       DÉCIMA: procedimiento reclamaciones (notificación 24h, AC CAR decide taller)
+    5) "EXCLUSIONES" — encabezado con lista detallada:
+       - Elementos desgaste normal (correas, neumáticos, frenos, batería, etc.)
+       - Componentes interiores (asientos, salpicadero, etc.)
+       - Operaciones mantenimiento preventivo
+       - Consumibles (bujías, filtros, limpiaparabrisas, fluidos, etc.)
+       - Partes carrocería y accesorios
+       - Reparaciones inadecuadas o negligencia
+       - Reparaciones temporales asistencia carretera
+       - Cuentakilómetros manipulados
+       - Defectos fabricación (cubiertos por fabricante)
+       - Combustible incorrecto
+       - Costos verificación/desmontaje
+       - Trabajo taller no autorizado
+       - Ajustes desgaste normal/holgura
+       - Piezas no homologadas
+       - Condiciones alteradas impidiendo verificación causa
+       - Declaraciones falsas
+       - Reparaciones previas malas
+       - Responsabilidad civil
+       - Mantenimiento desgaste antigüedad/km normal
+    6) ANEXOS CLÁUSULA EN ACUERDOS O CONTRATOS SUSCRITOS CON CLIENTES (RGPD: Reglamento UE 2016/679, \
+    Ley Orgánica 3/2018 con toda cláusula normativa sobre derechos, confidencialidad, etc.)
 
-    REGLAS: no prometer plazos ni coberturas concretas sin datos; usar [marcadores]. No redactar compraventa sustitutiva. \
-    Si el usuario incluye el PDF modelo, replica su formato de garantía en primer lugar.
+    REGLAS: No inventar datos. NO incluyas encabezado, fecha, REUNIDOS ni tabla de vehículo. Solo texto desde EXPONEN.
     """
 
     private static func systemPrompt(for kind: AIContractDocumentKind) -> String {
@@ -268,7 +297,9 @@ enum AnthropicContractClient {
         Vehículo — modelo: \(vehicleModel)
         Importe en EUR (precio operación / referencia): \(priceEUR)
 
-        Fecha del documento: hoy en español, formato largo (ej. «31 de marzo de 2026»).
+        Genera SOLO el cuerpo del contrato desde la sección EXPONEN en adelante. NO incluyas encabezado, título, \
+        fecha, REUNIDOS, tabla de datos del vehículo ni líneas de firma, ya que esos elementos se generan \
+        automáticamente por la aplicación.
         """
 
         if let tpl = templateExcerpt?.trimmingCharacters(in: .whitespacesAndNewlines), !tpl.isEmpty {

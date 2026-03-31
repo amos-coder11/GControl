@@ -566,12 +566,24 @@ struct AIContractGeneratorView: View {
     
     // MARK: - Logic
     
+    private var currentFormData: ContractFormData {
+        ContractFormData(
+            kind: selectedDocumentKind,
+            clientName: clientName.trimmingCharacters(in: .whitespacesAndNewlines),
+            clientID: clientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            clientAddress: clientAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+            vehicleBrand: vehicleBrand.trimmingCharacters(in: .whitespacesAndNewlines),
+            vehicleModel: vehicleModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            priceEUR: price.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
     private func refreshContractPDFDataIfNeeded() {
         guard !generatedContractText.isEmpty else { return }
         if contractPDFData == nil {
             contractPDFData = ContractPDFExporter.makePDFData(
-                body: generatedContractText,
-                documentSubtitle: selectedDocumentKind.title
+                clauseBody: generatedContractText,
+                formData: currentFormData
             )
         }
     }
@@ -627,8 +639,8 @@ struct AIContractGeneratorView: View {
                 await MainActor.run {
                     generatedContractText = text
                     contractPDFData = ContractPDFExporter.makePDFData(
-                        body: text,
-                        documentSubtitle: selectedDocumentKind.title
+                        clauseBody: text,
+                        formData: currentFormData
                     )
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                         currentState = .result
