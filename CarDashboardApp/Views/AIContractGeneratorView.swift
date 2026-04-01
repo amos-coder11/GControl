@@ -11,7 +11,8 @@ enum AIContractState {
 
 struct AIContractGeneratorView: View {
     @Environment(\.dismiss) private var dismiss
-    
+    @EnvironmentObject private var invoiceHistory: InvoiceHistoryStore
+
     @State private var currentState: AIContractState = .typeSelection
     @State private var selectedDocumentKind: AIContractDocumentKind = .venta
     
@@ -642,6 +643,12 @@ struct AIContractGeneratorView: View {
                         clauseBody: text,
                         formData: currentFormData
                     )
+                    let vehicleLine = "\(brand) \(model)".trimmingCharacters(in: .whitespacesAndNewlines)
+                    invoiceHistory.recordGeneratedContract(
+                        kind: selectedDocumentKind,
+                        clientName: name.isEmpty ? "Sin nombre" : name,
+                        vehicleSummary: vehicleLine.isEmpty ? "Sin vehículo" : vehicleLine
+                    )
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                         currentState = .result
                     }
@@ -708,4 +715,5 @@ private struct ContractShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     AIContractGeneratorView()
+        .environmentObject(InvoiceHistoryStore())
 }

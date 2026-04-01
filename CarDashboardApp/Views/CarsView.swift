@@ -3,9 +3,11 @@ import SwiftUI
 struct CarsView: View {
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
 
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
+    @State private var showAddVehicleSheet = false
     @FocusState private var browseSearchFieldFocused: Bool
 
     private var displayedCars: [Car] {
@@ -105,8 +107,13 @@ struct CarsView: View {
                             }
                         }
 
-                        addCarButton
-                            .padding(.horizontal, 16)
+                        Button {
+                            showAddVehicleSheet = true
+                        } label: {
+                            addCarButton
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
                     }
                     .padding(.bottom, 28)
                     .frame(minWidth: 0, maxWidth: .infinity)
@@ -135,6 +142,10 @@ struct CarsView: View {
                     resultCount: carsVM.displayedBrowseCars().count,
                     onClear: {}
                 )
+            }
+            .sheet(isPresented: $showAddVehicleSheet) {
+                AddVehicleGuidanceSheet()
+                    .environmentObject(tabRouter)
             }
             .task {
                 if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
@@ -191,11 +202,66 @@ struct CarsView: View {
     }
 }
 
+// MARK: - Añadir coche (hoja compartida con Inicio)
+
+struct AddVehicleGuidanceSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var tabRouter: MainTabRouter
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Añadir vehículo")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text("Desde aquí vas al inventario de **Coches**: revisa el catálogo y usa el flujo de tu concesionario (ERP / panel web) para dar de alta unidades nuevas en Supabase.")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+
+                    Button {
+                        dismiss()
+                        tabRouter.selected = .cars
+                    } label: {
+                        Text("Ir a Coches")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .background(Capsule().fill(Color.white))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+                .padding(22)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 22))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
 #Preview {
     NavigationStack {
         CarsView()
             .environmentObject(CarsViewModel())
             .environmentObject(AuthViewModel())
+            .environmentObject(MainTabRouter())
     }
 }
 

@@ -1,50 +1,67 @@
+import Combine
 import SwiftUI
 import UIKit
 
-// MARK: - Pestañas (TabView nativo iOS 26 + Liquid Glass del sistema)
+// MARK: - Enrutador de pestañas (mismo módulo que `CarsView` / `DashboardView`)
 
-private enum MainAppTab: Hashable {
-    case home, cars, chat, settings, search
+enum CarHubMainTab: Hashable {
+    case home
+    case cars
+    case chat
+    case settings
+    case search
 }
 
+@MainActor
+final class MainTabRouter: ObservableObject {
+    @Published var selected: CarHubMainTab = .home
+}
+
+// MARK: - Pestañas (TabView nativo iOS 26 + Liquid Glass del sistema)
+
 struct MainTabView: View {
-    @State private var selectedTab: MainAppTab = .home
+    @StateObject private var tabRouter = MainTabRouter()
+    @StateObject private var invoiceHistory = InvoiceHistoryStore()
+    @StateObject private var notificationsStore = DashboardNotificationsStore()
+    @StateObject private var chatInbox = ChatInboxStore()
     @State private var chatSearchText = ""
 
-    @StateObject private var chatInbox = ChatInboxStore()
     @EnvironmentObject var carsVM: CarsViewModel
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab("Inicio", systemImage: "house.fill", value: MainAppTab.home) {
+        TabView(selection: $tabRouter.selected) {
+            Tab("Inicio", systemImage: "house.fill", value: CarHubMainTab.home) {
                 NavigationStack {
                     DashboardView()
                 }
             }
 
-            Tab("Coches", systemImage: "car.fill", value: MainAppTab.cars) {
+            Tab("Coches", systemImage: "car.fill", value: CarHubMainTab.cars) {
                 NavigationStack {
                     CarsView()
                 }
             }
 
-            Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: MainAppTab.chat) {
+            Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: CarHubMainTab.chat) {
                 ChatView(searchText: $chatSearchText)
             }
             .badge(chatInbox.totalUnansweredMessageCount)
 
-            Tab("Ajustes", systemImage: "gearshape.fill", value: MainAppTab.settings) {
+            Tab("Ajustes", systemImage: "gearshape.fill", value: CarHubMainTab.settings) {
                 NavigationStack {
                     SettingsView()
                 }
             }
 
-            Tab("Buscador", systemImage: "magnifyingglass", value: MainAppTab.search) {
+            Tab("Buscador", systemImage: "magnifyingglass", value: CarHubMainTab.search) {
                 SearchView()
                     .environmentObject(carsVM)
             }
         }
         .environmentObject(chatInbox)
+        .environmentObject(tabRouter)
+        .environmentObject(invoiceHistory)
+        .environmentObject(notificationsStore)
         /// Anula el `AccentColor` azul del catálogo: la tab seleccionada debe ser blanca, no azul.
         .accentColor(.white)
         .tint(.white)

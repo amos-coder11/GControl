@@ -1,50 +1,49 @@
 import SwiftUI
 
-private enum DashboardScrollID {
-    static let kpiCarousel = "dashboard_kpi_carousel"
-}
-
 struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
+    @EnvironmentObject private var invoiceHistory: InvoiceHistoryStore
+    @EnvironmentObject private var notificationsStore: DashboardNotificationsStore
+
     @StateObject private var vm = DealershipStatsViewModel()
     @StateObject private var communityVM = DashboardCommunityViewModel()
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var homeSearchText = ""
-    @State private var showAIContract = false
     @State private var showFinancialDetail = false
+    @State private var showFinancialStatsSheet = false
+    @State private var showNotificationsSheet = false
+    @State private var showAddCarSheet = false
+    @State private var showRankingSheet = false
+    @State private var showInvoiceHub = false
+    @State private var showBlitzSheet = false
 
     var body: some View {
         ZStack {
             DashboardHomeBackdropImage()
-            ScrollViewReader { proxy in
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     // Cabecera fija (no se desplaza con el contenido), como en la referencia.
                     DashboardHomeTopBar(
                         initials: auth.userInitials,
                         profileImage: auth.profileAvatarImage,
                         searchText: $homeSearchText,
-                        onStats: {
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                proxy.scrollTo(DashboardScrollID.kpiCarousel, anchor: .top)
-                            }
-                        },
-                        onNotifications: {}
+                        onStats: { showFinancialStatsSheet = true },
+                        onNotifications: { showNotificationsSheet = true }
                     )
                     .appChromeHeaderOuterPadding()
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 22) {
                             DashboardKPICarousel(vm: vm)
-                                .id(DashboardScrollID.kpiCarousel)
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 16)
 
                             DashboardQuickActionsRow(
-                                onAddCar: {},
-                                onRanking: {},
-                                onBudgets: { showAIContract = true },
-                                onMore: {}
+                                onAddCar: { showAddCarSheet = true },
+                                onRanking: { showRankingSheet = true },
+                                onBudgets: { showInvoiceHub = true },
+                                onMore: { showBlitzSheet = true }
                             )
 
                             DashboardFinancialSummaryCard(stats: vm, showDetail: $showFinancialDetail)
@@ -75,17 +74,34 @@ struct DashboardView: View {
                         .frame(minWidth: 0, maxWidth: .infinity)
                     }
                 }
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showAIContract) {
-            AIContractGeneratorView()
-        }
         .sheet(isPresented: $showFinancialDetail) {
             DashboardFinancialDetailSheet(stats: vm)
+        }
+        .sheet(isPresented: $showFinancialStatsSheet) {
+            DashboardFinancialDetailSheet(stats: vm)
+        }
+        .sheet(isPresented: $showNotificationsSheet) {
+            DashboardNotificationsSheet(store: notificationsStore)
+        }
+        .sheet(isPresented: $showAddCarSheet) {
+            AddVehicleGuidanceSheet()
+                .environmentObject(tabRouter)
+        }
+        .sheet(isPresented: $showRankingSheet) {
+            CommercialRankingSheet(profiles: communityVM.directory)
+        }
+        .sheet(isPresented: $showInvoiceHub) {
+            InvoiceAndContractsHubSheet()
+                .environmentObject(invoiceHistory)
+        }
+        .sheet(isPresented: $showBlitzSheet) {
+            BlitzHubSheet()
+                .environmentObject(tabRouter)
         }
         .onAppear {
             communityVM.attach(auth: auth)
@@ -300,4 +316,7 @@ private struct DashboardQuickActionsRow: View {
     DashboardView()
         .environmentObject(AuthViewModel())
         .environmentObject(CarsViewModel())
+        .environmentObject(MainTabRouter())
+        .environmentObject(InvoiceHistoryStore())
+        .environmentObject(DashboardNotificationsStore())
 }
