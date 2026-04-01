@@ -202,9 +202,7 @@ struct LiquidGlassTabBar: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
-                .foregroundStyle(
-                    isSelected ? PremiumAccent.tabActive : Color.primary.opacity(0.38)
-                )
+                .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.52))
             }
             .frame(maxWidth: .infinity)
             .frame(height: selectionDiameter)

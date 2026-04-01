@@ -321,7 +321,7 @@ struct AppChromeAvatarProfileButton: View {
             }
             .frame(width: AppChromeHeaderMetrics.avatarSize, height: AppChromeHeaderMetrics.avatarSize)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChromeCirclePressButtonStyle(diameter: AppChromeHeaderMetrics.avatarSize))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Perfil, abrir ajustes")
     }
@@ -383,7 +383,7 @@ struct AppChromeHeaderCircleIconButton: View {
                     .foregroundStyle(.white.opacity(0.95))
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChromeCirclePressButtonStyle())
         .accessibilityLabel(accessibilityLabel)
     }
 }

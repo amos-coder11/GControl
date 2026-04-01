@@ -79,6 +79,10 @@
 		AA000069 /* GarantiaGVModelo.pdf in Resources */ = {isa = PBXBuildFile; fileRef = AB000070 /* GarantiaGVModelo.pdf */; };
 		AA000070 /* ContractTemplateLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000071 /* ContractTemplateLoader.swift */; };
 		AA000071 /* ContractPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000072 /* ContractPDFExporter.swift */; };
+		AA000072 /* CommunityProfilesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000073 /* CommunityProfilesService.swift */; };
+		AA000073 /* DashboardLocationHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000074 /* DashboardLocationHub.swift */; };
+		AA000074 /* DashboardCommunityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000075 /* DashboardCommunityViewModel.swift */; };
+		AA000075 /* DashboardHomeRevolutSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000076 /* DashboardHomeRevolutSections.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -156,6 +160,10 @@
 		AB000070 /* GarantiaGVModelo.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = GarantiaGVModelo.pdf; sourceTree = "<group>"; };
 		AB000071 /* ContractTemplateLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTemplateLoader.swift; sourceTree = "<group>"; };
 		AB000072 /* ContractPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractPDFExporter.swift; sourceTree = "<group>"; };
+		AB000073 /* CommunityProfilesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityProfilesService.swift; sourceTree = "<group>"; };
+		AB000074 /* DashboardLocationHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLocationHub.swift; sourceTree = "<group>"; };
+		AB000075 /* DashboardCommunityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCommunityViewModel.swift; sourceTree = "<group>"; };
+		AB000076 /* DashboardHomeRevolutSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeRevolutSections.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -223,6 +231,7 @@
 				AB000007 /* SettingsViewModel.swift */,
 				AB000035 /* AuthViewModel.swift */,
 				AB000044 /* LeadsViewModel.swift */,
+				AB000075 /* DashboardCommunityViewModel.swift */,
 				AB000060 /* AppLockManager.swift */,
 			);
 			path = ViewModels;
@@ -245,6 +254,8 @@
 				AB000008 /* TelemetryService.swift */,
 				AB000009 /* MockTelemetryService.swift */,
 				AB000059 /* AppPINKeychain.swift */,
+				AB000073 /* CommunityProfilesService.swift */,
+				AB000074 /* DashboardLocationHub.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -256,6 +267,7 @@
 				AB000036 /* LoginView.swift */,
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
+				AB000076 /* DashboardHomeRevolutSections.swift */,
 				AB000063 /* AIContractGeneratorView.swift */,
 				AB000012 /* CarsView.swift */,
 				AB000028 /* ChatView.swift */,
@@ -475,6 +487,10 @@
 				AA000061 /* AppLockManager.swift in Sources */,
 				AA000062 /* LockScreenView.swift in Sources */,
 				AA000063 /* PINSetupView.swift in Sources */,
+				AA000072 /* CommunityProfilesService.swift in Sources */,
+				AA000073 /* DashboardLocationHub.swift in Sources */,
+				AA000074 /* DashboardCommunityViewModel.swift in Sources */,
+				AA000075 /* DashboardHomeRevolutSections.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -616,6 +632,7 @@
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Carhub365;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -649,6 +666,7 @@
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Carhub365;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -114,23 +114,6 @@ struct RevolutBackgroundView: View {
     }
 }
 
-/// Patrón lineal del asset `ChatBackgroundPattern` encima del fondo (lista y conversación de chat).
-struct ChatBackgroundPatternOverlay: View {
-    var opacity: Double = 0.42
-
-    var body: some View {
-        Image("ChatBackgroundPattern")
-            .resizable()
-            .scaledToFill()
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-            .clipped()
-            .opacity(opacity)
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-}
-
 /// Mismo fondo animado que Inicio + modo oscuro (Chat, Coches, Ajustes, Buscador).
 struct RevolutChromeContainer<Content: View>: View {
     @ViewBuilder var content: () -> Content

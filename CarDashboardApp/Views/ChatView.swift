@@ -32,13 +32,10 @@ struct ChatView: View {
 
     var body: some View {
         RevolutChromeContainer {
-            ZStack {
-                ChatBackgroundPatternOverlay(opacity: 0.38)
-                NavigationStack(path: $path) {
+            NavigationStack(path: $path) {
                 VStack(spacing: 0) {
                     AppChromeHeaderRow(
                         initials: auth.userInitials,
-                        profileImage: auth.profileAvatarImage,
                         searchText: $searchText,
                         prompt: Text("Buscar coches…").foregroundStyle(.white),
                         showsSearchClearButton: true,
@@ -66,7 +63,7 @@ struct ChatView: View {
                             } label: {
                                 chatListRow(thread)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(ChromeRowPressButtonStyle())
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowBackground(ChatListChromeTheme.rowBackground)
                             .listRowSeparatorTint(ChatListChromeTheme.rowSeparator)
@@ -99,7 +96,7 @@ struct ChatView: View {
                                 } label: {
                                     Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
                                 }
-                                .tint(Color(red: 0.0, green: 0.48, blue: 1.0))
+                                .tint(.white)
 
                                 Button {
                                     togglePin(thread)
@@ -130,8 +127,8 @@ struct ChatView: View {
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
-            }
         }
+        .accentColor(.white)
     }
 
     // MARK: - Acciones swipe (orden: el primero es el del deslizamiento completo)

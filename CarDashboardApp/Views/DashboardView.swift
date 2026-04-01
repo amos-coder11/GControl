@@ -8,8 +8,11 @@ struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @StateObject private var vm = DealershipStatsViewModel()
+    @StateObject private var communityVM = DashboardCommunityViewModel()
+    @StateObject private var locationHub = DashboardLocationHub()
     @State private var homeSearchText = ""
     @State private var showAIContract = false
+    @State private var showFinancialDetail = false
 
     var body: some View {
         ZStack {
@@ -44,6 +47,27 @@ struct DashboardView: View {
                                 onMore: {}
                             )
 
+                            DashboardFinancialSummaryCard(stats: vm, showDetail: $showFinancialDetail)
+
+                            DashboardTeamMapCard(
+                                community: communityVM,
+                                locationHub: locationHub,
+                                currentUserId: auth.session?.user.id
+                            )
+
+                            DashboardConnectedUsersStrip(
+                                members: communityVM.directory,
+                                currentUserId: auth.session?.user.id,
+                                accessToken: auth.session?.accessToken
+                            )
+
+                            if let err = communityVM.lastError, !err.isEmpty {
+                                Text(err)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.orange.opacity(0.9))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
                             DashboardHomeNotificationsSection(cars: carsVM.cars)
                         }
                         .padding(.horizontal, 16)
@@ -59,6 +83,26 @@ struct DashboardView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showAIContract) {
             AIContractGeneratorView()
+        }
+        .sheet(isPresented: $showFinancialDetail) {
+            DashboardFinancialDetailSheet(stats: vm)
+        }
+        .onAppear {
+            communityVM.attach(auth: auth)
+            locationHub.onLocationForUpload = { coord in
+                Task { await communityVM.uploadMyCoordinate(coord) }
+            }
+            locationHub.requestWhenInUseAndStart()
+            communityVM.startPeriodicRefresh()
+            Task { await communityVM.refresh() }
+        }
+        .onDisappear {
+            communityVM.stopPeriodicRefresh()
+            locationHub.stopUpdates()
+        }
+        .onChange(of: auth.session?.user.id) { _, _ in
+            communityVM.attach(auth: auth)
+            Task { await communityVM.refresh() }
         }
     }
 }

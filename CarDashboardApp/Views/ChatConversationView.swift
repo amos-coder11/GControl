@@ -474,7 +474,7 @@ struct ChatConversationView: View {
                 }
                 .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChromeCirclePressButtonStyle())
 
             HStack(alignment: .bottom, spacing: 6) {
                 ZStack(alignment: .topLeading) {
@@ -506,7 +506,7 @@ struct ChatConversationView: View {
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ChromeSmallCirclePressButtonStyle(diameter: 28))
                     .accessibilityLabel("Limpiar mensaje")
                 }
 
@@ -520,7 +520,7 @@ struct ChatConversationView: View {
                                 .fill(draftIsEmpty ? Color.white.opacity(0.14) : composerSendBlue)
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChromeSmallCirclePressButtonStyle(diameter: 28))
                 .disabled(draftIsEmpty)
             }
             .padding(.horizontal, 12)
@@ -769,7 +769,6 @@ private struct ConversationBackdrop: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            ChatBackgroundPatternOverlay(opacity: 0.4)
         }
         .ignoresSafeArea()
     }

@@ -9,6 +9,16 @@ enum PremiumAccent {
     static let ink = Color(red: 0.18, green: 0.22, blue: 0.28)
     /// Azul de ítem activo en tab bar (estilo referencia tipo “Chats”).
     static let tabActive = Color(red: 0.16, green: 0.44, blue: 0.98)
+
+    /// Fondo del dock de pestañas (#0501FF → #4D01FF).
+    static let tabBarDockBackgroundGradient = LinearGradient(
+        colors: [
+            Color(red: 5 / 255, green: 1 / 255, blue: 255 / 255),
+            Color(red: 77 / 255, green: 1 / 255, blue: 255 / 255)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
 
 /// Pastilla tipo glass para badges y chips (mini cápsula translúcida).
@@ -184,6 +194,46 @@ struct DashboardChromeHeaderCircleBackground: View {
                     )
             }
             .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+    }
+}
+
+/// Retroalimentación al pulsar: destello blanco (evita el resaltado azul del sistema en botones circulares).
+struct ChromeCirclePressButtonStyle: ButtonStyle {
+    /// Por defecto coincide con `AppChromeHeaderMetrics.circleButtonSize`.
+    var diameter: CGFloat = 44
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay {
+                Circle()
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.28 : 0))
+                    .frame(width: diameter, height: diameter)
+            }
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// Misma idea para filas anchas (lista de chats).
+struct ChromeRowPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0))
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// Círculo pequeño (p. ej. enviar en el compositor).
+struct ChromeSmallCirclePressButtonStyle: ButtonStyle {
+    var diameter: CGFloat = 28
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay {
+                Circle()
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.35 : 0))
+                    .frame(width: diameter, height: diameter)
+            }
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
