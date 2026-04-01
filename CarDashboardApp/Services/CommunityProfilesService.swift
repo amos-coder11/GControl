@@ -9,6 +9,8 @@ enum CommunityProfilesService {
         let avatarUrl: String?
         let latitude: Double?
         let longitude: Double?
+        /// ISO8601 desde Supabase (`location_updated_at`).
+        let locationUpdatedAt: String?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -16,6 +18,7 @@ enum CommunityProfilesService {
             case avatarUrl = "avatar_url"
             case latitude
             case longitude
+            case locationUpdatedAt = "location_updated_at"
         }
 
         var resolvedDisplayName: String {
@@ -26,6 +29,15 @@ enum CommunityProfilesService {
         var hasCoordinate: Bool {
             guard let lat = latitude, let lon = longitude else { return false }
             return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+        }
+
+        /// Fecha de la última posición guardada en servidor (si existe).
+        var locationUpdatedDate: Date? {
+            guard let s = locationUpdatedAt?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+            let plain = ISO8601DateFormatter()
+            if let d = plain.date(from: s) { return d }
+            plain.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return plain.date(from: s)
         }
     }
 
@@ -41,7 +53,7 @@ enum CommunityProfilesService {
         }
     }
 
-    private static let selectColumns = "id, avatar_url, full_name, latitude, longitude"
+    private static let selectColumns = "id, avatar_url, full_name, latitude, longitude, location_updated_at"
 
     /// Listado para carrusel y mapa (respeta RLS).
     static func fetchDirectory(client: SupabaseClient) async throws -> [DirectoryRow] {

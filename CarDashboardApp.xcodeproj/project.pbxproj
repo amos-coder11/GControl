@@ -85,6 +85,7 @@
 		AA000075 /* DashboardHomeRevolutSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000076 /* DashboardHomeRevolutSections.swift */; };
 		AA000077 /* InvoiceHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000078 /* InvoiceHistoryStore.swift */; };
 		AA000078 /* DashboardHubScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000079 /* DashboardHubScreens.swift */; };
+		AA000080 /* TeamLocationMapViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000080 /* TeamLocationMapViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -168,6 +169,7 @@
 		AB000076 /* DashboardHomeRevolutSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeRevolutSections.swift; sourceTree = "<group>"; };
 		AB000078 /* InvoiceHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceHistoryStore.swift; sourceTree = "<group>"; };
 		AB000079 /* DashboardHubScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHubScreens.swift; sourceTree = "<group>"; };
+		AB000080 /* TeamLocationMapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLocationMapViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -273,6 +275,7 @@
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
 				AB000079 /* DashboardHubScreens.swift */,
+				AB000080 /* TeamLocationMapViews.swift */,
 				AB000076 /* DashboardHomeRevolutSections.swift */,
 				AB000063 /* AIContractGeneratorView.swift */,
 				AB000012 /* CarsView.swift */,
@@ -499,6 +502,7 @@
 				AA000075 /* DashboardHomeRevolutSections.swift in Sources */,
 				AA000077 /* InvoiceHistoryStore.swift in Sources */,
 				AA000078 /* DashboardHubScreens.swift in Sources */,
+				AA000080 /* TeamLocationMapViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

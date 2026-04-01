@@ -51,7 +51,10 @@ struct DashboardView: View {
                             DashboardTeamMapCard(
                                 community: communityVM,
                                 locationHub: locationHub,
-                                currentUserId: auth.session?.user.id
+                                currentUserId: auth.session?.user.id,
+                                accessToken: auth.session?.accessToken,
+                                currentUserProfileImage: auth.profileAvatarImage,
+                                currentUserInitials: auth.userInitials
                             )
 
                             DashboardConnectedUsersStrip(

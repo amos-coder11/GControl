@@ -201,6 +201,9 @@ struct DashboardTeamMapCard: View {
     @ObservedObject var community: DashboardCommunityViewModel
     @ObservedObject var locationHub: DashboardLocationHub
     var currentUserId: UUID?
+    var accessToken: String?
+    var currentUserProfileImage: UIImage?
+    var currentUserInitials: String
 
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -208,105 +211,87 @@ struct DashboardTeamMapCard: View {
             span: MKCoordinateSpan(latitudeDelta: 0.35, longitudeDelta: 0.35)
         )
     )
+    @State private var showTeamMapPanel = false
 
     private let corner: CGFloat = 24
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Ubicación del equipo")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.35))
-            }
-
-            ZStack {
-                Map(position: $position) {
-                    if let c = locationHub.coordinate {
-                        Marker("Tú", coordinate: c)
-                            .tint(.cyan)
-                    }
-                    ForEach(mapPeers) { row in
-                        Marker(row.resolvedDisplayName, coordinate: CLLocationCoordinate2D(latitude: row.latitude!, longitude: row.longitude!))
-                            .tint(.white)
-                    }
-                }
-                .mapStyle(.standard(elevation: .realistic))
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .allowsHitTesting(true)
-
-                if locationHub.authorizationStatus == .denied || locationHub.authorizationStatus == .restricted {
-                    Text("Activa la ubicación para compartir tu posición con el equipo y ver el mapa en vivo.")
-                        .font(.system(size: 12, weight: .medium))
-                        .multilineTextAlignment(.center)
+        Button {
+            showTeamMapPanel = true
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Ubicación del equipo")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
-                        .padding(14)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .padding(12)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+
+                ZStack {
+                    TeamLiveMapView(
+                        position: $position,
+                        community: community,
+                        locationHub: locationHub,
+                        currentUserId: currentUserId,
+                        accessToken: accessToken,
+                        currentUserProfileImage: currentUserProfileImage,
+                        currentUserInitials: currentUserInitials,
+                        pinDiameter: 34,
+                        mapCornerRadius: 20
+                    )
+                    .frame(height: 220)
+                    .allowsHitTesting(false)
+
+                    if locationHub.authorizationStatus == .denied || locationHub.authorizationStatus == .restricted {
+                        Text("Activa la ubicación para compartir tu posición con el equipo y ver el mapa en vivo.")
+                            .font(.system(size: 12, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+                            .padding(14)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(12)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(height: 220)
+
+                if community.directory.filter(\.hasCoordinate).filter({ $0.id != currentUserId }).isEmpty,
+                   locationHub.coordinate == nil,
+                   !hasStoredSelfCoordinate
+                {
+                    Text("Cuando los usuarios compartan ubicación, aparecerán aquí. Toca para ver el mapa completo.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.42))
+                } else {
+                    Text("Toca para abrir el mapa con fotos y posición exacta de cada usuario.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.42))
                 }
             }
-            .frame(height: 220)
-
-            if community.directory.filter(\.hasCoordinate).filter({ $0.id != currentUserId }).isEmpty,
-               locationHub.coordinate == nil
-            {
-                Text("Cuando los usuarios compartan ubicación, aparecerán aquí. Actualización periódica.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.42))
+            .padding(16)
+            .background {
+                DashboardChromeCardBackground(cornerRadius: corner)
             }
         }
-        .padding(16)
-        .background {
-            DashboardChromeCardBackground(cornerRadius: corner)
-        }
-        .onAppear { updateRegion() }
-        .onChange(of: community.directory.count) { _, _ in updateRegion() }
-        .onChange(of: locationHub.coordinate?.latitude) { _, _ in updateRegion() }
-    }
-
-    private var mapPeers: [CommunityProfilesService.DirectoryRow] {
-        community.directory.filter { row in
-            row.hasCoordinate && row.id != currentUserId
-        }
-    }
-
-    private func updateRegion() {
-        var coords: [CLLocationCoordinate2D] = mapPeers.map {
-            CLLocationCoordinate2D(latitude: $0.latitude!, longitude: $0.longitude!)
-        }
-        if let c = locationHub.coordinate { coords.append(c) }
-        position = .region(Self.region(fitting: coords))
-    }
-
-    private static func region(fitting coords: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
-        let defaultCenter = CLLocationCoordinate2D(latitude: 40.4168, longitude: -3.7038)
-        let defaultSpan = MKCoordinateSpan(latitudeDelta: 0.35, longitudeDelta: 0.35)
-        guard !coords.isEmpty else {
-            return MKCoordinateRegion(center: defaultCenter, span: defaultSpan)
-        }
-        if coords.count == 1 {
-            return MKCoordinateRegion(
-                center: coords[0],
-                span: MKCoordinateSpan(latitudeDelta: 0.07, longitudeDelta: 0.07)
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showTeamMapPanel) {
+            TeamMapDetailSheet(
+                community: community,
+                locationHub: locationHub,
+                currentUserId: currentUserId,
+                accessToken: accessToken,
+                currentUserProfileImage: currentUserProfileImage,
+                currentUserInitials: currentUserInitials
             )
         }
-        var minLat = coords[0].latitude
-        var maxLat = coords[0].latitude
-        var minLon = coords[0].longitude
-        var maxLon = coords[0].longitude
-        for c in coords.dropFirst() {
-            minLat = min(minLat, c.latitude)
-            maxLat = max(maxLat, c.latitude)
-            minLon = min(minLon, c.longitude)
-            maxLon = max(maxLon, c.longitude)
-        }
-        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
-        let latDelta = max((maxLat - minLat) * 1.4, 0.05)
-        let lonDelta = max((maxLon - minLon) * 1.4, 0.05)
-        return MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta))
+    }
+
+    private var hasStoredSelfCoordinate: Bool {
+        guard let uid = currentUserId else { return false }
+        return community.directory.contains { $0.id == uid && $0.hasCoordinate }
     }
 }
 
