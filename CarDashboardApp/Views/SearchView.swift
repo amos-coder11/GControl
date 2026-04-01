@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchView: View {
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
 
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
@@ -32,6 +33,10 @@ struct SearchView: View {
             RevolutChromeContainer {
                 VStack(spacing: 0) {
                     stickyBrowseChrome
+
+                    iaShortcutRow
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 18) {
@@ -109,6 +114,57 @@ struct SearchView: View {
         }
     }
 
+    private var iaShortcutRow: some View {
+        Button {
+            tabRouter.selected = .ai
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.45, green: 0.35, blue: 0.95),
+                                    Color(red: 0.2, green: 0.55, blue: 0.98),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("IA — Coordinador de equipo")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text("Voz en vivo, tareas y mensajes por nombre")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.48))
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.38))
+            }
+            .padding(16)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     private var stickyBrowseChrome: some View {
         CarsBrowseHeaderBar(
             initials: auth.userInitials,
@@ -128,4 +184,5 @@ struct SearchView: View {
     SearchView()
         .environmentObject(CarsViewModel())
         .environmentObject(AuthViewModel())
+        .environmentObject(MainTabRouter())
 }

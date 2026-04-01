@@ -317,4 +317,78 @@ enum AnthropicContractClient {
 
         return prompt
     }
+
+    // MARK: - Coordinador de equipo (IA voz / texto)
+
+    /// Respuesta del modelo con posible bloque `<<<ACTIONS>>>…<<<ENDACTIONS>>>` para enrutar mensajes a compañeros.
+    static func teamCoordinatorReply(
+        rosterLines: String,
+        conversation: [(isUser: Bool, text: String)]
+    ) async throws -> String {
+        guard let key = apiKey else { throw ClientError.missingAPIKey }
+
+        let system = """
+        Eres el coordinador de equipo de CarHub (concesionario). El usuario es el jefe y te habla en español.
+
+        CONOCES a estas personas del directorio (cada línea: nombre como aparece en la app):
+        \(rosterLines)
+
+        - Responde de forma breve y operativa.
+        - Si el jefe pide avisar, encargar o mandar algo a alguien por nombre (p. ej. «Alberto»), identifica a la persona \
+        más probable de la lista (nombre o apodo que coincida).
+        - Para encargos que requieran que el compañero haga cosas comprobables (fotos, comprobaciones, llamadas), usa TASK en lugar de SEND: \
+        el destinatario verá una tarjeta con «Aceptar tarea» y luego una lista de pruebas; en cada prueba debe adjuntar foto y pulsar «Validar prueba».
+        - Para avisos cortos sin pruebas, puedes usar SEND.
+
+        Tras tu texto natural para el jefe, si aplica, añade EXACTAMENTE este bloque al final:
+
+        <<<ACTIONS>>>
+        SEND|NombreExactoComoEnLaLista|mensaje breve para su chat
+        TASK|NombreExactoComoEnLaLista|Título corto|Instrucciones claras para el destinatario (sin el carácter |)|Primera prueba (p. ej. Foto del vehículo en patio)|Segunda prueba|…
+        <<<ENDACTIONS>>>
+
+        Reglas TASK: mínimo una línea de prueba después del cuerpo; no uses el carácter | dentro de título, cuerpo ni pruebas. \
+        Una línea SEND o TASK por destinatario. Si no hay envíos, omite todo el bloque. No inventes nombres fuera de la lista.
+        """
+
+        let msgs: [RequestBody.Message] = conversation.map { turn in
+            RequestBody.Message(role: turn.isUser ? "user" : "assistant", content: turn.text)
+        }
+
+        let body = RequestBody(
+            model: model,
+            max_tokens: 2048,
+            system: system,
+            messages: msgs
+        )
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue(key, forHTTPHeaderField: "x-api-key")
+        request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ClientError.invalidResponse }
+
+        guard (200 ... 299).contains(http.statusCode) else {
+            if let env = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data), let e = env.error {
+                throw ClientError.httpStatus(http.statusCode, e.message)
+            }
+            let snippet = String(data: data, encoding: .utf8)
+            throw ClientError.httpStatus(http.statusCode, snippet)
+        }
+
+        let decoded = try JSONDecoder().decode(MessagesResponse.self, from: data)
+        let text = decoded.content.compactMap { block -> String? in
+            guard block.type == "text", let t = block.text?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
+                return nil
+            }
+            return t
+        }.joined(separator: "\n\n")
+
+        if text.isEmpty { throw ClientError.decodingFailed }
+        return text
+    }
 }

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Usamos el micrófono para transcribir tus órdenes al coordinador IA en tiempo real.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.</string>
 	<key>USER_PROFILES_TABLE</key>
 	<string>user_profiles</string>
 	<key>ANTHROPIC_API_KEY</key>

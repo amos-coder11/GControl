@@ -3,6 +3,18 @@ import UIKit
 
 // MARK: - Lista de chat (fondo Revolut / liquid glass como Inicio)
 
+private enum ChatInboxListSegment: Int, CaseIterable {
+    case team
+    case general
+
+    var title: String {
+        switch self {
+        case .team: return "Equipo"
+        case .general: return "Generales"
+        }
+    }
+}
+
 private enum ChatListChromeTheme {
     static let listBackground = Color.clear
     static let rowBackground = Color.clear
@@ -18,16 +30,63 @@ struct ChatView: View {
 
     @EnvironmentObject private var inbox: ChatInboxStore
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @State private var path = NavigationPath()
+    @State private var listSegment: ChatInboxListSegment = .team
     @FocusState private var chatSearchFieldFocused: Bool
 
+    private var searchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     private var filteredThreads: [ChatThread] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let base = inbox.liveThreads
-        guard !q.isEmpty else { return base }
+        guard !searchQuery.isEmpty else { return base }
         return base.filter {
-            $0.title.lowercased().contains(q) || $0.preview.lowercased().contains(q)
+            $0.title.lowercased().contains(searchQuery) || $0.preview.lowercased().contains(searchQuery)
         }
+    }
+
+    private var teamSectionThreads: [ChatThread] {
+        var list: [ChatThread] = []
+        if let g = inbox.teamGroupChatThread { list.append(g) }
+        list.append(contentsOf: inbox.teamDirectChatThreads)
+        return list
+    }
+
+    private var filteredTeamSectionThreads: [ChatThread] {
+        guard !searchQuery.isEmpty else { return teamSectionThreads }
+        return teamSectionThreads.filter {
+            $0.title.lowercased().contains(searchQuery) || $0.preview.lowercased().contains(searchQuery)
+        }
+    }
+
+    private var searchPrompt: Text {
+        switch listSegment {
+        case .team:
+            return Text("Buscar en equipo…").foregroundStyle(.white)
+        case .general:
+            return Text("Buscar en plataformas…").foregroundStyle(.white)
+        }
+    }
+
+    private var teamEmptyFootnote: String {
+        if !searchQuery.isEmpty {
+            return "No hay coincidencias. Prueba otro término o cambia a Generales."
+        }
+        let others = communityVM.directory.filter { $0.userId != auth.session?.user.id }
+        if others.isEmpty {
+            return "Cuando haya más personas en el directorio, verás aquí el grupo y los chats privados del equipo (tú no apareces en la lista)."
+        }
+        return "Abre un chat desde Inicio o espera a que el directorio se actualice."
+    }
+
+    private var generalEmptyFootnote: String {
+        if !searchQuery.isEmpty {
+            return "No hay coincidencias. Prueba otro término o cambia a Equipo."
+        }
+        return "Los leads de Instagram, WhatsApp y otras plataformas aparecen aquí."
     }
 
     var body: some View {
@@ -37,7 +96,7 @@ struct ChatView: View {
                     AppChromeHeaderRow(
                         initials: auth.userInitials,
                         searchText: $searchText,
-                        prompt: Text("Buscar coches…").foregroundStyle(.white),
+                        prompt: searchPrompt,
                         showsSearchClearButton: true,
                         searchFieldFocused: $chatSearchFieldFocused
                     ) {
@@ -56,54 +115,42 @@ struct ChatView: View {
                     }
                     .appChromeHeaderOuterPadding()
 
+                    chatInboxSegmentBar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 6)
+
                     List {
-                        ForEach(filteredThreads) { thread in
-                            Button {
-                                path.append(thread)
-                            } label: {
-                                chatListRow(thread)
+                        if listSegment == .team {
+                            if filteredTeamSectionThreads.isEmpty {
+                                Section {
+                                    chatEmptyPlaceholder(
+                                        title: "Equipo",
+                                        systemImage: "person.3.fill",
+                                        footnote: teamEmptyFootnote
+                                    )
+                                }
+                            } else {
+                                Section {
+                                    ForEach(filteredTeamSectionThreads) { thread in
+                                        teamOrLeadChatRow(thread)
+                                    }
+                                }
                             }
-                            .buttonStyle(ChromeRowPressButtonStyle())
-                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                            .listRowBackground(ChatListChromeTheme.rowBackground)
-                            .listRowSeparatorTint(ChatListChromeTheme.rowSeparator)
-                            // Deslizar izquierda: corto → Silenciar + Eliminar; largo (full swipe) → Archivar (1.º en el closure).
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button {
-                                    archiveThread(thread)
-                                } label: {
-                                    Label("Archivar", systemImage: "archivebox.fill")
+                        } else {
+                            if filteredThreads.isEmpty {
+                                Section {
+                                    chatEmptyPlaceholder(
+                                        title: "Generales",
+                                        systemImage: "bubble.left.and.bubble.right.fill",
+                                        footnote: generalEmptyFootnote
+                                    )
                                 }
-                                .tint(Color(white: 0.55))
-
-                                Button(role: .destructive) {
-                                    deleteThread(thread)
-                                } label: {
-                                    Label("Eliminar", systemImage: "trash.fill")
+                            } else {
+                                Section {
+                                    ForEach(filteredThreads) { thread in
+                                        teamOrLeadChatRow(thread)
+                                    }
                                 }
-
-                                Button {
-                                    muteThread(thread)
-                                } label: {
-                                    Label("Silenciar", systemImage: "speaker.slash.fill")
-                                }
-                                .tint(.orange)
-                            }
-                            // Deslizar derecha: corto → Fijar + No leído; largo (full swipe) → No leído (1.º en el closure).
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                Button {
-                                    markUnread(thread)
-                                } label: {
-                                    Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
-                                }
-                                .tint(.white)
-
-                                Button {
-                                    togglePin(thread)
-                                } label: {
-                                    Label("Fijar", systemImage: "pin.fill")
-                                }
-                                .tint(Color(red: 0.2, green: 0.78, blue: 0.35))
                             }
                         }
                     }
@@ -129,6 +176,128 @@ struct ChatView: View {
             }
         }
         .accentColor(.white)
+        .onAppear {
+            syncTeamThreadsFromDirectory()
+            openPendingChatNavigation()
+        }
+        .onChange(of: communityVM.directory) { _, _ in
+            syncTeamThreadsFromDirectory()
+        }
+        .onChange(of: chatNav.threadToOpen?.id) { _, _ in
+            openPendingChatNavigation()
+        }
+    }
+
+    private func syncTeamThreadsFromDirectory() {
+        inbox.syncTeamThreads(from: communityVM.directory, currentUserId: auth.session?.user.id)
+    }
+
+    private func openPendingChatNavigation() {
+        guard let t = chatNav.threadToOpen else { return }
+        if t.kind == .teamGroup || t.kind == .teamDirect {
+            listSegment = .team
+        } else {
+            listSegment = .general
+        }
+        path.append(t)
+        chatNav.threadToOpen = nil
+    }
+
+    private var chatInboxSegmentBar: some View {
+        HStack(spacing: 0) {
+            ForEach(ChatInboxListSegment.allCases, id: \.rawValue) { segment in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        listSegment = segment
+                    }
+                } label: {
+                    Text(segment.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(listSegment == segment ? .white : .white.opacity(0.42))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background {
+                            if listSegment == segment {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .fill(Color.white.opacity(0.14))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.75)
+                }
+        }
+    }
+
+    private func chatEmptyPlaceholder(title: String, systemImage: String, footnote: String) -> some View {
+        ContentUnavailableView {
+            Label(title, systemImage: systemImage)
+        } description: {
+            Text(footnote)
+        }
+        .foregroundStyle(.white)
+        .symbolRenderingMode(.hierarchical)
+        .tint(.white.opacity(0.85))
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
+        .listRowBackground(ChatListChromeTheme.rowBackground)
+    }
+
+    @ViewBuilder
+    private func teamOrLeadChatRow(_ thread: ChatThread) -> some View {
+        Button {
+            path.append(thread)
+        } label: {
+            chatListRow(thread)
+        }
+        .buttonStyle(ChromeRowPressButtonStyle())
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .listRowBackground(ChatListChromeTheme.rowBackground)
+        .listRowSeparatorTint(ChatListChromeTheme.rowSeparator)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                archiveThread(thread)
+            } label: {
+                Label("Archivar", systemImage: "archivebox.fill")
+            }
+            .tint(Color(white: 0.55))
+
+            Button(role: .destructive) {
+                deleteThread(thread)
+            } label: {
+                Label("Eliminar", systemImage: "trash.fill")
+            }
+
+            Button {
+                muteThread(thread)
+            } label: {
+                Label("Silenciar", systemImage: "speaker.slash.fill")
+            }
+            .tint(.orange)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                markUnread(thread)
+            } label: {
+                Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
+            }
+            .tint(.white)
+
+            Button {
+                togglePin(thread)
+            } label: {
+                Label("Fijar", systemImage: "pin.fill")
+            }
+            .tint(Color(red: 0.2, green: 0.78, blue: 0.35))
+        }
     }
 
     // MARK: - Acciones swipe (orden: el primero es el del deslizamiento completo)
@@ -221,7 +390,15 @@ struct ChatView: View {
     }
 
     private func avatar(for thread: ChatThread) -> some View {
-        ChatThreadAvatarView(thread: thread, diameter: 56)
+        ChatInboxListAvatarView(
+            thread: thread,
+            directory: communityVM.directory,
+            accessToken: auth.session?.accessToken,
+            currentUserId: auth.session?.user.id,
+            localProfileImage: auth.profileAvatarImage,
+            localInitials: auth.userInitials,
+            diameter: 56
+        )
     }
 
     @ViewBuilder
@@ -275,4 +452,6 @@ struct ChatView: View {
     ChatView(searchText: .constant(""))
         .environmentObject(ChatInboxStore())
         .environmentObject(AuthViewModel())
+        .environmentObject(DashboardCommunityViewModel())
+        .environmentObject(ChatNavigationCoordinator())
 }

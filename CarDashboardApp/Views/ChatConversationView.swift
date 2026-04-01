@@ -56,6 +56,8 @@ struct ChatConversationView: View {
     let thread: ChatThread
 
     @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var auth: AuthViewModel
     @State private var liveMessages: [ChatMessage] = []
     @State private var draft = ""
     @State private var selectedPhoto: PhotosPickerItem?
@@ -63,12 +65,23 @@ struct ChatConversationView: View {
     /// Mismos márgenes que el scroll (sincroniza la barra inferior al salir del GeometryReader).
     @State private var inputBarHorizontalPadding = ChatHorizontalPadding(leading: 20, trailing: 20)
 
-    private var allMessages: [ChatMessage] {
-        Self.mockMessages(for: thread) + liveMessages
+    private var mockMsgs: [ChatMessage] {
+        Self.mockMessages(for: thread)
     }
 
     private var draftIsEmpty: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var conversationStatusLine: String {
+        switch thread.kind {
+        case .teamGroup:
+            return "Grupo del directorio"
+        case .teamDirect:
+            return "Mensaje privado · equipo"
+        case .lead:
+            return "últ. vez recientemente"
+        }
     }
 
     /// Cabecera conversación: título blanco y estado en gris más marcado.
@@ -82,6 +95,10 @@ struct ChatConversationView: View {
     private let navBarContentInset: CGFloat = 20
     /// Espacio mínimo entre burbuja y el lado opuesto dentro del ancho útil.
     private let bubbleEdgeMargin: CGFloat = 12
+
+    private var chatBottomAnchorId: String {
+        "chat-bottom-\(thread.id.uuidString)-\(liveMessages.count)-\(chatInbox.coordinatorTimelineTick)"
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -100,11 +117,25 @@ struct ChatConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 8) {
-                            ForEach(allMessages) { msg in
+                            ForEach(mockMsgs) { msg in
                                 messageBubble(msg, maxBubbleWidth: maxBubble)
                                     .frame(maxWidth: innerW)
                                     .id(msg.id)
                             }
+                            if thread.kind == .teamDirect {
+                                ForEach(chatInbox.coordinatorTasks(forPeer: thread.id)) { task in
+                                    coordinatorTaskCard(task, maxBubbleWidth: maxBubble, innerW: innerW)
+                                        .id(task.id)
+                                }
+                            }
+                            ForEach(liveMessages) { msg in
+                                messageBubble(msg, maxBubbleWidth: maxBubble)
+                                    .frame(maxWidth: innerW)
+                                    .id(msg.id)
+                            }
+                            Color.clear
+                                .frame(height: 1)
+                                .id(chatBottomAnchorId)
                         }
                         .frame(width: innerW, alignment: .center)
                         .padding(.leading, leadingPad)
@@ -119,7 +150,10 @@ struct ChatConversationView: View {
                             dismissComposerKeyboard()
                         }
                     )
-                    .onChange(of: allMessages.count) { _, _ in
+                    .onChange(of: liveMessages.count) { _, _ in
+                        scrollChatToBottom(proxy: proxy)
+                    }
+                    .onChange(of: chatInbox.coordinatorTimelineTick) { _, _ in
                         scrollChatToBottom(proxy: proxy)
                     }
                     .onAppear {
@@ -155,7 +189,7 @@ struct ChatConversationView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(chatToolbarNameColor)
                         .lineLimit(1)
-                    Text("últ. vez recientemente")
+                    Text(conversationStatusLine)
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(chatToolbarStatusColor)
                 }
@@ -209,11 +243,19 @@ struct ChatConversationView: View {
     // MARK: - Avatar (derecha toolbar)
 
     private var conversationAvatar: some View {
-        ChatThreadAvatarView(thread: thread, diameter: 38)
-            .overlay {
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.92), lineWidth: 2)
-            }
+        ChatInboxListAvatarView(
+            thread: thread,
+            directory: communityVM.directory,
+            accessToken: auth.session?.accessToken,
+            currentUserId: auth.session?.user.id,
+            localProfileImage: auth.profileAvatarImage,
+            localInitials: auth.userInitials,
+            diameter: 38
+        )
+        .overlay {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.92), lineWidth: 2)
+        }
     }
 
     // MARK: - Burbujas
@@ -446,6 +488,82 @@ struct ChatConversationView: View {
         }
     }
 
+    // MARK: - Tareas del coordinador IA (DM equipo)
+
+    private func coordinatorTaskCard(_ task: CoordinatorOutboundTask, maxBubbleWidth: CGFloat, innerW: CGFloat) -> some View {
+        let peerId = thread.peerUserId ?? thread.id
+        return HStack {
+            Spacer(minLength: bubbleEdgeMargin)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.cyan.opacity(0.95))
+                    Text("Coordinador IA · Tarea")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.cyan.opacity(0.9))
+                }
+                Text(task.title)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(incomingBubbleTextColor)
+                Text(task.body)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(incomingBubbleTextColor)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if task.acceptedAt == nil {
+                    Button {
+                        chatInbox.acceptCoordinatorTask(peerUserId: peerId, taskId: task.id)
+                    } label: {
+                        Text("Aceptar tarea")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.cyan.opacity(0.42))
+                            }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Pruebas a entregar")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(incomingBubbleMetaColor)
+                    ForEach(task.steps) { step in
+                        CoordinatorTaskStepProofRow(
+                            peerUserId: peerId,
+                            taskId: task.id,
+                            step: step
+                        )
+                    }
+                    if task.isComplete {
+                        Label("Tarea completada — todas las pruebas validadas", systemImage: "checkmark.seal.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.green.opacity(0.95))
+                            .padding(.top, 2)
+                    }
+                }
+
+                Text(Self.currentTimeString())
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(incomingBubbleMetaColor)
+            }
+            .frame(maxWidth: maxBubbleWidth, alignment: .leading)
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
+                    .fill(incomingBubbleFill)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
+                            .strokeBorder(Color.cyan.opacity(0.38), lineWidth: 1)
+                    }
+            }
+            Spacer(minLength: bubbleEdgeMargin)
+        }
+        .frame(maxWidth: innerW, alignment: .leading)
+    }
+
     // MARK: - Barra de entrada unificada
 
     private let composerFontSize: CGFloat = 17
@@ -555,16 +673,16 @@ struct ChatConversationView: View {
         )
     }
 
-    /// Baja al último mensaje tras enviar o cargar; `async` para que `LazyVStack` ya tenga la fila.
+    /// Baja al final del hilo (mensajes, tareas IA y borrador en vivo).
     private func scrollChatToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
-        guard let lastId = allMessages.last?.id else { return }
+        let anchorId = chatBottomAnchorId
         let scroll = {
             if animated {
                 withAnimation(.easeOut(duration: 0.28)) {
-                    proxy.scrollTo(lastId, anchor: .bottom)
+                    proxy.scrollTo(anchorId, anchor: .bottom)
                 }
             } else {
-                proxy.scrollTo(lastId, anchor: .bottom)
+                proxy.scrollTo(anchorId, anchor: .bottom)
             }
         }
         DispatchQueue.main.async {
@@ -572,10 +690,10 @@ struct ChatConversationView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 if animated {
                     withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastId, anchor: .bottom)
+                        proxy.scrollTo(anchorId, anchor: .bottom)
                     }
                 } else {
-                    proxy.scrollTo(lastId, anchor: .bottom)
+                    proxy.scrollTo(anchorId, anchor: .bottom)
                 }
             }
         }
@@ -592,6 +710,21 @@ struct ChatConversationView: View {
     // MARK: - Mock
 
     private static func mockMessages(for thread: ChatThread) -> [ChatMessage] {
+        if thread.kind == .teamGroup {
+            return [
+                ChatMessage(text: "Aquí hablamos todo el equipo del directorio.", isOutgoing: false, time: "8:40"),
+                ChatMessage(text: "Perfecto, dejamos avisos y turnos en este grupo.", isOutgoing: true, time: "8:42", receipt: .read),
+                ChatMessage(text: "Cuando alguien suba ubicación, lo vemos en el mapa de Inicio.", isOutgoing: false, time: "8:45")
+            ]
+        }
+        if thread.kind == .teamDirect {
+            let name = thread.title
+            return [
+                ChatMessage(text: "Hola, te escribo por el chat interno del equipo.", isOutgoing: false, time: "9:05"),
+                ChatMessage(text: "Hola \(name.split(separator: " ").first.map(String.init) ?? name), ¿nos vemos más tarde?", isOutgoing: true, time: "9:08", receipt: .read),
+                ChatMessage(text: "Sí, sin problema. Cualquier cosa me escribes aquí.", isOutgoing: false, time: "9:09")
+            ]
+        }
         switch thread.id.uuidString {
         case "10000000-0000-0000-0000-000000000001":
             return [
@@ -646,6 +779,104 @@ struct ChatConversationView: View {
                 ChatMessage(text: "Hola, ¿en qué podemos ayudarte?", isOutgoing: false, time: "10:12"),
                 ChatMessage(text: "Gracias, os escribo desde la app del concesionario.", isOutgoing: true, time: "10:18", receipt: .read)
             ]
+        }
+    }
+}
+
+// MARK: - Prueba de tarea (coordinador IA)
+
+private struct CoordinatorTaskStepProofRow: View {
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+    let peerUserId: UUID
+    let taskId: UUID
+    let step: CoordinatorTaskStep
+    @State private var pickerItem: PhotosPickerItem?
+
+    private let instructionColor = Color.white
+    private let rowStroke = Color.white.opacity(0.12)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(step.instruction)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(instructionColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if step.verified {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Color.green.opacity(0.95))
+                        .accessibilityLabel("Prueba validada")
+                }
+            }
+
+            if let data = step.proofImageData, let ui = UIImage(data: data) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label(step.proofImageData == nil ? "Adjuntar prueba (foto)" : "Cambiar foto", systemImage: "camera.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.14))
+                    }
+            }
+            .disabled(step.verified)
+            .onChange(of: pickerItem) { _, newItem in
+                Task {
+                    guard let newItem else { return }
+                    guard let data = try? await newItem.loadTransferable(type: Data.self),
+                          let ui = UIImage(data: data),
+                          let jpeg = ui.jpegData(compressionQuality: 0.82) else { return }
+                    await MainActor.run {
+                        chatInbox.setCoordinatorStepProof(
+                            peerUserId: peerUserId,
+                            taskId: taskId,
+                            stepId: step.id,
+                            imageData: jpeg
+                        )
+                        pickerItem = nil
+                    }
+                }
+            }
+
+            Button {
+                chatInbox.verifyCoordinatorStep(peerUserId: peerUserId, taskId: taskId, stepId: step.id)
+            } label: {
+                Text("Validar prueba con IA")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(
+                                (step.proofImageData == nil || step.verified)
+                                    ? Color.white.opacity(0.1)
+                                    : Color.green.opacity(0.45)
+                            )
+                    }
+            }
+            .buttonStyle(.plain)
+            .disabled(step.proofImageData == nil || step.verified)
+        }
+        .padding(11)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(rowStroke, lineWidth: 0.8)
+                }
         }
     }
 }
@@ -778,5 +1009,7 @@ private struct ConversationBackdrop: View {
     NavigationStack {
         ChatConversationView(thread: ChatThread.samples[0])
             .environmentObject(ChatInboxStore())
+            .environmentObject(DashboardCommunityViewModel())
+            .environmentObject(AuthViewModel())
     }
 }

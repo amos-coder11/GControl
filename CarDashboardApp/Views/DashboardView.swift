@@ -8,7 +8,7 @@ struct DashboardView: View {
     @EnvironmentObject private var notificationsStore: DashboardNotificationsStore
 
     @StateObject private var vm = DealershipStatsViewModel()
-    @StateObject private var communityVM = DashboardCommunityViewModel()
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var homeSearchText = ""
     @State private var showFinancialDetail = false
@@ -60,7 +60,9 @@ struct DashboardView: View {
                             DashboardConnectedUsersStrip(
                                 members: communityVM.directory,
                                 currentUserId: auth.session?.user.id,
-                                accessToken: auth.session?.accessToken
+                                accessToken: auth.session?.accessToken,
+                                currentUserProfileImage: auth.profileAvatarImage,
+                                currentUserInitials: auth.userInitials
                             )
 
                             if let err = communityVM.lastError, !err.isEmpty {
@@ -107,21 +109,13 @@ struct DashboardView: View {
                 .environmentObject(tabRouter)
         }
         .onAppear {
-            communityVM.attach(auth: auth)
             locationHub.onLocationForUpload = { coord in
                 Task { await communityVM.uploadMyCoordinate(coord) }
             }
             locationHub.requestWhenInUseAndStart()
-            communityVM.startPeriodicRefresh()
-            Task { await communityVM.refresh() }
         }
         .onDisappear {
-            communityVM.stopPeriodicRefresh()
             locationHub.stopUpdates()
-        }
-        .onChange(of: auth.session?.user.id) { _, _ in
-            communityVM.attach(auth: auth)
-            Task { await communityVM.refresh() }
         }
     }
 }
@@ -320,6 +314,9 @@ private struct DashboardQuickActionsRow: View {
         .environmentObject(AuthViewModel())
         .environmentObject(CarsViewModel())
         .environmentObject(MainTabRouter())
+        .environmentObject(ChatNavigationCoordinator())
+        .environmentObject(ChatInboxStore())
+        .environmentObject(DashboardCommunityViewModel())
         .environmentObject(InvoiceHistoryStore())
         .environmentObject(DashboardNotificationsStore())
 }

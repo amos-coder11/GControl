@@ -304,9 +304,9 @@ struct BlitzHubSheet: View {
 
                         Button {
                             dismiss()
-                            tabRouter.selected = .search
+                            tabRouter.selected = .cars
                         } label: {
-                            Label("Abrir buscador marketplace", systemImage: "magnifyingglass")
+                            Label("Abrir coches / marketplace", systemImage: "magnifyingglass")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)

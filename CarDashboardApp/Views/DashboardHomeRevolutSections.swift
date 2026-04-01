@@ -295,52 +295,88 @@ struct DashboardTeamMapCard: View {
     }
 }
 
-// MARK: - Usuarios conectados (carrusel)
+// MARK: - Mi equipo (carrusel → pestaña Chat, grupo + privados)
 
 struct DashboardConnectedUsersStrip: View {
     let members: [CommunityProfilesService.DirectoryRow]
     var currentUserId: UUID?
     var accessToken: String?
+    var currentUserProfileImage: UIImage?
+    var currentUserInitials: String
 
-    private let avatarSize: CGFloat = 64
+    @EnvironmentObject private var tabRouter: MainTabRouter
+    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+
+    private let avatarSize: CGFloat = 58
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Usuarios conectados")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.35))
+        Button {
+            chatInbox.syncTeamThreads(from: members, currentUserId: currentUserId)
+            if let group = chatInbox.teamGroupChatThread {
+                chatNav.threadToOpen = group
             }
+            tabRouter.selected = .chat
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Mi equipo")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
 
-            if visibleMembers.isEmpty {
-                Text("Aún no hay otros perfiles en la base de datos o no tienes permisos de lectura.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .padding(.vertical, 8)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 18) {
-                        ForEach(visibleMembers) { row in
-                            DashboardConnectedMemberCell(row: row, size: avatarSize, accessToken: accessToken)
+                if members.isEmpty {
+                    Text("Aún no hay perfiles en el directorio o no tienes permisos de lectura.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .padding(.vertical, 8)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(orderedTeam) { row in
+                                DashboardConnectedMemberCell(
+                                    row: row,
+                                    size: avatarSize,
+                                    accessToken: accessToken,
+                                    isSelf: row.userId == currentUserId,
+                                    localAvatarImage: row.userId == currentUserId ? currentUserProfileImage : nil,
+                                    localInitialsOverride: row.userId == currentUserId ? currentUserInitials : nil
+                                )
+                            }
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+                }
+
+                if !members.isEmpty {
+                    Text("Toca para abrir el chat del equipo (grupo y mensajes privados).")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.38))
                 }
             }
+            .padding(16)
+            .background {
+                DashboardChromeCardBackground(cornerRadius: 24)
+            }
         }
-        .padding(16)
-        .background {
-            DashboardChromeCardBackground(cornerRadius: 24)
-        }
+        .buttonStyle(.plain)
     }
 
-    private var visibleMembers: [CommunityProfilesService.DirectoryRow] {
-        guard let uid = currentUserId else { return members }
-        return members.filter { $0.userId != uid }
+    private var orderedTeam: [CommunityProfilesService.DirectoryRow] {
+        guard let uid = currentUserId else {
+            return members.sorted {
+                $0.resolvedDisplayName.localizedCaseInsensitiveCompare($1.resolvedDisplayName) == .orderedAscending
+            }
+        }
+        let me = members.filter { $0.userId == uid }
+        let others = members.filter { $0.userId != uid }.sorted {
+            $0.resolvedDisplayName.localizedCaseInsensitiveCompare($1.resolvedDisplayName) == .orderedAscending
+        }
+        return me + others
     }
 }
 
@@ -348,14 +384,19 @@ private struct DashboardConnectedMemberCell: View {
     let row: CommunityProfilesService.DirectoryRow
     let size: CGFloat
     var accessToken: String?
+    /// Resalta tu avatar en el carrusel.
+    var isSelf: Bool = false
+    var localAvatarImage: UIImage?
+    var localInitialsOverride: String?
+    var showsNameBelowAvatar: Bool = true
 
     @State private var avatarImage: UIImage?
 
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                if let avatarImage {
-                    Image(uiImage: avatarImage)
+                if let img = localAvatarImage ?? avatarImage {
+                    Image(uiImage: img)
                         .resizable()
                         .scaledToFill()
                 } else {
@@ -379,16 +420,25 @@ private struct DashboardConnectedMemberCell: View {
             .clipShape(Circle())
             .overlay {
                 Circle()
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.75)
+                    .strokeBorder(
+                        isSelf ? Color.cyan.opacity(0.9) : Color.white.opacity(0.22),
+                        lineWidth: isSelf ? 2.25 : 0.75
+                    )
             }
 
-            Text(row.resolvedDisplayName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
-                .lineLimit(1)
-                .frame(width: size + 12)
+            if showsNameBelowAvatar {
+                Text(row.resolvedDisplayName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .frame(width: size + 12)
+            }
         }
         .task(id: row.id) {
+            guard localAvatarImage == nil else {
+                avatarImage = nil
+                return
+            }
             avatarImage = await UserProfileService.loadProfileAvatarImage(
                 avatarRef: row.avatarUrl,
                 userId: row.userId,
@@ -399,6 +449,9 @@ private struct DashboardConnectedMemberCell: View {
     }
 
     private func initials(for name: String) -> String {
+        if let o = localInitialsOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !o.isEmpty {
+            return String(o.prefix(2)).uppercased()
+        }
         let parts = name.split(separator: " ").filter { !$0.isEmpty }
         if parts.count >= 2, let a = parts[0].first, let b = parts[1].first {
             return "\(a)\(b)".uppercased()

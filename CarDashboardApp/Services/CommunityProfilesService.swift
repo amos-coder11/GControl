@@ -3,7 +3,7 @@ import Supabase
 
 /// Perfiles públicos para Inicio: avatares, nombre y ubicación (mapa).
 enum CommunityProfilesService {
-    struct DirectoryRow: Decodable, Identifiable, Sendable {
+    struct DirectoryRow: Decodable, Identifiable, Sendable, Equatable {
         /// PK de la fila en `user_profiles`.
         let id: UUID
         /// Mismo UUID que `auth.users.id` (sesión). Usar para filtros «yo / otros».
