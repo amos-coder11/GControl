@@ -94,7 +94,7 @@ struct TeamMapRemotePersonPin: View {
         .task(id: row.id) {
             avatarImage = await UserProfileService.loadProfileAvatarImage(
                 avatarRef: row.avatarUrl,
-                userId: row.id,
+                userId: row.userId,
                 client: SupabaseClientProvider.shared,
                 accessToken: accessToken
             )
@@ -126,14 +126,14 @@ struct TeamLiveMapView: View {
 
     private var mapPeers: [CommunityProfilesService.DirectoryRow] {
         community.directory.filter { row in
-            row.hasCoordinate && row.id != currentUserId
+            row.hasCoordinate && row.userId != currentUserId
         }
     }
 
     private var myCoordinate: CLLocationCoordinate2D? {
         if let c = locationHub.coordinate, CLLocationCoordinate2DIsValid(c) { return c }
         if let uid = currentUserId,
-           let row = community.directory.first(where: { $0.id == uid && $0.hasCoordinate }) {
+           let row = community.directory.first(where: { $0.userId == uid && $0.hasCoordinate }) {
             return CLLocationCoordinate2D(latitude: row.latitude!, longitude: row.longitude!)
         }
         return nil
@@ -212,14 +212,14 @@ struct TeamMapDetailSheet: View {
 
     private var mapPeers: [CommunityProfilesService.DirectoryRow] {
         community.directory.filter { row in
-            row.hasCoordinate && row.id != currentUserId
+            row.hasCoordinate && row.userId != currentUserId
         }
     }
 
     private var myCoordinate: CLLocationCoordinate2D? {
         if let c = locationHub.coordinate, CLLocationCoordinate2DIsValid(c) { return c }
         if let uid = currentUserId,
-           let row = community.directory.first(where: { $0.id == uid && $0.hasCoordinate }) {
+           let row = community.directory.first(where: { $0.userId == uid && $0.hasCoordinate }) {
             return CLLocationCoordinate2D(latitude: row.latitude!, longitude: row.longitude!)
         }
         return nil
@@ -258,6 +258,9 @@ struct TeamMapDetailSheet: View {
 
                     teamListPanel
                 }
+            }
+            .refreshable {
+                await community.refresh()
             }
             .navigationTitle("Ubicación del equipo")
             .navigationBarTitleDisplayMode(.inline)
@@ -346,7 +349,7 @@ struct TeamMapDetailSheet: View {
             return "GPS en este dispositivo (en vivo)"
         }
         if let uid = currentUserId,
-           let row = community.directory.first(where: { $0.id == uid }),
+           let row = community.directory.first(where: { $0.userId == uid }),
            let d = row.locationUpdatedDate {
             return "Última posición en servidor: \(Self.relativeTime(d))"
         }

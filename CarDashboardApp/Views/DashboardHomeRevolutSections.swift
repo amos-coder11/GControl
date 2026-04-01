@@ -258,7 +258,7 @@ struct DashboardTeamMapCard: View {
                 }
                 .frame(height: 220)
 
-                if community.directory.filter(\.hasCoordinate).filter({ $0.id != currentUserId }).isEmpty,
+                if community.directory.filter(\.hasCoordinate).filter({ $0.userId != currentUserId }).isEmpty,
                    locationHub.coordinate == nil,
                    !hasStoredSelfCoordinate
                 {
@@ -291,7 +291,7 @@ struct DashboardTeamMapCard: View {
 
     private var hasStoredSelfCoordinate: Bool {
         guard let uid = currentUserId else { return false }
-        return community.directory.contains { $0.id == uid && $0.hasCoordinate }
+        return community.directory.contains { $0.userId == uid && $0.hasCoordinate }
     }
 }
 
@@ -340,7 +340,7 @@ struct DashboardConnectedUsersStrip: View {
 
     private var visibleMembers: [CommunityProfilesService.DirectoryRow] {
         guard let uid = currentUserId else { return members }
-        return members.filter { $0.id != uid }
+        return members.filter { $0.userId != uid }
     }
 }
 
@@ -391,7 +391,7 @@ private struct DashboardConnectedMemberCell: View {
         .task(id: row.id) {
             avatarImage = await UserProfileService.loadProfileAvatarImage(
                 avatarRef: row.avatarUrl,
-                userId: row.id,
+                userId: row.userId,
                 client: SupabaseClientProvider.shared,
                 accessToken: accessToken
             )

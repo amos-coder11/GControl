@@ -20,30 +20,19 @@ enum UserProfileService {
     }
 
     private static func fetchAvatarURLFromProfiles(userId: UUID, client: SupabaseClient) async -> String? {
-        do {
-            let row: ProfileAvatarRow = try await client
-                .from(SupabaseClientProvider.profilesTableName)
-                .select("avatar_url")
-                .eq("id", value: userId.uuidString.lowercased())
-                .single()
-                .execute()
-                .value
-            let s = row.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let s, !s.isEmpty { return s }
-        } catch {}
-
-        do {
-            let row: ProfileAvatarRow = try await client
-                .from(SupabaseClientProvider.profilesTableName)
-                .select("avatar_url")
-                .eq("id", value: userId.uuidString)
-                .single()
-                .execute()
-                .value
-            let s = row.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let s, !s.isEmpty { return s }
-        } catch {}
-
+        for value in [userId.uuidString.lowercased(), userId.uuidString] {
+            do {
+                let row: ProfileAvatarRow = try await client
+                    .from(SupabaseClientProvider.profilesTableName)
+                    .select("avatar_url")
+                    .eq("user_id", value: value)
+                    .single()
+                    .execute()
+                    .value
+                let s = row.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let s, !s.isEmpty { return s }
+            } catch {}
+        }
         return nil
     }
 

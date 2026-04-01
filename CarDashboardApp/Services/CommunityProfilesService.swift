@@ -4,7 +4,10 @@ import Supabase
 /// Perfiles públicos para Inicio: avatares, nombre y ubicación (mapa).
 enum CommunityProfilesService {
     struct DirectoryRow: Decodable, Identifiable, Sendable {
+        /// PK de la fila en `user_profiles`.
         let id: UUID
+        /// Mismo UUID que `auth.users.id` (sesión). Usar para filtros «yo / otros».
+        let userId: UUID
         let fullName: String?
         let avatarUrl: String?
         let latitude: Double?
@@ -14,6 +17,7 @@ enum CommunityProfilesService {
 
         enum CodingKeys: String, CodingKey {
             case id
+            case userId = "user_id"
             case fullName = "full_name"
             case avatarUrl = "avatar_url"
             case latitude
@@ -53,15 +57,15 @@ enum CommunityProfilesService {
         }
     }
 
-    private static let selectColumns = "id, avatar_url, full_name, latitude, longitude, location_updated_at"
+    private static let selectColumns = "id, user_id, avatar_url, full_name, latitude, longitude, location_updated_at"
 
-    /// Listado para carrusel y mapa (respeta RLS).
+    /// Listado para carrusel y mapa (requiere RLS que permita leer el directorio; ver `supabase/migrations`).
     static func fetchDirectory(client: SupabaseClient) async throws -> [DirectoryRow] {
         let rows: [DirectoryRow] = try await client
             .from(SupabaseClientProvider.profilesTableName)
             .select(selectColumns)
-            .order("id", ascending: true)
-            .limit(80)
+            .order("location_updated_at", ascending: false, nullsFirst: false)
+            .limit(500)
             .execute()
             .value
         return rows
@@ -80,7 +84,7 @@ enum CommunityProfilesService {
             try await client
                 .from(SupabaseClientProvider.profilesTableName)
                 .update(payload)
-                .eq("id", value: userId.uuidString.lowercased())
+                .eq("user_id", value: userId.uuidString.lowercased())
                 .execute()
         } catch {
             // Columnas o políticas: revisar migración SQL en Supabase.

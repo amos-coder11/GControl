@@ -18,7 +18,7 @@ final class DashboardCommunityViewModel: ObservableObject {
 
     func startPeriodicRefresh() {
         refreshTimer?.cancel()
-        refreshTimer = Timer.publish(every: 28, tolerance: 4, on: .main, in: .common)
+        refreshTimer = Timer.publish(every: 15, tolerance: 3, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 Task { await self?.refresh() }
