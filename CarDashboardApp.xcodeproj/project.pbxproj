@@ -89,6 +89,10 @@
 		AA000081 /* LiveSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000081 /* LiveSpeechTranscriber.swift */; };
 		AA000082 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000082 /* AppDelegate.swift */; };
 		AA000083 /* RemotePushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000083 /* RemotePushRegistration.swift */; };
+		AA000086 /* GIFAnimatedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000086 /* GIFAnimatedView.swift */; };
+		AA000087 /* LoopingMutedBundledVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000087 /* LoopingMutedBundledVideoView.swift */; };
+		AA000088 /* AIBuddyFondo.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000088 /* AIBuddyFondo.mp4 */; };
+		AA000089 /* AIAssistantOrb.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000089 /* AIAssistantOrb.gif */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -178,6 +182,10 @@
 		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
 		AB000084 /* CarDashboardApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp.entitlements; sourceTree = "<group>"; };
 		AB000085 /* CarDashboardApp-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp-Release.entitlements; sourceTree = "<group>"; };
+		AB000086 /* GIFAnimatedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GIFAnimatedView.swift; sourceTree = "<group>"; };
+		AB000087 /* LoopingMutedBundledVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopingMutedBundledVideoView.swift; sourceTree = "<group>"; };
+		AB000088 /* AIBuddyFondo.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = AIBuddyFondo.mp4; sourceTree = "<group>"; };
+		AB000089 /* AIAssistantOrb.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = AIAssistantOrb.gif; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -321,6 +329,8 @@
 				AB000024 /* ShowroomBannerView.swift */,
 				AB000026 /* DealershipStatComponents.swift */,
 				AB000032 /* ChatAvatarViews.swift */,
+				AB000086 /* GIFAnimatedView.swift */,
+				AB000087 /* LoopingMutedBundledVideoView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -332,6 +342,8 @@
 				AB000021 /* MockData.swift */,
 				AB000023 /* RemoteAssets.swift */,
 				AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */,
+				AB000088 /* AIBuddyFondo.mp4 */,
+				AB000089 /* AIAssistantOrb.gif */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -433,6 +445,8 @@
 				AA000068 /* ContratoCompraModelo.pdf in Resources */,
 				AA000069 /* GarantiaGVModelo.pdf in Resources */,
 				AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */,
+				AA000088 /* AIBuddyFondo.mp4 in Resources */,
+				AA000089 /* AIAssistantOrb.gif in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -519,6 +533,8 @@
 				AA000078 /* DashboardHubScreens.swift in Sources */,
 				AA000080 /* TeamLocationMapViews.swift in Sources */,
 				AA000081 /* LiveSpeechTranscriber.swift in Sources */,
+				AA000086 /* GIFAnimatedView.swift in Sources */,
+				AA000087 /* LoopingMutedBundledVideoView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

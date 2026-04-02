@@ -4,6 +4,9 @@ CarDashboardApp/DeveloperSettings.local.xcconfig
 # Xcode / Swift
 DerivedData/
 DerivedData*/
+.derivedDataAgent/
+.cliBuild/
+.cliBuildPush/
 build/
 *.xcuserstate
 xcuserdata/
