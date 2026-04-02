@@ -37,6 +37,7 @@ struct ChatView: View {
     @State private var listSegment: ChatInboxListSegment = .team
     @FocusState private var chatSearchFieldFocused: Bool
     @State private var teamDirectInboxChannel: RealtimeChannelV2?
+    @State private var teamGroupInboxChannel: RealtimeChannelV2?
 
     private var searchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -179,7 +180,10 @@ struct ChatView: View {
         }
         .accentColor(.white)
         .task(id: auth.session?.user.id) {
-            await subscribeTeamDirectInboxIfNeeded()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await subscribeTeamDirectInboxIfNeeded() }
+                group.addTask { await subscribeTeamGroupInboxIfNeeded() }
+            }
         }
         .onAppear {
             syncTeamThreadsFromDirectory()
@@ -241,6 +245,46 @@ struct ChatView: View {
             let date = TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
             await MainActor.run {
                 inbox.applyTeamDirectIncoming(fromPeer: row.senderId, body: row.body, date: date)
+            }
+        }
+    }
+
+    private func subscribeTeamGroupInboxIfNeeded() async {
+        guard let uid = auth.session?.user.id else {
+            if let ch = teamGroupInboxChannel {
+                await SupabaseClientProvider.shared.removeChannel(ch)
+                await MainActor.run { teamGroupInboxChannel = nil }
+            }
+            return
+        }
+        if let existing = teamGroupInboxChannel {
+            await SupabaseClientProvider.shared.removeChannel(existing)
+            await MainActor.run { teamGroupInboxChannel = nil }
+        }
+        let client = SupabaseClientProvider.shared
+        let channel = client.channel("team-group-inbox-\(uid.uuidString.lowercased())")
+        let inserts = channel.postgresChange(
+            InsertAction.self,
+            schema: "public",
+            table: TeamGroupMessagesService.tableName
+        )
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            return
+        }
+        await MainActor.run { teamGroupInboxChannel = channel }
+        for await action in inserts {
+            guard let row = try? TeamGroupMessagesService.decodeInsert(action) else { continue }
+            guard row.senderId != uid else { continue }
+            let date = TeamGroupMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+            await MainActor.run {
+                inbox.applyTeamGroupIncoming(
+                    fromSender: row.senderId,
+                    body: row.body,
+                    date: date,
+                    currentUserId: uid
+                )
             }
         }
     }

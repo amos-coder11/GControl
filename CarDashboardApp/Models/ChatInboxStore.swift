@@ -62,9 +62,16 @@ final class ChatInboxStore: ObservableObject {
 
     /// `userId` del compañero si la vista de conversación DM equipo está visible.
     @Published var activeTeamDirectPeerId: UUID?
+    /// El chat grupal «Mi equipo» está en primer plano.
+    @Published var activeTeamGroupChatOpen: Bool = false
     /// Vista previa / hora por `peerUserId` para hilos `teamDirect` (mensajería real).
     @Published private(set) var teamDirectPreviewBody: [UUID: String] = [:]
     @Published private(set) var teamDirectPreviewTime: [UUID: String] = [:]
+    /// Orden de lista: conversación con el último mensaje más reciente primero.
+    @Published private(set) var teamDirectLastActivityAt: [UUID: Date] = [:]
+    /// Vista previa del grupo «Mi equipo» (un solo hilo).
+    @Published private(set) var teamGroupPreviewBody: String?
+    @Published private(set) var teamGroupPreviewTime: String?
 
     private var lastTeamDirectorySnapshot: [CommunityProfilesService.DirectoryRow] = []
     private var lastTeamDirectoryUserId: UUID?
@@ -144,11 +151,18 @@ final class ChatInboxStore: ObservableObject {
             teamDirectChatThreads = []
             return
         }
-        teamGroupChatThread = ChatThread.makeTeamGroup(memberCount: directory.count)
+        var tg = ChatThread.makeTeamGroup(memberCount: directory.count)
+        if let pb = teamGroupPreviewBody, let pt = teamGroupPreviewTime {
+            tg = tg.withGroupChatPreview(pb, time: pt)
+        }
+        teamGroupChatThread = tg
         let peers = directory
             .filter { $0.userId != currentUserId }
-            .sorted {
-                $0.resolvedDisplayName.localizedCaseInsensitiveCompare($1.resolvedDisplayName) == .orderedAscending
+            .sorted { a, b in
+                let da = teamDirectLastActivityAt[a.userId] ?? .distantPast
+                let db = teamDirectLastActivityAt[b.userId] ?? .distantPast
+                if da != db { return da > db }
+                return a.resolvedDisplayName.localizedCaseInsensitiveCompare(b.resolvedDisplayName) == .orderedAscending
             }
         teamDirectChatThreads = peers.map { row in
             let base = ChatThread.makeTeamDirect(from: row)
@@ -169,6 +183,9 @@ final class ChatInboxStore: ObservableObject {
         var t = teamDirectPreviewTime
         t[peerId] = Self.formatShortListTime(date)
         teamDirectPreviewTime = t
+        var act = teamDirectLastActivityAt
+        act[peerId] = date
+        teamDirectLastActivityAt = act
         refreshTeamThreadsFromSnapshot()
     }
 
@@ -180,6 +197,9 @@ final class ChatInboxStore: ObservableObject {
         var t = teamDirectPreviewTime
         t[peerId] = Self.formatShortListTime(date)
         teamDirectPreviewTime = t
+        var act = teamDirectLastActivityAt
+        act[peerId] = date
+        teamDirectLastActivityAt = act
         if activeTeamDirectPeerId != peerId {
             var u = unreadOverride
             u[peerId] = (u[peerId] ?? 0) + 1
@@ -191,6 +211,32 @@ final class ChatInboxStore: ObservableObject {
     private func refreshTeamThreadsFromSnapshot() {
         guard !lastTeamDirectorySnapshot.isEmpty else { return }
         syncTeamThreads(from: lastTeamDirectorySnapshot, currentUserId: lastTeamDirectoryUserId)
+    }
+
+    func applyTeamGroupOutgoing(body: String, date: Date) {
+        teamGroupPreviewBody = Self.truncatePreview(body)
+        teamGroupPreviewTime = Self.formatShortListTime(date)
+        refreshTeamThreadsFromSnapshot()
+    }
+
+    /// Nuevo mensaje en el grupo (p. ej. Realtime); `senderId` es quien escribe.
+    func applyTeamGroupIncoming(fromSender senderId: UUID, body: String, date: Date, currentUserId: UUID) {
+        guard senderId != currentUserId else { return }
+        teamGroupPreviewBody = Self.truncatePreview(body)
+        teamGroupPreviewTime = Self.formatShortListTime(date)
+        if !activeTeamGroupChatOpen {
+            var u = unreadOverride
+            let gid = ChatThread.teamGroupThreadId
+            u[gid] = (u[gid] ?? 0) + 1
+            unreadOverride = u
+        }
+        refreshTeamThreadsFromSnapshot()
+    }
+
+    private static func truncatePreview(_ body: String) -> String {
+        let t = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count <= 80 { return t }
+        return String(t.prefix(77)) + "…"
     }
 
     private static func formatShortListTime(_ date: Date) -> String {
@@ -214,6 +260,10 @@ final class ChatInboxStore: ObservableObject {
         var u = unreadOverride
         u[peerUserId] = max(1, u[peerUserId] ?? 1)
         unreadOverride = u
+        var act = teamDirectLastActivityAt
+        act[peerUserId] = Date()
+        teamDirectLastActivityAt = act
+        refreshTeamThreadsFromSnapshot()
     }
 
     func effectivePinned(_ thread: ChatThread) -> Bool {
@@ -235,6 +285,8 @@ final class ChatInboxStore: ObservableObject {
         switch thread.kind {
         case .teamGroup:
             teamGroupChatThread = nil
+            teamGroupPreviewBody = nil
+            teamGroupPreviewTime = nil
         case .teamDirect:
             teamDirectChatThreads.removeAll { $0.id == thread.id }
             if let pid = thread.peerUserId {
@@ -247,6 +299,9 @@ final class ChatInboxStore: ObservableObject {
                 var dt = teamDirectPreviewTime
                 dt.removeValue(forKey: pid)
                 teamDirectPreviewTime = dt
+                var la = teamDirectLastActivityAt
+                la.removeValue(forKey: pid)
+                teamDirectLastActivityAt = la
                 var ct = coordinatorTasksByPeer
                 ct.removeValue(forKey: pid)
                 coordinatorTasksByPeer = ct

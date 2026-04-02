@@ -104,6 +104,30 @@ struct ChatThread: Identifiable, Hashable {
         )
     }
 
+    /// Vista previa cuando hay mensajes reales en el grupo.
+    func withGroupChatPreview(_ preview: String, time: String) -> ChatThread {
+        ChatThread(
+            id: id,
+            title: title,
+            preview: preview,
+            time: time,
+            unread: unread,
+            avatarInitial: avatarInitial,
+            avatarIcon: avatarIcon,
+            avatarR: avatarR,
+            avatarG: avatarG,
+            avatarB: avatarB,
+            avatarCarURL: avatarCarURL,
+            socialSource: socialSource,
+            isVerified: isVerified,
+            isPinned: isPinned,
+            kind: kind,
+            peerUserId: peerUserId,
+            readReceipt: readReceipt,
+            showOpenButton: showOpenButton
+        )
+    }
+
     /// Grupo con todo el directorio (misma UI que el resto de chats).
     static func makeTeamGroup(memberCount: Int) -> ChatThread {
         let preview: String

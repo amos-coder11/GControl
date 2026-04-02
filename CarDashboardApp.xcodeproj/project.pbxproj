@@ -90,6 +90,7 @@
 		AA000082 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000082 /* AppDelegate.swift */; };
 		AA000083 /* RemotePushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000083 /* RemotePushRegistration.swift */; };
 		AA000091 /* TeamDirectMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000091 /* TeamDirectMessagesService.swift */; };
+		AA000092 /* TeamGroupMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000092 /* TeamGroupMessagesService.swift */; };
 		AA000086 /* GIFAnimatedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000086 /* GIFAnimatedView.swift */; };
 		AA000087 /* LoopingMutedBundledVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000087 /* LoopingMutedBundledVideoView.swift */; };
 		AA000088 /* AIBuddyFondo.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000088 /* AIBuddyFondo.mp4 */; };
@@ -182,6 +183,7 @@
 		AB000082 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
 		AB000091 /* TeamDirectMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectMessagesService.swift; sourceTree = "<group>"; };
+		AB000092 /* TeamGroupMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamGroupMessagesService.swift; sourceTree = "<group>"; };
 		AB000084 /* CarDashboardApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp.entitlements; sourceTree = "<group>"; };
 		AB000085 /* CarDashboardApp-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp-Release.entitlements; sourceTree = "<group>"; };
 		AB000086 /* GIFAnimatedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GIFAnimatedView.swift; sourceTree = "<group>"; };
@@ -284,6 +286,7 @@
 				AB000059 /* AppPINKeychain.swift */,
 				AB000073 /* CommunityProfilesService.swift */,
 				AB000091 /* TeamDirectMessagesService.swift */,
+				AB000092 /* TeamGroupMessagesService.swift */,
 				AB000074 /* DashboardLocationHub.swift */,
 				AB000078 /* InvoiceHistoryStore.swift */,
 				AB000081 /* LiveSpeechTranscriber.swift */,
@@ -530,6 +533,7 @@
 				AA000063 /* PINSetupView.swift in Sources */,
 				AA000072 /* CommunityProfilesService.swift in Sources */,
 				AA000091 /* TeamDirectMessagesService.swift in Sources */,
+				AA000092 /* TeamGroupMessagesService.swift in Sources */,
 				AA000073 /* DashboardLocationHub.swift in Sources */,
 				AA000074 /* DashboardCommunityViewModel.swift in Sources */,
 				AA000075 /* DashboardHomeRevolutSections.swift in Sources */,
