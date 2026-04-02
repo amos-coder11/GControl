@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 import Speech
 
@@ -7,10 +8,17 @@ final class LiveSpeechTranscriber: NSObject, ObservableObject {
     @Published private(set) var partialText: String = ""
     @Published private(set) var authorizationStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
 
+    private weak var waveformMonitor: AudioWaveformMonitor?
+
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
+
+    init(waveformMonitor: AudioWaveformMonitor? = nil) {
+        self.waveformMonitor = waveformMonitor
+        super.init()
+    }
 
     func requestSpeechAuthorization() async -> Bool {
         await withCheckedContinuation { cont in
@@ -54,8 +62,9 @@ final class LiveSpeechTranscriber: NSObject, ObservableObject {
         }
 
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             recognitionRequest.append(buffer)
+            self?.waveformMonitor?.ingestAudioBuffer(buffer)
         }
 
         audioEngine.prepare()

@@ -1,0 +1,542 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		VAB00001 /* VoiceAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00001 /* VoiceAppApp.swift */; };
+		VAB00002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00002 /* AppEnvironment.swift */; };
+		VAB00003 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00003 /* AppConfig.swift */; };
+		VAB00004 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00004 /* AppError.swift */; };
+		VAB00005 /* SessionResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00005 /* SessionResponse.swift */; };
+		VAB00006 /* RealtimeEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00006 /* RealtimeEvent.swift */; };
+		VAB00007 /* OpenAIEndpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00007 /* OpenAIEndpoints.swift */; };
+		VAB00008 /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00008 /* BackendClient.swift */; };
+		VAB00009 /* AudioServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00009 /* AudioServiceProtocol.swift */; };
+		VAB00010 /* WebRTCServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00010 /* WebRTCServiceProtocol.swift */; };
+		VAB00011 /* SessionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00011 /* SessionServiceProtocol.swift */; };
+		VAB00012 /* AudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00012 /* AudioService.swift */; };
+		VAB00013 /* WebRTCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00013 /* WebRTCService.swift */; };
+		VAB00014 /* SessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00014 /* SessionService.swift */; };
+		VAB00015 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00015 /* TranscriptStore.swift */; };
+		VAB00016 /* SessionStateFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00016 /* SessionStateFormatter.swift */; };
+		VAB00017 /* ConversationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00017 /* ConversationViewModel.swift */; };
+		VAB00018 /* ErrorBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00018 /* ErrorBannerView.swift */; };
+		VAB00019 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00019 /* ConversationView.swift */; };
+		VAB00020 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00020 /* ContentView.swift */; };
+		VAB00021 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00021 /* Logger.swift */; };
+		VAB00022 /* VoiceStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00022 /* VoiceStrings.swift */; };
+		VAB00023 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = VAF00023 /* Assets.xcassets */; };
+		VAB00024 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = VAF00024 /* Config.plist */; };
+		VAB00025 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = VAPKG02 /* WebRTC */; };
+		VAB00101 /* BackendClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00101 /* BackendClientTests.swift */; };
+		VAB00102 /* SessionStateFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = VAF00102 /* SessionStateFormatterTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		VAF00001 /* VoiceAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAppApp.swift; sourceTree = "<group>"; };
+		VAF00002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		VAF00003 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		VAF00004 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
+		VAF00005 /* SessionResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionResponse.swift; sourceTree = "<group>"; };
+		VAF00006 /* RealtimeEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeEvent.swift; sourceTree = "<group>"; };
+		VAF00007 /* OpenAIEndpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIEndpoints.swift; sourceTree = "<group>"; };
+		VAF00008 /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
+		VAF00009 /* AudioServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServiceProtocol.swift; sourceTree = "<group>"; };
+		VAF00010 /* WebRTCServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCServiceProtocol.swift; sourceTree = "<group>"; };
+		VAF00011 /* SessionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionServiceProtocol.swift; sourceTree = "<group>"; };
+		VAF00012 /* AudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioService.swift; sourceTree = "<group>"; };
+		VAF00013 /* WebRTCService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCService.swift; sourceTree = "<group>"; };
+		VAF00014 /* SessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionService.swift; sourceTree = "<group>"; };
+		VAF00015 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
+		VAF00016 /* SessionStateFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateFormatter.swift; sourceTree = "<group>"; };
+		VAF00017 /* ConversationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationViewModel.swift; sourceTree = "<group>"; };
+		VAF00018 /* ErrorBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBannerView.swift; sourceTree = "<group>"; };
+		VAF00019 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		VAF00020 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		VAF00021 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		VAF00022 /* VoiceStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceStrings.swift; sourceTree = "<group>"; };
+		VAF00023 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		VAF00024 /* Config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Config.plist; sourceTree = "<group>"; };
+		VAF00025 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		VAF00099 /* VoiceApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		VAF00100 /* VoiceAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		VAF00101 /* BackendClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClientTests.swift; sourceTree = "<group>"; };
+		VAF00102 /* SessionStateFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateFormatterTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		VAFX0001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				VAB00025 /* WebRTC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		VAFX0002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		VAGR0001 = {
+			isa = PBXGroup;
+			children = (
+				VAGR0002 /* VoiceApp */,
+				VAGR0099 /* VoiceAppTests */,
+				VAGR0100 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		VAGR0100 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00099 /* VoiceApp.app */,
+				VAF00100 /* VoiceAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		VAGR0002 /* VoiceApp */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00025 /* Info.plist */,
+				VAF00024 /* Config.plist */,
+				VAF00023 /* Assets.xcassets */,
+				VAGR0003 /* App */,
+				VAGR0004 /* Config */,
+				VAGR0005 /* Models */,
+				VAGR0006 /* Network */,
+				VAGR0007 /* Services */,
+				VAGR0008 /* ViewModels */,
+				VAGR0009 /* Views */,
+				VAGR0010 /* Utilities */,
+			);
+			path = VoiceApp;
+			sourceTree = "<group>";
+		};
+		VAGR0003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00001 /* VoiceAppApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		VAGR0004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00002 /* AppEnvironment.swift */,
+				VAF00003 /* AppConfig.swift */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		VAGR0005 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00004 /* AppError.swift */,
+				VAF00005 /* SessionResponse.swift */,
+				VAF00006 /* RealtimeEvent.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		VAGR0006 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00007 /* OpenAIEndpoints.swift */,
+				VAF00008 /* BackendClient.swift */,
+			);
+			path = Network;
+			sourceTree = "<group>";
+		};
+		VAGR0007 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				VAGR0011 /* Protocols */,
+				VAF00012 /* AudioService.swift */,
+				VAF00013 /* WebRTCService.swift */,
+				VAF00014 /* SessionService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		VAGR0011 /* Protocols */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00009 /* AudioServiceProtocol.swift */,
+				VAF00010 /* WebRTCServiceProtocol.swift */,
+				VAF00011 /* SessionServiceProtocol.swift */,
+			);
+			path = Protocols;
+			sourceTree = "<group>";
+		};
+		VAGR0008 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00015 /* TranscriptStore.swift */,
+				VAF00016 /* SessionStateFormatter.swift */,
+				VAF00017 /* ConversationViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		VAGR0009 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00018 /* ErrorBannerView.swift */,
+				VAF00019 /* ConversationView.swift */,
+				VAF00020 /* ContentView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		VAGR0010 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00021 /* Logger.swift */,
+				VAF00022 /* VoiceStrings.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		VAGR0099 /* VoiceAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				VAF00101 /* BackendClientTests.swift */,
+				VAF00102 /* SessionStateFormatterTests.swift */,
+			);
+			path = VoiceAppTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		VATGT001 /* VoiceApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = VACFG03 /* Build configuration list for PBXNativeTarget "VoiceApp" */;
+			buildPhases = (
+				VASRC001 /* Sources */,
+				VAFX0001 /* Frameworks */,
+				VARSC001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VoiceApp;
+			packageProductDependencies = (
+				VAPKG02 /* WebRTC */,
+			);
+			productName = VoiceApp;
+			productReference = VAF00099 /* VoiceApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		VATGT002 /* VoiceAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = VACFG04 /* Build configuration list for PBXNativeTarget "VoiceAppTests" */;
+			buildPhases = (
+				VASRC002 /* Sources */,
+				VAFX0002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				VADEP001 /* PBXTargetDependency */,
+			);
+			name = VoiceAppTests;
+			productName = VoiceAppTests;
+			productReference = VAF00100 /* VoiceAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		VAPR0001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					VATGT001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					VATGT002 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = VATGT001;
+					};
+				};
+			};
+			buildConfigurationList = VACFG01 /* Build configuration list for PBXProject "VoiceApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = VAGR0001;
+			packageReferences = (
+				VAPKG01 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
+			productRefGroup = VAGR0100 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				VATGT001 /* VoiceApp */,
+				VATGT002 /* VoiceAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		VARSC001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				VAB00023 /* Assets.xcassets in Resources */,
+				VAB00024 /* Config.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		VASRC001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				VAB00001 /* VoiceAppApp.swift in Sources */,
+				VAB00002 /* AppEnvironment.swift in Sources */,
+				VAB00003 /* AppConfig.swift in Sources */,
+				VAB00004 /* AppError.swift in Sources */,
+				VAB00005 /* SessionResponse.swift in Sources */,
+				VAB00006 /* RealtimeEvent.swift in Sources */,
+				VAB00007 /* OpenAIEndpoints.swift in Sources */,
+				VAB00008 /* BackendClient.swift in Sources */,
+				VAB00009 /* AudioServiceProtocol.swift in Sources */,
+				VAB00010 /* WebRTCServiceProtocol.swift in Sources */,
+				VAB00011 /* SessionServiceProtocol.swift in Sources */,
+				VAB00012 /* AudioService.swift in Sources */,
+				VAB00013 /* WebRTCService.swift in Sources */,
+				VAB00014 /* SessionService.swift in Sources */,
+				VAB00015 /* TranscriptStore.swift in Sources */,
+				VAB00016 /* SessionStateFormatter.swift in Sources */,
+				VAB00017 /* ConversationViewModel.swift in Sources */,
+				VAB00018 /* ErrorBannerView.swift in Sources */,
+				VAB00019 /* ConversationView.swift in Sources */,
+				VAB00020 /* ContentView.swift in Sources */,
+				VAB00021 /* Logger.swift in Sources */,
+				VAB00022 /* VoiceStrings.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		VASRC002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				VAB00101 /* BackendClientTests.swift in Sources */,
+				VAB00102 /* SessionStateFormatterTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		VADEP001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = VATGT001 /* VoiceApp */;
+			targetProxy = VAPROX01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		VAPROX01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = VAPR0001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = VATGT001;
+			remoteInfo = VoiceApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin XCBuildConfiguration section */
+		VACFG101 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		VACFG102 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		VACFG201 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoiceApp/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voiceapp.VoiceApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		VACFG202 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoiceApp/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voiceapp.VoiceApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		VACFG301 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voiceapp.VoiceAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoiceApp";
+			};
+			name = Debug;
+		};
+		VACFG302 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voiceapp.VoiceAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoiceApp";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		VACFG01 /* Build configuration list for PBXProject "VoiceApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				VACFG101 /* Debug */,
+				VACFG102 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		VACFG03 /* Build configuration list for PBXNativeTarget "VoiceApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				VACFG201 /* Debug */,
+				VACFG202 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		VACFG04 /* Build configuration list for PBXNativeTarget "VoiceAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				VACFG301 /* Debug */,
+				VACFG302 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		VAPKG01 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 146.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		VAPKG02 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = VAPKG01 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = VAPR0001 /* Project object */;
+}

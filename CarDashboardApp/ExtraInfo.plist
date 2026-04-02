@@ -14,7 +14,7 @@
 		<string>remote-notification</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Usamos el micrófono para transcribir tus órdenes al coordinador IA en tiempo real.</string>
+	<string>Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.</string>
 	<key>USER_PROFILES_TABLE</key>
@@ -23,5 +23,9 @@
 	<string>$(ANTHROPIC_API_KEY)</string>
 	<key>ANTHROPIC_MODEL</key>
 	<string>$(ANTHROPIC_MODEL)</string>
+	<key>OPENAI_API_KEY</key>
+	<string>$(OPENAI_API_KEY)</string>
+	<key>OPENAI_MODEL</key>
+	<string>$(OPENAI_MODEL)</string>
 </dict>
 </plist>

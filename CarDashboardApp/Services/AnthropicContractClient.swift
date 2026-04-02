@@ -317,78 +317,276 @@ enum AnthropicContractClient {
 
         return prompt
     }
+}
 
-    // MARK: - Coordinador de equipo (IA voz / texto)
+// MARK: - OpenAI (pestaña IA · Chat Completions)
 
-    /// Respuesta del modelo con posible bloque `<<<ACTIONS>>>…<<<ENDACTIONS>>>` para enrutar mensajes a compañeros.
-    static func teamCoordinatorReply(
-        rosterLines: String,
-        conversation: [(isUser: Bool, text: String)]
-    ) async throws -> String {
-        guard let key = apiKey else { throw ClientError.missingAPIKey }
+/// Chat Viera vía OpenAI. Claves: `OPENAI_API_KEY`, opcional `OPENAI_MODEL` en Info (xcconfig).
+enum OpenAIChatClient {
+    private static let openAIEndpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
-        let system = """
-        Eres el coordinador de equipo de CarHub (concesionario). El usuario es el jefe y te habla en español.
+    private static var openAIKey: String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String else { return nil }
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
 
-        CONOCES a estas personas del directorio (cada línea: nombre como aparece en la app):
-        \(rosterLines)
+    private static var openAIModel: String {
+        if let m = Bundle.main.object(forInfoDictionaryKey: "OPENAI_MODEL") as? String {
+            let t = m.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { return t }
+        }
+        return "gpt-4o-mini"
+    }
 
-        - Responde de forma breve y operativa.
-        - Si el jefe pide avisar, encargar o mandar algo a alguien por nombre (p. ej. «Alberto»), identifica a la persona \
-        más probable de la lista (nombre o apodo que coincida).
-        - Para encargos que requieran que el compañero haga cosas comprobables (fotos, comprobaciones, llamadas), usa TASK en lugar de SEND: \
-        el destinatario verá una tarjeta con «Aceptar tarea» y luego una lista de pruebas; en cada prueba debe adjuntar foto y pulsar «Validar prueba».
-        - Para avisos cortos sin pruebas, puedes usar SEND.
+    static var isConfigured: Bool { openAIKey != nil }
 
-        Tras tu texto natural para el jefe, si aplica, añade EXACTAMENTE este bloque al final:
+    enum OpenAIError: LocalizedError {
+        case missingAPIKey
+        case invalidResponse
+        case httpStatus(Int, String?)
+        case decodingFailed
 
-        <<<ACTIONS>>>
-        SEND|NombreExactoComoEnLaLista|mensaje breve para su chat
-        TASK|NombreExactoComoEnLaLista|Título corto|Instrucciones claras para el destinatario (sin el carácter |)|Primera prueba (p. ej. Foto del vehículo en patio)|Segunda prueba|…
-        <<<ENDACTIONS>>>
+        var errorDescription: String? {
+            switch self {
+            case .missingAPIKey:
+                return "Falta OPENAI_API_KEY. Configúrala en DeveloperSettings.local.xcconfig."
+            case .invalidResponse:
+                return "Respuesta inválida del servidor."
+            case let .httpStatus(code, msg):
+                if let msg, !msg.isEmpty { return "Error \(code): \(msg)" }
+                return "Error del servicio (\(code))."
+            case .decodingFailed:
+                return "No se pudo leer la respuesta de OpenAI."
+            }
+        }
+    }
 
-        Reglas TASK: mínimo una línea de prueba después del cuerpo; no uses el carácter | dentro de título, cuerpo ni pruebas. \
-        Una línea SEND o TASK por destinatario. Si no hay envíos, omite todo el bloque. No inventes nombres fuera de la lista.
-        """
+    private struct OpenAIChatMessageDTO: Encodable {
+        let role: String
+        let content: String
+    }
 
-        let msgs: [RequestBody.Message] = conversation.map { turn in
-            RequestBody.Message(role: turn.isUser ? "user" : "assistant", content: turn.text)
+    private struct OpenAINonStreamRequestBody: Encodable {
+        let model: String
+        let messages: [OpenAIChatMessageDTO]
+    }
+
+    private struct OpenAIStreamRequestBody: Encodable {
+        let model: String
+        let messages: [OpenAIChatMessageDTO]
+        let stream: Bool
+    }
+
+    private struct OpenAIStreamChunk: Decodable {
+        struct Choice: Decodable {
+            struct Delta: Decodable {
+                let content: String?
+            }
+
+            let delta: Delta?
         }
 
-        let body = RequestBody(
-            model: model,
-            max_tokens: 2048,
-            system: system,
-            messages: msgs
-        )
+        let choices: [Choice]?
+    }
 
-        var request = URLRequest(url: endpoint)
+    private struct OpenAIStreamErrorEnvelope: Decodable {
+        struct Err: Decodable {
+            let message: String?
+        }
+
+        let error: Err?
+    }
+
+    private static let vieraSystemPrompt = """
+    Eres Viera, asistente de IA de la app CarHub (concesionario / gestión de vehículos en España). \
+    Hablas en español con tono claro, profesional y elegante, como en una app de chat de primera calidad: fluido, directo y agradable de leer.
+
+    FORMATO DE SALIDA (obligatorio): la app muestra texto plano, sin motor Markdown. \
+    NUNCA uses sintaxis Markdown ni caracteres que la interfaz no interprete: \
+    no asteriscos para negrita o cursiva (** * __ _), no almohadillas (#), no guiones de lista tipo "- item" en bloques densos, \
+    no tablas, no bloques de código con cercos. Si quieres destacar algo, hazlo con la redacción (orden de palabras, una frase corta al inicio), no con símbolos.
+
+    Prioriza párrafos continuos con buen ritmo; separa ideas con una línea en blanco entre párrafos. \
+    Evita listas largas con muchos puntos numerados salvo que el usuario pida explícitamente una enumeración; \
+    aun así, mantén cada ítem en una o dos frases simples, sin etiquetas entre asteriscos. \
+    Cuando el usuario pida "punto por punto", responde con claridad pero sin aspecto de documento técnico: frases completas, tono natural.
+
+    Puedes ayudar con: coches y stock, ventas, documentación básica, mensajes para clientes, resúmenes. \
+    No inventes datos legales ni financieros concretos; indica contrastar con el equipo si hace falta.
+
+    Emojis con mucha moderación (como mucho uno cada varias frases); nunca sustituyas información clave solo con iconos.
+    """
+
+    /// Si el bloque de datos de la app va vacío, no añadimos esta parte (el modelo no tendría UUID reales).
+    private static let vieraStructuredCardsInstruction = """
+    Cuando el usuario pida enviar una tarea al equipo comercial, asignar compañeros, avisar a ventas, o cuando cites \
+    vehículos concretos del inventario que aparecen en los datos de referencia, al terminar tu respuesta en texto plano \
+    para el usuario añade ÚNICAMENTE al final (sin texto después) este bloque literal para que la app muestre fotos:
+
+    <<<VIERA_CARDS
+    {"team":["uuid-en-minúsculas",...],"cars":["uuid-en-minúsculas",...]}
+    >>>
+
+    Reglas: "team" y "cars" son arrays opcionales de strings UUID exactamente como en la lista de referencia (minúsculas). \
+    Omite una clave si no aplica. Si no corresponde mostrar fichas, no escribas el bloque. No expliques el bloque al usuario.
+
+    Siempre que hables de vehículos concretos de la lista de inventario (por matrícula, marca y modelo o nombre), \
+    incluye sus id en "cars" para que la app muestre la tarjeta con foto.
+
+    Si el usuario quiere enviar una oferta, resumen comercial o que un compañero gestione el cliente, \
+    incluye en "team" el UUID del comercial indicado en COMERCIAL_DEL_EQUIPO_SUGERIDO o el que el usuario nombre del listado EQUIPO, \
+    y en "cars" los vehículos implicados, para que la app pueda mostrar al comercial y el botón de enviar oferta.
+    """
+
+    private struct OpenAIChatCompletionResponse: Decodable {
+        struct Choice: Decodable {
+            struct Msg: Decodable {
+                let content: String?
+            }
+
+            let message: Msg?
+        }
+
+        let choices: [Choice]?
+    }
+
+    private struct OpenAIAPIErrorEnvelope: Decodable {
+        struct APIErr: Decodable {
+            let message: String?
+        }
+
+        let error: APIErr?
+    }
+
+    private static func openAIMessages(
+        for conversation: [(isUser: Bool, text: String)],
+        dataContextSupplement: String?
+    ) -> [OpenAIChatMessageDTO] {
+        var systemContent = vieraSystemPrompt
+        if let raw = dataContextSupplement?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            systemContent += """
+
+            ---
+            \(raw)
+
+            \(vieraStructuredCardsInstruction)
+            """
+        }
+        var messages: [OpenAIChatMessageDTO] = [
+            OpenAIChatMessageDTO(role: "system", content: systemContent),
+        ]
+        for turn in conversation {
+            messages.append(
+                OpenAIChatMessageDTO(role: turn.isUser ? "user" : "assistant", content: turn.text)
+            )
+        }
+        return messages
+    }
+
+    /// Respuesta en streaming (SSE). `onChunk` se llama por cada trozo de texto en el orden correcto.
+    /// `dataContextSupplement`: listado equipo + coches; si es nil o vacío, no se pide el bloque de tarjetas.
+    static func streamVieraChatReply(
+        conversation: [(isUser: Bool, text: String)],
+        dataContextSupplement: String?,
+        onChunk: @escaping (String) async -> Void
+    ) async throws {
+        guard let key = openAIKey else { throw OpenAIError.missingAPIKey }
+
+        let messages = openAIMessages(for: conversation, dataContextSupplement: dataContextSupplement)
+        let body = OpenAIStreamRequestBody(model: openAIModel, messages: messages, stream: true)
+        var request = URLRequest(url: openAIEndpoint)
         request.httpMethod = "POST"
-        request.setValue(key, forHTTPHeaderField: "x-api-key")
-        request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw OpenAIError.invalidResponse }
+
+        if !(200 ... 299).contains(http.statusCode) {
+            var err = Data()
+            err.reserveCapacity(4096)
+            for try await b in bytes {
+                err.append(b)
+                if err.count >= 8192 { break }
+            }
+            let snippet = String(data: err, encoding: .utf8)
+            if let d = try? JSONDecoder().decode(OpenAIAPIErrorEnvelope.self, from: err),
+               let m = d.error?.message, !m.isEmpty {
+                throw OpenAIError.httpStatus(http.statusCode, m)
+            }
+            throw OpenAIError.httpStatus(http.statusCode, snippet)
+        }
+
+        try await readOpenAISSEStream(bytes) { piece in
+            await onChunk(piece)
+        }
+    }
+
+    private static func readOpenAISSEStream(
+        _ bytes: URLSession.AsyncBytes,
+        onDelta: @escaping (String) async -> Void
+    ) async throws {
+        var lineBytes: [UInt8] = []
+        lineBytes.reserveCapacity(256)
+
+        for try await byte in bytes {
+            if byte == 10 {
+                guard !lineBytes.isEmpty else { continue }
+                let line = String(decoding: lineBytes, as: UTF8.self)
+                lineBytes.removeAll(keepingCapacity: true)
+
+                guard line.hasPrefix("data:") else { continue }
+                let rest = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                if rest == "[DONE]" { return }
+                guard let data = rest.data(using: .utf8) else { continue }
+
+                if let env = try? JSONDecoder().decode(OpenAIStreamErrorEnvelope.self, from: data),
+                   let msg = env.error?.message, !msg.isEmpty {
+                    throw OpenAIError.httpStatus(0, msg)
+                }
+
+                guard let chunk = try? JSONDecoder().decode(OpenAIStreamChunk.self, from: data),
+                      let piece = chunk.choices?.first?.delta?.content,
+                      !piece.isEmpty
+                else { continue }
+
+                await onDelta(piece)
+            } else if byte != 13 {
+                lineBytes.append(byte)
+            }
+        }
+    }
+
+    static func vieraChatReply(conversation: [(isUser: Bool, text: String)]) async throws -> String {
+        guard let key = openAIKey else { throw OpenAIError.missingAPIKey }
+
+        let messages = openAIMessages(for: conversation, dataContextSupplement: nil)
+        let body = OpenAINonStreamRequestBody(model: openAIModel, messages: messages)
+        var request = URLRequest(url: openAIEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw ClientError.invalidResponse }
+        guard let http = response as? HTTPURLResponse else { throw OpenAIError.invalidResponse }
 
         guard (200 ... 299).contains(http.statusCode) else {
-            if let env = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data), let e = env.error {
-                throw ClientError.httpStatus(http.statusCode, e.message)
+            if let env = try? JSONDecoder().decode(OpenAIAPIErrorEnvelope.self, from: data),
+               let m = env.error?.message, !m.isEmpty {
+                throw OpenAIError.httpStatus(http.statusCode, m)
             }
             let snippet = String(data: data, encoding: .utf8)
-            throw ClientError.httpStatus(http.statusCode, snippet)
+            throw OpenAIError.httpStatus(http.statusCode, snippet)
         }
 
-        let decoded = try JSONDecoder().decode(MessagesResponse.self, from: data)
-        let text = decoded.content.compactMap { block -> String? in
-            guard block.type == "text", let t = block.text?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
-                return nil
-            }
-            return t
-        }.joined(separator: "\n\n")
+        let decoded = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
+        let text = decoded.choices?.first?.message?.content?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        if text.isEmpty { throw ClientError.decodingFailed }
+        if text.isEmpty { throw OpenAIError.decodingFailed }
         return text
     }
 }

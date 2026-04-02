@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>baseURL_dev</key>
+	<string>http://127.0.0.1:3000</string>
+	<key>baseURL_staging</key>
+	<string>https://staging.example.invalid</string>
+	<key>baseURL_prod</key>
+	<string>https://api.example.invalid</string>
+</dict>
+</plist>

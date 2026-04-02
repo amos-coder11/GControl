@@ -40,23 +40,53 @@ struct CarThumbnailView: View {
     @EnvironmentObject private var auth: AuthViewModel
     let car: Car
     var size: CGFloat = 52
+    /// Si se definen, sustituyen el cuadrado `size` (miniaturas rectangulares en carruseles).
+    var width: CGFloat?
+    var height: CGFloat?
+    /// Recorte redondeado tipo tarjeta de galería en lugar de círculo.
+    var roundedCardClip: Bool = false
 
     @State private var loadedImage: UIImage?
+
+    private var thumbW: CGFloat { width ?? size }
+    private var thumbH: CGFloat { height ?? size }
+
+    private var roundedRadius: CGFloat {
+        min(thumbW, thumbH) * (roundedCardClip ? 0.14 : 0.5)
+    }
 
     var body: some View {
         let accent = car.accentSwiftUIColor
         ZStack {
-            Circle()
-                .fill(accent.opacity(0.15))
-                .frame(width: size, height: size)
+            Group {
+                if roundedCardClip {
+                    RoundedRectangle(cornerRadius: roundedRadius, style: .continuous)
+                        .fill(accent.opacity(0.12))
+                } else {
+                    Circle()
+                        .fill(accent.opacity(0.15))
+                }
+            }
+            .frame(width: thumbW, height: thumbH)
 
             if let ui = loadedImage {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipped()
-                    .clipShape(Circle())
+                Group {
+                    if roundedCardClip {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: thumbW, height: thumbH)
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: roundedRadius, style: .continuous))
+                    } else {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: thumbW, height: thumbH)
+                            .clipped()
+                            .clipShape(Circle())
+                    }
+                }
             } else if car.hasImagePayload {
                 ProgressView()
                     .scaleEffect(0.65)
@@ -64,6 +94,7 @@ struct CarThumbnailView: View {
                 fallbackIcon(accent: accent)
             }
         }
+        .frame(width: thumbW, height: thumbH)
         .task(id: car.imageLoadIdentity) {
             await loadImage()
         }
@@ -82,8 +113,9 @@ struct CarThumbnailView: View {
     }
 
     private func fallbackIcon(accent: Color) -> some View {
-        Image(systemName: car.icon)
-            .font(.system(size: size * 0.42, weight: .semibold))
+        let s = min(thumbW, thumbH)
+        return Image(systemName: car.icon)
+            .font(.system(size: s * 0.42, weight: .semibold))
             .foregroundStyle(accent)
     }
 }

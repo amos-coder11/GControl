@@ -95,6 +95,11 @@
 		AA000087 /* LoopingMutedBundledVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000087 /* LoopingMutedBundledVideoView.swift */; };
 		AA000088 /* AIBuddyFondo.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000088 /* AIBuddyFondo.mp4 */; };
 		AA000089 /* AIAssistantOrb.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000089 /* AIAssistantOrb.gif */; };
+		AA000093 /* AudioWaveformMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000093 /* AudioWaveformMonitor.swift */; };
+		AA000094 /* WaveformBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000094 /* WaveformBarView.swift */; };
+		AA000095 /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000095 /* AudioWaveformView.swift */; };
+		AA000096 /* WaveformDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000096 /* WaveformDemoView.swift */; };
+		AA000097 /* VieraChatRichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000097 /* VieraChatRichContent.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -180,6 +185,11 @@
 		AB000079 /* DashboardHubScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHubScreens.swift; sourceTree = "<group>"; };
 		AB000080 /* TeamLocationMapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLocationMapViews.swift; sourceTree = "<group>"; };
 		AB000081 /* LiveSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSpeechTranscriber.swift; sourceTree = "<group>"; };
+		AB000093 /* AudioWaveformMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformMonitor.swift; sourceTree = "<group>"; };
+		AB000094 /* WaveformBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarView.swift; sourceTree = "<group>"; };
+		AB000095 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
+		AB000096 /* WaveformDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformDemoView.swift; sourceTree = "<group>"; };
+		AB000097 /* VieraChatRichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VieraChatRichContent.swift; sourceTree = "<group>"; };
 		AB000082 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
 		AB000091 /* TeamDirectMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectMessagesService.swift; sourceTree = "<group>"; };
@@ -290,6 +300,7 @@
 				AB000074 /* DashboardLocationHub.swift */,
 				AB000078 /* InvoiceHistoryStore.swift */,
 				AB000081 /* LiveSpeechTranscriber.swift */,
+				AB000093 /* AudioWaveformMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -314,6 +325,10 @@
 				AB000050 /* CarBrowseSheets.swift */,
 				AB000061 /* LockScreenView.swift */,
 				AB000062 /* PINSetupView.swift */,
+				AB000094 /* WaveformBarView.swift */,
+				AB000095 /* AudioWaveformView.swift */,
+				AB000096 /* WaveformDemoView.swift */,
+				AB000097 /* VieraChatRichContent.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -541,6 +556,11 @@
 				AA000078 /* DashboardHubScreens.swift in Sources */,
 				AA000080 /* TeamLocationMapViews.swift in Sources */,
 				AA000081 /* LiveSpeechTranscriber.swift in Sources */,
+				AA000093 /* AudioWaveformMonitor.swift in Sources */,
+				AA000094 /* WaveformBarView.swift in Sources */,
+				AA000095 /* AudioWaveformView.swift in Sources */,
+				AA000096 /* WaveformDemoView.swift in Sources */,
+				AA000097 /* VieraChatRichContent.swift in Sources */,
 				AA000086 /* GIFAnimatedView.swift in Sources */,
 				AA000087 /* LoopingMutedBundledVideoView.swift in Sources */,
 			);

@@ -1,4 +1,11 @@
-// Copia este archivo a DeveloperSettings.local.xcconfig y pega tu clave de console.anthropic.com
-ANTHROPIC_API_KEY = sk-ant-api03-TU_CLAVE_AQUI
-// Opcional: modelo API (si Anthropic retira un ID, actualiza aquí). Ej.: claude-sonnet-4-5-20250929 o claude-sonnet-4-6
+// 1) Duplica este archivo y renómbralo a: DeveloperSettings.local.xcconfig
+// 2) Esa copia NO se sube a git (ya está en .gitignore).
+// 3) Pega tu clave real solo en .local, nunca en este .example.
+
+// Pestaña IA (Viera) — solo OpenAI
+OPENAI_API_KEY = sk-proj-TU_CLAVE_AQUI
+// OPENAI_MODEL = gpt-4o-mini
+
+// Generador de contratos (pantalla Contratos IA) — sigue usando Claude si lo configuras
+// ANTHROPIC_API_KEY = sk-ant-api03-TU_CLAVE_AQUI
 // ANTHROPIC_MODEL = claude-sonnet-4-20250514

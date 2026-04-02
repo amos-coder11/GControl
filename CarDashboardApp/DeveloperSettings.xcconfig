@@ -1,4 +1,6 @@
 // Valores por defecto; opcionalmente sobrescribe con DeveloperSettings.local.xcconfig (no versionado).
 ANTHROPIC_API_KEY =
 ANTHROPIC_MODEL =
+OPENAI_API_KEY =
+OPENAI_MODEL =
 #include? "DeveloperSettings.local.xcconfig"

@@ -1,0 +1,20 @@
+{
+  "name": "voiceapp-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ephemeral OpenAI Realtime session token broker for VoiceApp iOS client",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  }
+}

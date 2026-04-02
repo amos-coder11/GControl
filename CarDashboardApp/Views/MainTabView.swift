@@ -59,6 +59,8 @@ struct MainTabView: View {
 
             Tab("IA", systemImage: "sparkles", value: CarHubMainTab.ai) {
                 TeamAITabView()
+                    .toolbar(.hidden, for: .tabBar)
+                    .toolbarBackground(.hidden, for: .tabBar)
             }
 
             Tab("Ajustes", systemImage: "gearshape.fill", value: CarHubMainTab.settings) {
@@ -101,93 +103,41 @@ struct MainTabView: View {
 
 // MARK: - Pestaña IA (mismo archivo que MainTabView para evitar «Cannot find TeamAITabView in scope» si falta el .swift en el target)
 
-private enum TeamCoordinatorActionParser {
-    static func splitResponse(_ raw: String) -> (
-        visible: String,
-        sends: [(recipientName: String, message: String)],
-        tasks: [(recipientName: String, title: String, body: String, steps: [String])]
-    ) {
-        let start = "<<<ACTIONS>>>"
-        let end = "<<<ENDACTIONS>>>"
-        guard let r1 = raw.range(of: start),
-              let r2 = raw.range(of: end, range: r1.upperBound ..< raw.endIndex)
-        else {
-            return (raw.trimmingCharacters(in: .whitespacesAndNewlines), [], [])
-        }
-        let visible = String(raw[..<r1.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let block = String(raw[r1.upperBound ..< r2.lowerBound])
-        var sends: [(String, String)] = []
-        var tasks: [(String, String, String, [String])] = []
-        for line in block.split(separator: "\n") {
-            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !t.isEmpty else { continue }
-            let parts = t.split(separator: "|", omittingEmptySubsequences: false).map {
-                String($0).trimmingCharacters(in: .whitespaces)
-            }
-            guard !parts.isEmpty else { continue }
-            let cmd = parts[0].uppercased()
-            if cmd == "SEND", parts.count >= 3 {
-                sends.append((parts[1], parts[2]))
-            } else if cmd == "TASK", parts.count >= 5 {
-                let name = parts[1]
-                let title = parts[2]
-                let body = parts[3]
-                let stepLines = parts.dropFirst(4).filter { !$0.isEmpty }
-                let steps = stepLines.isEmpty
-                    ? ["Adjunta una foto o una nota que documente el encargo."]
-                    : stepLines
-                tasks.append((name, title, body, steps))
-            }
-        }
-        return (visible, sends, tasks)
-    }
-
-    static func resolvePeer(
-        named: String,
-        directory: [CommunityProfilesService.DirectoryRow]
-    ) -> CommunityProfilesService.DirectoryRow? {
-        let needle = named.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return nil }
-        return directory.first { row in
-            let full = row.resolvedDisplayName.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-                .lowercased()
-            if full == needle { return true }
-            if full.contains(needle) { return true }
-            let first = row.resolvedDisplayName.split(separator: " ").first.map(String.init)?
-                .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-                .lowercased()
-            return first == needle
-        }
-    }
-}
-
 @MainActor
 private final class TeamAIAssistantSession: ObservableObject {
     struct Bubble: Identifiable, Equatable {
         let id: UUID
         let isUser: Bool
         let text: String
+        /// Tarjetas visuales (equipo / coches) parseadas del bloque `<<<VIERA_CARDS>>>`.
+        var cardPayload: VieraCardPayload?
 
-        init(id: UUID = UUID(), isUser: Bool, text: String) {
+        init(id: UUID = UUID(), isUser: Bool, text: String, cardPayload: VieraCardPayload? = nil) {
             self.id = id
             self.isUser = isUser
             self.text = text
+            self.cardPayload = cardPayload
         }
     }
+
+    /// Listado equipo + inventario para el system prompt (desde `TeamAITabView`).
+    var vieraAppContextBuilder: (() -> String)?
 
     @Published var bubbles: [Bubble] = []
     @Published var draft: String = ""
     @Published var liveTranscript: String = ""
     @Published var isRecordingAudio = false
     @Published var isSending = false
+    /// Texto parcial mientras llega el stream de OpenAI (efecto «typewriter»).
+    @Published var streamingAssistantText: String = ""
     @Published var statusHint: String?
 
-    private let transcriber = LiveSpeechTranscriber()
+    private let transcriber: LiveSpeechTranscriber
+    fileprivate let waveformMonitor = AudioWaveformMonitor()
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        transcriber = LiveSpeechTranscriber(waveformMonitor: waveformMonitor)
         transcriber.$partialText
             .receive(on: DispatchQueue.main)
             .sink { [weak self] text in
@@ -220,8 +170,10 @@ private final class TeamAIAssistantSession: ObservableObject {
             }
             await MainActor.run {
                 do {
+                    self.waveformMonitor.beginExternalAudioFeed()
                     try self.transcriber.startLiveTranscription()
                 } catch {
+                    self.waveformMonitor.endExternalAudioFeed()
                     self.isRecordingAudio = false
                     self.statusHint = error.localizedDescription
                 }
@@ -232,51 +184,43 @@ private final class TeamAIAssistantSession: ObservableObject {
     func endVoiceInput() {
         let captured = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         transcriber.stopLiveTranscription()
+        waveformMonitor.endExternalAudioFeed()
         isRecordingAudio = false
         liveTranscript = ""
-        if !captured.isEmpty {
-            if draft.isEmpty {
-                draft = captured
-            } else if draft.hasSuffix(" ") {
-                draft += captured
-            } else {
-                draft += " " + captured
-            }
+        mergeCapturedTranscriptIntoDraft(captured)
+    }
+
+    /// Termina el dictado y envía el mensaje (flecha durante grabación, estilo ChatGPT).
+    func endVoiceInputAndSend() {
+        let captured = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        transcriber.stopLiveTranscription()
+        waveformMonitor.endExternalAudioFeed()
+        isRecordingAudio = false
+        liveTranscript = ""
+        mergeCapturedTranscriptIntoDraft(captured)
+        send()
+    }
+
+    private func mergeCapturedTranscriptIntoDraft(_ captured: String) {
+        guard !captured.isEmpty else { return }
+        if draft.isEmpty {
+            draft = captured
+        } else if draft.hasSuffix(" ") {
+            draft += captured
+        } else {
+            draft += " " + captured
         }
     }
 
     /// Cierra el dictado sin añadir nada al borrador (equivalente a «cancelar»).
     func cancelVoiceInput() {
         transcriber.stopLiveTranscription()
+        waveformMonitor.endExternalAudioFeed()
         isRecordingAudio = false
         liveTranscript = ""
     }
 
-    func appendCarSelection(_ car: Car) {
-        let marker = "[Vehículo: \(car.coordinatorEncargoLine)]"
-        if draft.contains(marker) { return }
-        if draft.isEmpty {
-            draft = marker
-        } else {
-            draft += "\n\(marker)"
-        }
-    }
-
-    func appendPeerSelection(_ row: CommunityProfilesService.DirectoryRow) {
-        let marker = "[Comercial: \(row.resolvedDisplayName)]"
-        if draft.contains(marker) { return }
-        if draft.isEmpty {
-            draft = marker
-        } else {
-            draft += "\n\(marker)"
-        }
-    }
-
-    func send(
-        directory: [CommunityProfilesService.DirectoryRow],
-        currentUserId: UUID?,
-        inbox: ChatInboxStore
-    ) {
+    func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
         draft = ""
@@ -284,108 +228,51 @@ private final class TeamAIAssistantSession: ObservableObject {
         isSending = true
         statusHint = nil
 
-        let roster = Self.formatRoster(directory: directory, currentUserId: currentUserId)
         let conversation = bubbles.map { ($0.isUser, $0.text) }
 
-        Task {
+        let dataSupplement = vieraAppContextBuilder?() ?? ""
+
+        Task { @MainActor [self] in
             do {
-                let raw: String
-                if AnthropicContractClient.isConfigured {
-                    raw = try await AnthropicContractClient.teamCoordinatorReply(
-                        rosterLines: roster,
-                        conversation: conversation
-                    )
+                if OpenAIChatClient.isConfigured {
+                    self.streamingAssistantText = ""
+                    let supplement = dataSupplement.trimmingCharacters(in: .whitespacesAndNewlines)
+                    try await OpenAIChatClient.streamVieraChatReply(
+                        conversation: conversation,
+                        dataContextSupplement: supplement.isEmpty ? nil : supplement
+                    ) { chunk in
+                        await MainActor.run { [self] in
+                            self.streamingAssistantText += chunk
+                        }
+                    }
+                    let split = VieraCardsParser.split(raw: self.streamingAssistantText)
+                    self.streamingAssistantText = ""
+                    let final = split.visible.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if final.isEmpty {
+                        self.statusHint = "La respuesta ha llegado vacía. Inténtalo de nuevo."
+                    } else {
+                        self.bubbles.append(Bubble(isUser: false, text: final, cardPayload: split.payload))
+                    }
+                    self.isSending = false
                 } else {
-                    raw = Self.fallbackReply(userText: text, directory: directory, currentUserId: currentUserId)
-                }
-                let (visible, sends, tasks) = TeamCoordinatorActionParser.splitResponse(raw)
-                await MainActor.run {
-                    if !visible.isEmpty {
-                        self.bubbles.append(Bubble(isUser: false, text: visible))
-                    }
-                    for item in sends {
-                        guard let row = TeamCoordinatorActionParser.resolvePeer(named: item.recipientName, directory: directory)
-                        else { continue }
-                        if row.userId != currentUserId {
-                            inbox.applyTeamCoordinatorOutreach(peerUserId: row.userId, line: item.message)
-                        }
-                    }
-                    for item in tasks {
-                        guard let row = TeamCoordinatorActionParser.resolvePeer(named: item.recipientName, directory: directory)
-                        else { continue }
-                        if row.userId != currentUserId {
-                            inbox.appendCoordinatorTask(
-                                peerUserId: row.userId,
-                                title: item.title,
-                                body: item.body,
-                                stepInstructions: item.steps
-                            )
-                            let preview = Self.coordinatorTaskListPreview(body: item.body, title: item.title)
-                            inbox.applyTeamCoordinatorOutreach(peerUserId: row.userId, line: preview)
-                        }
-                    }
-                    inbox.syncTeamThreads(from: directory, currentUserId: currentUserId)
+                    let reply = Self.offlineAssistantHint
+                    self.bubbles.append(Bubble(isUser: false, text: reply))
                     self.isSending = false
                 }
             } catch {
-                await MainActor.run {
-                    self.statusHint = error.localizedDescription
-                    self.isSending = false
-                }
+                self.streamingAssistantText = ""
+                self.statusHint = error.localizedDescription
+                self.isSending = false
             }
         }
     }
 
-    private static func formatRoster(
-        directory: [CommunityProfilesService.DirectoryRow],
-        currentUserId: UUID?
-    ) -> String {
-        let lines = directory
-            .filter { $0.userId != currentUserId }
-            .map(\.resolvedDisplayName)
-        if lines.isEmpty {
-            return "(Aún no hay otros miembros en el directorio.)"
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private static func fallbackReply(
-        userText: String,
-        directory: [CommunityProfilesService.DirectoryRow],
-        currentUserId: UUID?
-    ) -> String {
-        let peers = directory.filter { $0.userId != currentUserId }
-        let lower = userText.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES")).lowercased()
-        var matched: [(CommunityProfilesService.DirectoryRow, String)] = []
-        for row in peers {
-            let name = row.resolvedDisplayName
-            let fullKey = name.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES")).lowercased()
-            var hit = lower.contains(fullKey)
-            if !hit {
-                for part in name.split(separator: " ") {
-                    let p = String(part).folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES")).lowercased()
-                    if p.count >= 3, lower.contains(p) { hit = true; break }
-                }
-            }
-            if hit {
-                matched.append((row, userText))
-            }
-        }
-        if matched.isEmpty {
-            return """
-            No he podido enlazar un nombre del equipo con lo que dijiste. \
-            Nombres en el directorio: \(peers.map(\.resolvedDisplayName).joined(separator: ", ")).
-
-            Con **ANTHROPIC_API_KEY** configurada interpreto mejor órdenes del tipo «dile a Alberto que…».
-            """
-        }
-        var block = "<<<ACTIONS>>>\n"
-        for (row, msg) in matched {
-            block += "TASK|\(row.resolvedDisplayName)|Encargo del coordinador|\(msg)|Foto que documente el encargo en el concesionario o zona de trabajo|Nota breve con el resultado o el siguiente paso\n"
-        }
-        block += "<<<ENDACTIONS>>>"
-        return "He creado tareas con aceptación y pruebas para: \(matched.map { $0.0.resolvedDisplayName }.joined(separator: ", ")). Abre el chat de cada compañero en «Equipo en chat» para aceptar y subir cada prueba.\n\n\(block)"
-    }
+    private static let offlineAssistantHint = """
+    Para que Viera responda aquí, crea el archivo DeveloperSettings.local.xcconfig en la carpeta CarDashboardApp \
+    (copia el .example y renómbralo; no uses solo el .example) y añade:
+    OPENAI_API_KEY = sk-proj-tu_clave
+    Limpia el proyecto (Product → Clean Build Folder) y vuelve a compilar.
+    """
 
     private func requestMicrophonePermission() async -> Bool {
         await withCheckedContinuation { cont in
@@ -395,29 +282,130 @@ private final class TeamAIAssistantSession: ObservableObject {
         }
     }
 
-    private static func coordinatorTaskListPreview(body: String, title: String) -> String {
-        let b = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let primary = b.isEmpty ? t : b
-        if primary.count <= 76 { return primary }
-        return String(primary.prefix(73)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
-    }
 }
 
 private enum TeamAIScrollID: Hashable {
     case typing
+    case streaming
     case bubble(UUID)
+}
+
+/// Editor a pantalla grande para mensajes muy largos (scroll interno, estilo ChatGPT).
+private struct TeamAILongMessageDraftSheet: View {
+    @Binding var text: String
+    var isSending: Bool
+    var onDismiss: () -> Void
+    var onSend: () -> Void
+
+    @FocusState private var editorFocused: Bool
+
+    private let sheetBg = Color(red: 0.09, green: 0.09, blue: 0.1)
+
+    private var trimmed: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSend: Bool {
+        !trimmed.isEmpty && !isSending
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .topLeading) {
+                sheetBg.ignoresSafeArea()
+                TextEditor(text: $text)
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.95))
+                    .tint(Color(red: 0, green: 0.48, blue: 1))
+                    .scrollContentBackground(.hidden)
+                    .padding(.leading, 14)
+                    .padding(.trailing, 40)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    .focused($editorFocused)
+            }
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.48))
+                        .padding(10)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cerrar editor")
+                .padding(.trailing, 4)
+                .padding(.top, 4)
+            }
+            .navigationTitle("Mensaje")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(sheetBg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
+                Button {
+                    onSend()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(canSend ? Color.black : Color.black.opacity(0.38))
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(canSend ? Color.white : Color.white.opacity(0.38))
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Enviar mensaje")
+                .padding(.trailing, 14)
+                .padding(.bottom, 6)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                editorFocused = true
+            }
+        }
+    }
+}
+
+/// Cursor parpadeante al final del texto en streaming (estilo chat IA).
+private struct StreamingTextCaret: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.45, paused: false)) { ctx in
+            let pulse = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) < 0.45
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(Color(red: 0.45, green: 0.78, blue: 1).opacity(0.95))
+                .frame(width: 2, height: 15)
+                .opacity(pulse ? 1 : 0.22)
+        }
+    }
 }
 
 struct TeamAITabView: View {
     @StateObject private var session = TeamAIAssistantSession()
-    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
-    @EnvironmentObject private var inbox: ChatInboxStore
+    @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
 
-    @State private var sendReviewConfirmed = false
     @State private var showTextDraftSheet = false
+    @State private var showPlusMenuSheet = false
+    @FocusState private var composerFieldFocused: Bool
+
+    @State private var speechSynth = AVSpeechSynthesizer()
+    /// 0 ninguno, 1 pulgar arriba, -1 pulgar abajo (por id de burbuja del asistente).
+    @State private var assistantThumbByBubbleId: [UUID: Int] = [:]
+
+    /// Fondo solo del listado de mensajes (cabecera y compositor: sin capa negra, solo controles con cristal).
+    private let cgptBlack = Color(red: 0, green: 0, blue: 0)
 
     /// Fondos de tarjetas / contraste con acentos
     private let aiBackgroundBlack = Color(red: 0.02, green: 0.04, blue: 0.09)
@@ -431,188 +419,175 @@ struct TeamAITabView: View {
     private let vieraAccentBright = Color(red: 0.45, green: 0.78, blue: 1)
     private let vieraIndigo = Color(red: 0.18, green: 0.28, blue: 0.52)
 
-    private var carVoiceMatches: [Car] {
-        TeamAIVoiceQuery.matchingCars(
-            cars: carsVM.cars,
-            liveTranscript: session.liveTranscript,
-            draft: session.draft
-        )
+    /// Espacio vacío bajo el hilo (estilo ChatGPT: mensajes largos «respiran» sobre el compositor).
+    private var chatScrollBottomBreathingRoom: CGFloat {
+        max(300, UIScreen.main.bounds.height * 0.48)
     }
 
-    private var peerVoiceMatches: [CommunityProfilesService.DirectoryRow] {
-        TeamAIVoiceQuery.matchingPeers(
-            directory: communityVM.directory,
-            currentUserId: auth.session?.user.id,
-            liveTranscript: session.liveTranscript,
-            draft: session.draft
-        )
+    private func isVeryLongUserMessage(_ text: String) -> Bool {
+        let n = text.count
+        let newlines = text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
+        return n >= 360 || newlines >= 10
+    }
+
+    private var assistantToolbarIconFont: Font {
+        .system(size: 13, weight: .light)
     }
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [vieraScreenBgTop, vieraScreenBgBottom],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        VStack(spacing: 0) {
+            chatGPTTopChrome
+            memoryStatusRow
 
-            RadialGradient(
-                colors: [
-                    vieraAccent.opacity(0.14),
-                    vieraAccentBright.opacity(0.04),
-                    Color.clear,
-                ],
-                center: .init(x: 0.5, y: 0.22),
-                startRadius: 40,
-                endRadius: 280
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+            if session.isRecordingAudio {
+                recordingFocusStack
+            }
 
-            VStack(spacing: 0) {
-                buddyHeader
-
-                if session.isRecordingAudio {
-                    recordingFocusStack
-                } else {
-                    buddyOrbVideo(diameter: idleOrbSize)
-                        .padding(.top, 4)
-                        .padding(.bottom, 8)
-                    buddyPromptBlock
-                }
-
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(session.bubbles) { bubble in
-                                bubbleRowDark(bubble)
-                                    .id(TeamAIScrollID.bubble(bubble.id))
-                            }
-                            if session.isSending {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(Array(session.bubbles.enumerated()), id: \.element.id) { idx, bubble in
+                            bubbleRowDark(bubble, index: idx)
+                                .id(TeamAIScrollID.bubble(bubble.id))
+                        }
+                        if session.isSending {
+                            if session.streamingAssistantText.isEmpty {
                                 typingRowDark
                                     .id(TeamAIScrollID.typing)
+                            } else {
+                                streamingAssistantBubbleRow(session.streamingAssistantText)
+                                    .id(TeamAIScrollID.streaming)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: session.isRecordingAudio ? 100 : .infinity)
-                    .onChange(of: session.bubbles.count) { _, _ in
-                        scrollToBottom(proxy: proxy)
-                    }
-                    .onChange(of: session.isSending) { _, _ in
-                        scrollToBottom(proxy: proxy)
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .padding(.bottom, chatScrollBottomBreathingRoom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                if !session.isRecordingAudio {
-                    voicePickersBlock
-                    scheduleReviewCard
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scrollContentBackground(.hidden)
+                .background(cgptBlack)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: session.bubbles.count) { _, _ in
+                    scrollToBottom(proxy: proxy)
                 }
-
-                bottomControls
+                .onChange(of: session.isSending) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: session.streamingAssistantText) { _, _ in
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
+
+            bottomControlsChatStyle
         }
+        .background(Color.clear)
         .preferredColorScheme(.dark)
-        .tint(vieraAccent)
+        .tint(.white)
+        .onAppear {
+            session.vieraAppContextBuilder = { [communityVM, carsVM, auth] in
+                VieraChatContextBuilder.build(
+                    directory: communityVM.directory,
+                    cars: carsVM.cars,
+                    currentUserId: auth.session?.user.id
+                )
+            }
+        }
+        .sheet(isPresented: $showPlusMenuSheet) {
+            TeamAIPlusMenuSheet(
+                onDismiss: { showPlusMenuSheet = false },
+                onWriteMessage: {
+                    showPlusMenuSheet = false
+                    showTextDraftSheet = true
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showTextDraftSheet) {
-            NavigationStack {
-                TextEditor(text: $session.draft)
-                    .font(.system(size: 17))
-                    .scrollContentBackground(.hidden)
-                    .padding(12)
-                    .background(Color(uiColor: .systemGray6))
-                    .navigationTitle("Mensaje")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Listo") { showTextDraftSheet = false }
-                                .fontWeight(.semibold)
-                        }
-                    }
-            }
-            .presentationDetents([.medium, .large])
-        }
-        .onChange(of: session.draft) { _, _ in
-            sendReviewConfirmed = false
-        }
-        .onChange(of: session.isRecordingAudio) { wasRecording, nowRecording in
-            if wasRecording, !nowRecording {
-                sendReviewConfirmed = false
-            }
+            TeamAILongMessageDraftSheet(
+                text: $session.draft,
+                isSending: session.isSending,
+                onDismiss: { showTextDraftSheet = false },
+                onSend: {
+                    let t = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !t.isEmpty, !session.isSending else { return }
+                    session.send()
+                    showTextDraftSheet = false
+                    composerFieldFocused = false
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
     }
 
-    private var buddyHeader: some View {
-        ZStack(alignment: .top) {
-            HStack {
-                Spacer(minLength: 0)
-                TeamVieraTopoDecoration()
-                    .padding(.trailing, 6)
-            }
-            .padding(.top, 4)
-
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    Image(systemName: "cpu.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [vieraAccentBright, vieraAccent],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                    Text("Viera IA")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 11)
-                .background {
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .overlay {
-                            Capsule(style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [
-                                            vieraAccentBright.opacity(0.85),
-                                            vieraAccent.opacity(0.35),
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1
-                                )
-                        }
-                }
-                .shadow(color: vieraAccent.opacity(0.22), radius: 16, y: 6)
-
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(vieraAccentBright.opacity(0.35))
-                            .frame(width: 10, height: 10)
-                            .blur(radius: 3)
-                        Circle()
-                            .fill(vieraAccentBright)
-                            .frame(width: 6, height: 6)
+    private var chatGPTTopChrome: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button("Inicio") { tabRouter.selected = .home }
+                Button("Coches") { tabRouter.selected = .cars }
+                Button("Chat") { tabRouter.selected = .chat }
+                Button("Ajustes") { tabRouter.selected = .settings }
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 44, height: 44)
+                    .background {
+                        TeamAIGlassCircleBackground()
                     }
-                    Text("En línea")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.48))
+            }
+
+            Spacer(minLength: 0)
+
+            Menu {
+                Section("Modelo") {
+                    Text("Viera IA — asistente CarHub")
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Viera IA")
+                        .font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background {
+                    TeamAIGlassCapsuleBackground()
                 }
             }
-            .padding(.top, 6)
+
+            Spacer(minLength: 0)
+
+            Color.clear
+                .frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    private var memoryStatusRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "cpu")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.blue.opacity(0.85))
+            Text("Memoria desactivada")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.5))
+            Image(systemName: "info.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.35))
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.bottom, 10)
     }
 
+    /// Borde izquierdo: deslizar hacia la derecha (como «atrás» en un chat) → Inicio.
     @ViewBuilder
     private func buddyOrbVideo(diameter: CGFloat) -> some View {
         let url = Bundle.main.url(forResource: "AIBuddyFondo", withExtension: "mp4")
@@ -636,9 +611,9 @@ struct TeamAITabView: View {
             if url != nil {
                 LoopingMutedBundledVideoView(
                     resourceName: "AIBuddyFondo",
-                    videoGravity: .resizeAspectFill
+                    videoGravity: AVLayerVideoGravity.resizeAspectFill
                 )
-                .aspectRatio(1, contentMode: .fill)
+                .aspectRatio(1, contentMode: ContentMode.fill)
                 .frame(width: diameter, height: diameter)
                 .clipped()
                 .clipShape(Circle())
@@ -683,72 +658,11 @@ struct TeamAITabView: View {
         .accessibilityLabel("Asistente Viera IA")
     }
 
-    /// Texto central (solo guía; el dictado no se muestra aquí).
-    private var buddyPromptBlock: some View {
-        VStack(spacing: 10) {
-            Text("COORDINADOR INTELIGENTE")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.1)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [vieraAccentBright.opacity(0.9), vieraAccent.opacity(0.65)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            Text(
-                "Dicta el encargo con el micrófono, elige coche y comercial en los carruseles, confirma horario y envía."
-            )
-                .font(.system(size: 16, weight: .regular, design: .rounded))
-                .foregroundStyle(transcriptMuted)
-                .multilineTextAlignment(.center)
-                .lineSpacing(5)
-        }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity)
-        .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    vieraAccent.opacity(0.22),
-                                    Color.white.opacity(0.06),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                }
-        }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 8)
-    }
-
     /// Vídeo en bucle mientras grabas (el texto dictado no se muestra en pantalla).
     private var recordingFocusStack: some View {
         VStack(spacing: 8) {
             buddyOrbVideo(diameter: recordingOrbSize)
                 .padding(.top, 2)
-
-            if !carVoiceMatches.isEmpty {
-                TeamAICarVoiceCarousel(cars: carVoiceMatches) { car in
-                    session.appendCarSelection(car)
-                }
-                .environmentObject(auth)
-            }
-            if !peerVoiceMatches.isEmpty {
-                TeamAIPeerVoiceCarousel(
-                    peers: peerVoiceMatches,
-                    accessToken: auth.session?.accessToken
-                ) { row in
-                    session.appendPeerSelection(row)
-                }
-            }
 
             Text("Toca el micrófono de nuevo para terminar")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -762,158 +676,184 @@ struct TeamAITabView: View {
         min(232, UIScreen.main.bounds.width * 0.58)
     }
 
-    private var idleOrbSize: CGFloat {
-        min(220, UIScreen.main.bounds.width * 0.56)
+    private var chatBubbleMaxUserWidth: CGFloat {
+        min(320, UIScreen.main.bounds.width - 72)
     }
 
-    @ViewBuilder
-    private var voicePickersBlock: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !carVoiceMatches.isEmpty {
-                TeamAICarVoiceCarousel(cars: carVoiceMatches) { car in
-                    session.appendCarSelection(car)
-                }
-                .environmentObject(auth)
-            }
-            if !peerVoiceMatches.isEmpty {
-                TeamAIPeerVoiceCarousel(
-                    peers: peerVoiceMatches,
-                    accessToken: auth.session?.accessToken
-                ) { row in
-                    session.appendPeerSelection(row)
-                }
-            }
+    /// Respuesta en vivo: texto visible (sin bloque JSON); tarjetas cuando el cierre `>>>` ya llegó en el stream.
+    private var lastUserMessageForVieraContext: String? {
+        session.bubbles.last(where: { $0.isUser })?.text
+    }
+
+    private func lastUserTextBeforeBubble(at index: Int) -> String? {
+        guard index > 0 else { return nil }
+        var j = index - 1
+        while j >= 0 {
+            let b = session.bubbles[j]
+            if b.isUser { return b.text }
+            j -= 1
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
+        return nil
     }
 
-    private var scheduleReviewDraftTrimmed: String {
-        session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    @ViewBuilder
-    private var scheduleReviewCard: some View {
-        if !scheduleReviewDraftTrimmed.isEmpty {
-            scheduleReviewCardChrome
+    /// Mientras llega el stream solo texto; coches/equipo aparecen al terminar el mensaje (burbuja final).
+    private func streamingAssistantBubbleRow(_ raw: String) -> some View {
+        let visible = VieraCardsParser.visibleText(from: raw)
+        return HStack(alignment: .bottom, spacing: 4) {
+            Text(visible)
+                .font(.system(size: 16, weight: .regular, design: .default))
+                .foregroundStyle(Color.white.opacity(0.95))
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentTransition(.interpolate)
+                .animation(.easeOut(duration: 0.14), value: visible.count)
+            StreamingTextCaret()
+                .padding(.bottom, 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var scheduleReviewCardChrome: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            scheduleReviewCardHeader
-            scheduleReviewConfirmButton
-        }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.05))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
-                }
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
-    }
-
-    private var scheduleReviewCardHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: sendReviewConfirmed ? "checkmark.seal.fill" : "clock.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(sendReviewConfirmed ? Color.green.opacity(0.9) : Color.white.opacity(0.45))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Horario y revisión")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                Text(Self.localScheduleLine())
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.48))
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var scheduleReviewConfirmButton: some View {
-        Button {
-            sendReviewConfirmed = true
-        } label: {
-            Text(sendReviewConfirmed ? "Revisión confirmada" : "Confirmar horario y revisión")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(sendReviewConfirmed ? Color.white.opacity(0.45) : Color.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background { scheduleReviewConfirmButtonFill }
-        }
-        .buttonStyle(.plain)
-        .disabled(sendReviewConfirmed)
-    }
-
-    @ViewBuilder
-    private var scheduleReviewConfirmButtonFill: some View {
-        if sendReviewConfirmed {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.12))
-        } else {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [vieraAccent, vieraAccentBright.opacity(0.92)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-        }
-    }
-
-    private static func localScheduleLine() -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "es_ES")
-        f.dateStyle = .full
-        f.timeStyle = .short
-        return f.string(from: Date())
-    }
-
-    private func bubbleRowDark(_ bubble: TeamAIAssistantSession.Bubble) -> some View {
-        HStack {
-            if bubble.isUser { Spacer(minLength: 44) }
-            Text(bubble.text)
-                .font(.system(size: 15, weight: .regular, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .multilineTextAlignment(bubble.isUser ? .trailing : .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(bubble.isUser ? Color.white.opacity(0.1) : vieraIndigo.opacity(0.35))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(
-                                    bubble.isUser
-                                        ? Color.white.opacity(0.1)
-                                        : vieraAccent.opacity(0.22),
-                                    lineWidth: 0.75
-                                )
+    private func bubbleRowDark(_ bubble: TeamAIAssistantSession.Bubble, index: Int) -> some View {
+        Group {
+            if bubble.isUser {
+                HStack(alignment: .bottom, spacing: 0) {
+                    Spacer(minLength: 8)
+                    let bubbleHPadding: CGFloat = 14
+                    let textMax = max(0, chatBubbleMaxUserWidth - bubbleHPadding * 2)
+                    Text(bubble.text)
+                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: textMax, alignment: .trailing)
+                        .padding(.horizontal, bubbleHPadding)
+                        .padding(.vertical, 10)
+                        .background {
+                            TeamAIGlassRoundedCardBackground(cornerRadius: 18)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-            if !bubble.isUser { Spacer(minLength: 44) }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(bubble.text)
+                        .font(.system(size: 16, weight: .regular, design: .default))
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentTransition(.interpolate)
+
+                    let cardPayload = bubble.cardPayload ?? VieraCardPayload(team: nil, cars: nil)
+                    VieraAssistantRichCardsView(
+                        payload: cardPayload,
+                        directory: communityVM.directory,
+                        cars: carsVM.cars,
+                        mentionSourceText: bubble.text,
+                        mentionExtraUserText: lastUserTextBeforeBubble(at: index)
+                    )
+                    .environmentObject(auth)
+                    .environmentObject(chatInbox)
+                    .environmentObject(tabRouter)
+                    .environmentObject(chatNav)
+                    .environmentObject(communityVM)
+                    .padding(.top, 16)
+
+                    assistantMessageToolbar(bubbleId: bubble.id, text: bubble.text)
+                        .padding(.top, 12)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    /// Iconos bajo el mensaje del asistente (referencia tipo ChatGPT: trazo fino, compactos).
+    private func assistantMessageToolbar(bubbleId: UUID, text: String) -> some View {
+        let thumb = assistantThumbByBubbleId[bubbleId] ?? 0
+        return HStack(spacing: 14) {
+            Button {
+                UIPasteboard.general.string = text
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Copiar")
+
+            Button {
+                speechSynth.stopSpeaking(at: .immediate)
+                let u = AVSpeechUtterance(string: text)
+                u.voice = AVSpeechSynthesisVoice(language: "es-ES")
+                u.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92
+                speechSynth.speak(u)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "speaker.wave.2")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leer en voz alta")
+
+            Button {
+                assistantThumbByBubbleId[bubbleId] = thumb == 1 ? 0 : 1
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: thumb == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Me gusta")
+
+            Button {
+                assistantThumbByBubbleId[bubbleId] = thumb == -1 ? 0 : -1
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: thumb == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("No me gusta")
+
+            ShareLink(item: text, preview: SharePreview("Viera", icon: Image(systemName: "sparkles"))) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Compartir")
+
+            Menu {
+                Button("Copiar mensaje") {
+                    UIPasteboard.general.string = text
+                }
+                Divider()
+                Button("Detener lectura", role: .none) {
+                    speechSynth.stopSpeaking(at: .immediate)
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(assistantToolbarIconFont)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Más opciones")
+        }
+        .foregroundStyle(Color.white.opacity(0.62))
     }
 
     private var typingRowDark: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             ProgressView()
                 .tint(vieraAccentBright.opacity(0.85))
             Text("Viera está pensando…")
                 .font(.system(size: 14, weight: .medium, design: .rounded))
                 .foregroundStyle(transcriptMuted)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var bottomControls: some View {
-        VStack(spacing: 14) {
+    private var bottomControlsChatStyle: some View {
+        VStack(spacing: 12) {
             if let hint = session.statusHint, !hint.isEmpty {
                 Text(hint)
                     .font(.system(size: 12, weight: .medium))
@@ -921,450 +861,532 @@ struct TeamAITabView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 22)
             }
-            let trimmed = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty, !session.isRecordingAudio {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Mensaje listo")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.35))
-                        .tracking(0.9)
-                    if !sendReviewConfirmed {
-                        Text("Confirma horario y revisión antes de enviar.")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.orange.opacity(0.85))
-                    }
-                    Text(session.draft)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.9))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button {
-                        session.send(
-                            directory: communityVM.directory,
-                            currentUserId: auth.session?.user.id,
-                            inbox: inbox
-                        )
-                        sendReviewConfirmed = false
-                    } label: {
-                        Text("Enviar al coordinador")
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(
-                                sendReviewConfirmed ? Color.white : Color.white.opacity(0.35)
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background {
-                                if sendReviewConfirmed {
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [vieraAccent, vieraAccentBright.opacity(0.9)],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
-                                } else {
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(Color.white.opacity(0.12))
-                                }
-                            }
-                    }
-                    .disabled(session.isSending || !sendReviewConfirmed)
-                    .opacity(session.isSending ? 0.45 : 1)
-                }
-                .padding(16)
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
-                        }
-                }
-                .padding(.horizontal, 16)
-            }
-            buddyMainControlBar
+
+            chatGPTUnifiedComposerBar
         }
+        .padding(.bottom, 10)
     }
 
-    /// Barra inferior: teclado · micrófono · cerrar/borrar.
-    private var buddyMainControlBar: some View {
-        let draftTrim = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return HStack(alignment: .center, spacing: 0) {
-            Button {
-                showTextDraftSheet = true
-            } label: {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .frame(width: 52, height: 52)
-                    .background {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [vieraIndigo, vieraIndigo.opacity(0.75)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay {
-                                Circle()
-                                    .strokeBorder(vieraAccent.opacity(0.35), lineWidth: 1)
-                            }
-                    }
-            }
-            .buttonStyle(.plain)
-            .disabled(session.isRecordingAudio)
-            .opacity(session.isRecordingAudio ? 0.38 : 1)
-            .accessibilityLabel("Escribir mensaje")
+    /// Líneas visibles en el compositor inline (un poco más que antes; textos enormes → hoja con scroll).
+    private let composerInlineLineRange = 1...8
+    /// Muestra la «flechita» ampliar cuando ya hay bastante texto o varias líneas.
+    private func shouldShowComposerExpandButton(draft: String, isRecording: Bool) -> Bool {
+        guard !isRecording, !draft.isEmpty else { return false }
+        let newlines = draft.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
+        return draft.count >= 100 || newlines >= 2
+    }
 
-            Spacer(minLength: 12)
+    /// Misma fila en idle y en dictado: el `TextField` sigue en la jerarquía para no perder el teclado.
+    private var chatGPTUnifiedComposerBar: some View {
+        let trimmed = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLive = session.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasText = !trimmed.isEmpty
+        let canSendIdle = hasText && !session.isSending
+        let recording = session.isRecordingAudio
+        /// Durante la grabación solo se muestra la onda; el texto en vivo no se enseña hasta pausar o enviar.
+        let canSendWhileRecording = !session.isSending && (hasText || !trimmedLive.isEmpty)
+        let showExpand = shouldShowComposerExpandButton(draft: session.draft, isRecording: recording)
 
-            ZStack {
-                if session.isRecordingAudio {
-                    ForEach(0 ..< 3, id: \.self) { ring in
-                        Circle()
-                            .stroke(
-                                vieraAccentBright.opacity(0.28 - CGFloat(ring) * 0.06),
-                                lineWidth: 1.5
-                            )
-                            .frame(width: 78 + CGFloat(ring) * 22, height: 78 + CGFloat(ring) * 22)
-                    }
-                }
+        return HStack(alignment: .bottom, spacing: 10) {
+            if recording {
                 Button {
-                    if session.isRecordingAudio {
-                        session.endVoiceInput()
-                    } else {
-                        session.beginVoiceInput()
-                    }
+                    session.endVoiceInput()
                 } label: {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 74, height: 74)
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 44, height: 44)
                         .background {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [vieraAccent, vieraAccentBright.opacity(0.95)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .shadow(color: vieraAccent.opacity(0.55), radius: 14, y: 6)
+                            TeamAIGlassCircleBackground()
                         }
                 }
                 .buttonStyle(.plain)
-            }
-            .accessibilityLabel(session.isRecordingAudio ? "Terminar dictado" : "Empezar dictado")
-
-            Spacer(minLength: 12)
-
-            Button {
-                if session.isRecordingAudio {
-                    session.cancelVoiceInput()
-                } else if !draftTrim.isEmpty {
-                    session.draft = ""
-                    sendReviewConfirmed = false
+                .accessibilityLabel("Pausar dictado")
+            } else {
+                Button {
+                    showPlusMenuSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .frame(width: 44, height: 44)
+                        .background {
+                            TeamAIGlassCircleBackground()
+                        }
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(width: 52, height: 52)
-                    .background {
-                        Circle()
-                            .fill(Color.white.opacity(0.1))
-                            .overlay {
-                                Circle()
-                                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                            }
-                    }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Más opciones")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(session.isRecordingAudio ? "Cancelar dictado" : "Borrar borrador")
-            .disabled(!session.isRecordingAudio && draftTrim.isEmpty)
-            .opacity(session.isRecordingAudio || !draftTrim.isEmpty ? 1 : 0.4)
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ZStack(alignment: .topLeading) {
+                    TextField(
+                        "",
+                        text: $session.draft,
+                        prompt: Text("Mensaje…")
+                            .foregroundStyle(Color.white.opacity(0.42)),
+                        axis: .vertical
+                    )
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.white)
+                    .tint(Color(red: 0, green: 0.48, blue: 1))
+                    .lineLimit(composerInlineLineRange)
+                    .textFieldStyle(.plain)
+                    .focused($composerFieldFocused)
+                    .submitLabel(.send)
+                    .onSubmit { submitComposerMessageIfPossible() }
+                    .opacity(recording ? 0.02 : 1)
+                    .padding(.trailing, showExpand && !recording ? 26 : 0)
+
+                    if recording {
+                        AudioWaveformView(
+                            monitor: session.waveformMonitor,
+                            barColor: Color.white.opacity(0.88),
+                            barWidth: 1,
+                            spacing: 1,
+                            layoutHeight: teamAIComposerWaveformStripHeight,
+                            fillsAvailableWidth: true
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: teamAIComposerWaveformStripHeight, maxHeight: teamAIComposerWaveformStripHeight)
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black.opacity(0.12), location: 0),
+                                    .init(color: .black, location: 0.12),
+                                    .init(color: .black, location: 0.88),
+                                    .init(color: .black.opacity(0.12), location: 1)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if showExpand && !recording {
+                        Button {
+                            showTextDraftSheet = true
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.5))
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ampliar mensaje")
+                        .padding(.top, 2)
+                        .padding(.trailing, 2)
+                    }
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .padding(.vertical, 10)
+                .frame(minHeight: teamAIComposerRowMinHeight, alignment: .center)
+
+                if !recording && !hasText {
+                    Button {
+                        session.beginVoiceInput()
+                    } label: {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.88))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dictar")
+                }
+            }
+            .background {
+                TeamAIGlassComposerFieldBackground()
+            }
+
+            if recording {
+                Button {
+                    session.endVoiceInputAndSend()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(canSendWhileRecording ? Color.black : Color.black.opacity(0.38))
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(canSendWhileRecording ? Color.white : Color.white.opacity(0.38))
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSendWhileRecording)
+                .accessibilityLabel("Enviar mensaje")
+            } else if hasText {
+                Button {
+                    submitComposerMessageIfPossible()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(canSendIdle ? Color.black : Color.black.opacity(0.38))
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(canSendIdle ? Color.white : Color.white.opacity(0.38))
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(session.isSending)
+                .accessibilityLabel("Enviar mensaje")
+            } else {
+                Button {
+                    session.beginVoiceInput()
+                } label: {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(Color.white)
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Modo voz")
+            }
         }
-        .padding(.horizontal, 26)
-        .padding(.top, 6)
-        .padding(.bottom, 22)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 16)
     }
+
+    private func submitComposerMessageIfPossible() {
+        let text = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !session.isSending else { return }
+        session.send()
+        composerFieldFocused = false
+    }
+
+    /// Altura del área de ondas dentro de la cápsula (una línea, alineada al campo «Mensaje…»).
+    private var teamAIComposerWaveformStripHeight: CGFloat { 26 }
+    /// Misma altura mínima de fila que el `TextField` del compositor idle.
+    private var teamAIComposerRowMinHeight: CGFloat { 44 }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         let target: TeamAIScrollID?
+        var anchor: UnitPoint = .bottom
+
         if session.isSending {
-            target = .typing
+            if session.streamingAssistantText.isEmpty {
+                if let last = session.bubbles.last, last.isUser, isVeryLongUserMessage(last.text) {
+                    target = .bubble(last.id)
+                    anchor = .top
+                } else {
+                    target = .typing
+                }
+            } else {
+                target = .streaming
+            }
         } else if let last = session.bubbles.last {
             target = .bubble(last.id)
+            if last.isUser, isVeryLongUserMessage(last.text) {
+                anchor = .top
+            }
         } else {
             target = nil
         }
+
         guard let target else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation(.easeOut(duration: 0.25)) {
-                    proxy.scrollTo(target, anchor: .bottom)
+                    proxy.scrollTo(target, anchor: anchor)
                 }
             } else {
-                proxy.scrollTo(target, anchor: .bottom)
+                proxy.scrollTo(target, anchor: anchor)
             }
         }
     }
 }
 
-// MARK: - Decoración cabecera Viera (líneas tipo topográficas)
+// MARK: - Chrome estilo chat (glass, tarjetas, ondas, menú +)
 
-private struct TeamVieraTopoDecoration: View {
+/// Cristal oscuro sobre negro: material + velo y bisel tipo liquid glass.
+private struct TeamAIGlassCapsuleBackground: View {
     var body: some View {
-        Canvas { context, size in
-            let w = size.width
-            let h = size.height
-            let stroke = Color(red: 0.45, green: 0.72, blue: 1).opacity(0.22)
-            for i in 0 ..< 7 {
-                let o = CGFloat(i) * 5
-                var p = Path()
-                p.move(to: CGPoint(x: w * 0.05 + o * 0.3, y: h * 0.15))
-                p.addQuadCurve(
-                    to: CGPoint(x: w * 0.92 - o * 0.2, y: h * 0.88 - o * 0.15),
-                    control: CGPoint(x: w * 0.55 + o * 0.15, y: h * 0.35 - o * 0.1)
-                )
-                context.stroke(p, with: .color(stroke), lineWidth: 1)
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.05),
+                                Color.white.opacity(0.02)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
-            for i in 0 ..< 5 {
-                let o = CGFloat(i) * 6 + 3
-                var p2 = Path()
-                p2.move(to: CGPoint(x: w * 0.35, y: o))
-                p2.addQuadCurve(
-                    to: CGPoint(x: w - o * 0.2, y: h * 0.5),
-                    control: CGPoint(x: w * 0.7, y: h * 0.22 + o * 0.08)
-                )
-                context.stroke(p2, with: .color(stroke.opacity(0.75)), lineWidth: 0.75)
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.42),
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             }
-        }
-        .frame(width: 96, height: 76)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+            .shadow(color: .black.opacity(0.45), radius: 22, x: 0, y: 12)
+            .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
     }
 }
 
-// MARK: - Coordinador IA · voz + carruseles (aquí para garantizar compilación en el target)
-
-extension Car {
-    fileprivate var coordinatorVoiceHaystack: String {
-        [
-            name, model, plate, String(year),
-            brandName ?? "", fuelType ?? "", bodyType ?? "", locationText ?? "",
-            dgtLabel ?? "", transmission ?? "", equipmentSummary ?? "", exteriorColorLabel ?? "",
-            color,
-        ]
-            .joined(separator: " ")
-            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-            .lowercased()
-    }
-
-    var coordinatorEncargoLine: String {
-        let b = (brandName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let headline = [b, name].filter { !$0.isEmpty }.joined(separator: " ")
-        let p = plate.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(headline) · mat. \(p) · \(year)"
-    }
-
-    var coordinatorVoiceTitleLine: String {
-        let b = (brandName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let headline = [b, model].filter { !$0.isEmpty }.joined(separator: " ")
-        return headline.isEmpty ? name : headline
-    }
-
-    func matchesAnyCoordinatorToken(_ tokens: [String]) -> Bool {
-        guard !tokens.isEmpty else { return false }
-        let hay = coordinatorVoiceHaystack
-        return tokens.contains { tok in hay.contains(tok) }
-    }
-}
-
-enum TeamAIVoiceQuery {
-    private static let stopwords: Set<String> = [
-        "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "le", "les",
-        "que", "de", "y", "a", "en", "por", "para", "con", "sin", "sobre", "al", "del",
-        "me", "te", "se", "nos", "os", "yo", "tú", "tu", "su", "sus", "mi", "mis",
-        "esto", "esta", "ese", "esa", "eso", "aquí", "allí", "muy", "más", "menos",
-        "solo", "sólo", "digo", "quiero", "mande", "manda", "mandar", "dile", "decir",
-        "coordinador", "coordinadora", "hola", "buenos", "días", "tardes", "porfa", "favor",
-        "vale", "bueno", "pues", "entonces", "así", "como", "cuando", "donde", "hay", "ser",
-        "tengo", "tiene", "tienen", "mensaje", "avisar", "avisame",
-        "stock", "coche", "coches", "auto", "vehículo", "vehiculo", "anuncio",
-    ]
-
-    static func meaningfulTokens(from text: String) -> [String] {
-        let folded = text.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES")).lowercased()
-        let parts = folded.split { !$0.isLetter && !$0.isNumber }.map(String.init)
-        return parts
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { tok in
-                if tok.count < 2 { return false }
-                if stopwords.contains(tok) { return false }
-                return true
-            }
-    }
-
-    static func matchingCars(cars: [Car], liveTranscript: String, draft: String, limit: Int = 16) -> [Car] {
-        let blob = "\(liveTranscript) \(draft)"
-        let tokens = meaningfulTokens(from: blob)
-        guard !tokens.isEmpty else { return [] }
-        let hit = cars.filter { $0.matchesAnyCoordinatorToken(tokens) }
-        return Array(hit.prefix(limit))
-    }
-
-    static func matchingPeers(
-        directory: [CommunityProfilesService.DirectoryRow],
-        currentUserId: UUID?,
-        liveTranscript: String,
-        draft: String,
-        limit: Int = 12
-    ) -> [CommunityProfilesService.DirectoryRow] {
-        let peers = directory
-            .filter { $0.userId != currentUserId }
-            .sorted {
-                $0.resolvedDisplayName.localizedCaseInsensitiveCompare($1.resolvedDisplayName) == .orderedAscending
-            }
-        let blob = "\(liveTranscript) \(draft)"
-            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-            .lowercased()
-        let tokens = meaningfulTokens(from: blob)
-        let teamKeywords = ["comercial", "comerciales", "vendedor", "vendedora", "equipo", "compañero", "compañera", "compañeros", "persona", "contacto"]
-        let keywordHit = teamKeywords.contains { blob.contains($0) }
-        if keywordHit, tokens.isEmpty {
-            return Array(peers.prefix(limit))
-        }
-        guard !tokens.isEmpty else { return [] }
-        let matched = peers.filter { row in
-            let name = row.resolvedDisplayName
-                .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
-                .lowercased()
-            return tokens.contains { name.contains($0) }
-        }
-        return Array(matched.prefix(limit))
-    }
-}
-
-struct TeamAICarVoiceCarousel: View {
-    @EnvironmentObject private var auth: AuthViewModel
-    let cars: [Car]
-    var onSelect: (Car) -> Void
+/// Campo de mensaje multilínea: esquinas **fijas** (no `Capsule`), para que al crecer en altura
+/// no queden semicírculos arriba/abajo que comen el texto (comportamiento tipo iMessage / ChatGPT).
+private struct TeamAIGlassComposerFieldBackground: View {
+    var cornerRadius: CGFloat = 22
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.45))
-                Text("Stock · toca un anuncio")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(0.6)
-                    .foregroundStyle(Color.white.opacity(0.42))
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.05),
+                                Color.white.opacity(0.02)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
-            .padding(.horizontal, 4)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.42),
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: .black.opacity(0.45), radius: 22, x: 0, y: 12)
+            .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
+    }
+}
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(cars) { car in
-                        Button {
-                            onSelect(car)
-                        } label: {
-                            VStack(spacing: 8) {
-                                CarThumbnailView(car: car, size: 58)
-                                Text(car.coordinatorVoiceTitleLine)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.88))
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .frame(width: 104)
-                                Text(car.plate)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(Color.white.opacity(0.38))
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 10)
-                            .background {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.07))
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8)
-                                    }
-                            }
-                        }
-                        .buttonStyle(.plain)
+private struct TeamAIGlassCircleBackground: View {
+    var body: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .background {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.12),
+                                Color.white.opacity(0.04)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.38),
+                                Color.white.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+    }
+}
+
+private struct TeamAIGlassRoundedCardBackground: View {
+    var cornerRadius: CGFloat = 18
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.1),
+                                Color.white.opacity(0.03)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.35),
+                                Color.white.opacity(0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: .black.opacity(0.4), radius: 18, x: 0, y: 10)
+    }
+}
+
+private struct TeamAIPlusMenuSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var onDismiss: () -> Void
+    var onWriteMessage: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    HStack(spacing: 14) {
+                        plusQuickButton(icon: "camera.fill", title: "Cámara")
+                        plusQuickButton(icon: "photo.on.rectangle", title: "Fotos")
+                        plusQuickButton(icon: "paperclip", title: "Archivos")
+                    }
+                    .padding(.top, 4)
+
+                    plusFeatureRow(
+                        icon: "paintbrush.pointed",
+                        title: "Crea una imagen",
+                        subtitle: "Próximamente en CarHub"
+                    )
+                    plusFeatureRow(
+                        icon: "text.bubble",
+                        title: "Escribir mensaje",
+                        subtitle: "Editor para textos largos"
+                    ) {
+                        onWriteMessage()
+                    }
+                    plusFeatureRow(
+                        icon: "globe",
+                        title: "Búsqueda en Internet",
+                        subtitle: "No disponible en esta versión"
+                    )
+                    plusFeatureRow(
+                        icon: "book",
+                        title: "Estudiar y aprender",
+                        subtitle: "Próximamente"
+                    )
+                    plusFeatureRow(
+                        icon: "cursorarrow.click",
+                        title: "Modo agente",
+                        subtitle: "Próximamente"
+                    )
+                }
+                .padding(20)
+            }
+            .background(Color.black)
+            .navigationTitle("Herramientas")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") {
+                        onDismiss()
+                        dismiss()
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
             }
         }
+        .preferredColorScheme(.dark)
     }
-}
 
-struct TeamAIPeerVoiceCarousel: View {
-    let peers: [CommunityProfilesService.DirectoryRow]
-    var accessToken: String?
-    var onSelect: (CommunityProfilesService.DirectoryRow) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "person.2.fill")
+    private func plusQuickButton(icon: String, title: String) -> some View {
+        Button {
+            onDismiss()
+            dismiss()
+        } label: {
+            VStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.white)
+                Text(title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.45))
-                Text("Equipo · toca un comercial")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(0.6)
-                    .foregroundStyle(Color.white.opacity(0.42))
+                    .foregroundStyle(Color.white.opacity(0.85))
             }
-            .padding(.horizontal, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(peers, id: \.id) { row in
-                        Button {
-                            onSelect(row)
-                        } label: {
-                            VStack(spacing: 8) {
-                                TeamDirectoryProfileAvatar(
-                                    row: row,
-                                    accessToken: accessToken,
-                                    diameter: 60,
-                                    localAvatarImage: nil,
-                                    localInitialsOverride: nil
-                                )
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 1.2)
-                                }
-                                Text(row.resolvedDisplayName)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.9))
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .frame(width: 96)
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 8)
-                            .background {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.07))
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8)
-                                    }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background {
+                TeamAIGlassRoundedCardBackground(cornerRadius: 16)
             }
         }
+        .buttonStyle(.plain)
+    }
+
+    private func plusFeatureRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        Button {
+            if let action {
+                action()
+                dismiss()
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+                Spacer(minLength: 0)
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.35))
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(action == nil)
+        .opacity(action == nil ? 0.65 : 1)
     }
 }
 
