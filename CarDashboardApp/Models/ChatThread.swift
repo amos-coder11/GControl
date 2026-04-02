@@ -56,6 +56,30 @@ struct ChatThread: Identifiable, Hashable {
         Color(red: avatarR, green: avatarG, blue: avatarB)
     }
 
+    /// Vista previa y hora cuando hay mensajes reales en el DM de equipo.
+    func withDirectMessagePreview(_ preview: String, time: String) -> ChatThread {
+        ChatThread(
+            id: id,
+            title: title,
+            preview: preview,
+            time: time,
+            unread: unread,
+            avatarInitial: avatarInitial,
+            avatarIcon: avatarIcon,
+            avatarR: avatarR,
+            avatarG: avatarG,
+            avatarB: avatarB,
+            avatarCarURL: avatarCarURL,
+            socialSource: socialSource,
+            isVerified: isVerified,
+            isPinned: isPinned,
+            kind: kind,
+            peerUserId: peerUserId,
+            readReceipt: readReceipt,
+            showOpenButton: showOpenButton
+        )
+    }
+
     /// Vista previa en lista cuando el coordinador IA envía algo a ese compañero.
     func withCoordinatorOutboundPreview(_ line: String) -> ChatThread {
         ChatThread(

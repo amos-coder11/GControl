@@ -59,6 +59,15 @@ final class ChatInboxStore: ObservableObject {
     @Published private(set) var coordinatorTasksByPeer: [UUID: [CoordinatorOutboundTask]] = [:]
     /// Se incrementa al mutar tareas para forzar scroll al final del hilo.
     @Published private(set) var coordinatorTimelineTick: Int = 0
+
+    /// `userId` del compañero si la vista de conversación DM equipo está visible.
+    @Published var activeTeamDirectPeerId: UUID?
+    /// Vista previa / hora por `peerUserId` para hilos `teamDirect` (mensajería real).
+    @Published private(set) var teamDirectPreviewBody: [UUID: String] = [:]
+    @Published private(set) var teamDirectPreviewTime: [UUID: String] = [:]
+
+    private var lastTeamDirectorySnapshot: [CommunityProfilesService.DirectoryRow] = []
+    private var lastTeamDirectoryUserId: UUID?
     @Published private(set) var pinOverride: [UUID: Bool] = [:]
     @Published private(set) var unreadOverride: [UUID: Int] = [:]
 
@@ -128,6 +137,8 @@ final class ChatInboxStore: ObservableObject {
 
     /// Sincroniza hilos de equipo desde el directorio (grupo + un DM por compañero, excluyéndote).
     func syncTeamThreads(from directory: [CommunityProfilesService.DirectoryRow], currentUserId: UUID?) {
+        lastTeamDirectorySnapshot = directory
+        lastTeamDirectoryUserId = currentUserId
         if directory.isEmpty {
             teamGroupChatThread = nil
             teamDirectChatThreads = []
@@ -144,8 +155,55 @@ final class ChatInboxStore: ObservableObject {
             if let line = teamCoordinatorPeerPreview[row.userId] {
                 return base.withCoordinatorOutboundPreview(line)
             }
+            if let body = teamDirectPreviewBody[row.userId], let t = teamDirectPreviewTime[row.userId] {
+                return base.withDirectMessagePreview(body, time: t)
+            }
             return base
         }
+    }
+
+    func applyTeamDirectOutgoing(toPeer peerId: UUID, body: String, date: Date) {
+        var b = teamDirectPreviewBody
+        b[peerId] = body
+        teamDirectPreviewBody = b
+        var t = teamDirectPreviewTime
+        t[peerId] = Self.formatShortListTime(date)
+        teamDirectPreviewTime = t
+        refreshTeamThreadsFromSnapshot()
+    }
+
+    /// Llega un mensaje dirigido al usuario actual (p. ej. Realtime bandeja).
+    func applyTeamDirectIncoming(fromPeer peerId: UUID, body: String, date: Date) {
+        var b = teamDirectPreviewBody
+        b[peerId] = body
+        teamDirectPreviewBody = b
+        var t = teamDirectPreviewTime
+        t[peerId] = Self.formatShortListTime(date)
+        teamDirectPreviewTime = t
+        if activeTeamDirectPeerId != peerId {
+            var u = unreadOverride
+            u[peerId] = (u[peerId] ?? 0) + 1
+            unreadOverride = u
+        }
+        refreshTeamThreadsFromSnapshot()
+    }
+
+    private func refreshTeamThreadsFromSnapshot() {
+        guard !lastTeamDirectorySnapshot.isEmpty else { return }
+        syncTeamThreads(from: lastTeamDirectorySnapshot, currentUserId: lastTeamDirectoryUserId)
+    }
+
+    private static func formatShortListTime(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm"
+            return f.string(from: date)
+        }
+        if cal.isDateInYesterday(date) { return "Ayer" }
+        let f = DateFormatter()
+        f.dateFormat = "d/M"
+        return f.string(from: date)
     }
 
     /// Registra un mensaje saliente «desde IA» hacia un compañero (actualiza lista de Chat y badge).
@@ -183,6 +241,12 @@ final class ChatInboxStore: ObservableObject {
                 var tp = teamCoordinatorPeerPreview
                 tp.removeValue(forKey: pid)
                 teamCoordinatorPeerPreview = tp
+                var db = teamDirectPreviewBody
+                db.removeValue(forKey: pid)
+                teamDirectPreviewBody = db
+                var dt = teamDirectPreviewTime
+                dt.removeValue(forKey: pid)
+                teamDirectPreviewTime = dt
                 var ct = coordinatorTasksByPeer
                 ct.removeValue(forKey: pid)
                 coordinatorTasksByPeer = ct

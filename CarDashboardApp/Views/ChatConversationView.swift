@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Supabase
 import UIKit
 
 // MARK: - Preferencia (barra inferior alineada con el ancho del chat)
@@ -28,8 +29,8 @@ private enum OutgoingReceipt: Equatable {
     case read
 }
 
-private struct ChatMessage: Identifiable {
-    let id = UUID()
+private struct ChatMessage: Identifiable, Equatable {
+    let id: UUID
     let text: String?
     let image: UIImage?
     let isOutgoing: Bool
@@ -37,16 +38,26 @@ private struct ChatMessage: Identifiable {
     /// Solo salientes; `nil` en entrantes.
     let receipt: OutgoingReceipt?
 
-    init(text: String, isOutgoing: Bool, time: String, receipt: OutgoingReceipt? = nil) {
-        self.text = text; self.image = nil
-        self.isOutgoing = isOutgoing; self.time = time
+    init(id: UUID = UUID(), text: String, isOutgoing: Bool, time: String, receipt: OutgoingReceipt? = nil) {
+        self.id = id
+        self.text = text
+        self.image = nil
+        self.isOutgoing = isOutgoing
+        self.time = time
         self.receipt = isOutgoing ? (receipt ?? .read) : nil
     }
 
-    init(image: UIImage, isOutgoing: Bool, time: String, receipt: OutgoingReceipt? = nil) {
-        self.text = nil; self.image = image
-        self.isOutgoing = isOutgoing; self.time = time
+    init(id: UUID = UUID(), image: UIImage, isOutgoing: Bool, time: String, receipt: OutgoingReceipt? = nil) {
+        self.id = id
+        self.text = nil
+        self.image = image
+        self.isOutgoing = isOutgoing
+        self.time = time
         self.receipt = isOutgoing ? (receipt ?? .read) : nil
+    }
+
+    static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
@@ -61,12 +72,29 @@ struct ChatConversationView: View {
     @State private var liveMessages: [ChatMessage] = []
     @State private var draft = ""
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var teamDirectRows: [TeamDirectMessagesService.Row] = []
+    @State private var teamDirectChannel: RealtimeChannelV2?
+    @State private var teamDirectLoadError: String?
 
     /// Mismos márgenes que el scroll (sincroniza la barra inferior al salir del GeometryReader).
     @State private var inputBarHorizontalPadding = ChatHorizontalPadding(leading: 20, trailing: 20)
 
     private var mockMsgs: [ChatMessage] {
         Self.mockMessages(for: thread)
+    }
+
+    private var usesTeamDirectServer: Bool {
+        thread.kind == .teamDirect && thread.peerUserId != nil && auth.session != nil
+    }
+
+    private var stackedConversationMessages: [ChatMessage] {
+        if usesTeamDirectServer { return teamDirectUIMessages }
+        return mockMsgs + liveMessages
+    }
+
+    private var teamDirectUIMessages: [ChatMessage] {
+        guard let myId = auth.session?.user.id else { return [] }
+        return teamDirectRows.map { Self.chatMessage(from: $0, myUserId: myId) }
     }
 
     private var draftIsEmpty: Bool {
@@ -97,7 +125,7 @@ struct ChatConversationView: View {
     private let bubbleEdgeMargin: CGFloat = 12
 
     private var chatBottomAnchorId: String {
-        "chat-bottom-\(thread.id.uuidString)-\(liveMessages.count)-\(chatInbox.coordinatorTimelineTick)"
+        "chat-bottom-\(thread.id.uuidString)-\(stackedConversationMessages.count)-\(chatInbox.coordinatorTimelineTick)"
     }
 
     var body: some View {
@@ -117,7 +145,7 @@ struct ChatConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 8) {
-                            ForEach(mockMsgs) { msg in
+                            ForEach(stackedConversationMessages) { msg in
                                 messageBubble(msg, maxBubbleWidth: maxBubble)
                                     .frame(maxWidth: innerW)
                                     .id(msg.id)
@@ -127,11 +155,6 @@ struct ChatConversationView: View {
                                     coordinatorTaskCard(task, maxBubbleWidth: maxBubble, innerW: innerW)
                                         .id(task.id)
                                 }
-                            }
-                            ForEach(liveMessages) { msg in
-                                messageBubble(msg, maxBubbleWidth: maxBubble)
-                                    .frame(maxWidth: innerW)
-                                    .id(msg.id)
                             }
                             Color.clear
                                 .frame(height: 1)
@@ -150,7 +173,7 @@ struct ChatConversationView: View {
                             dismissComposerKeyboard()
                         }
                     )
-                    .onChange(of: liveMessages.count) { _, _ in
+                    .onChange(of: stackedConversationMessages.count) { _, _ in
                         scrollChatToBottom(proxy: proxy)
                     }
                     .onChange(of: chatInbox.coordinatorTimelineTick) { _, _ in
@@ -212,6 +235,10 @@ struct ChatConversationView: View {
         }
         .onChange(of: selectedPhoto) { _, newItem in
             Task {
+                guard !usesTeamDirectServer else {
+                    selectedPhoto = nil
+                    return
+                }
                 guard let newItem else { return }
                 if let data = try? await newItem.loadTransferable(type: Data.self),
                    let img = UIImage(data: data) {
@@ -224,7 +251,22 @@ struct ChatConversationView: View {
             }
         }
         .onAppear {
+            if usesTeamDirectServer, let peer = thread.peerUserId {
+                chatInbox.activeTeamDirectPeerId = peer
+            }
             chatInbox.markThreadAsRead(thread.id)
+        }
+        .onDisappear {
+            chatInbox.activeTeamDirectPeerId = nil
+            Task {
+                if let ch = teamDirectChannel {
+                    await SupabaseClientProvider.shared.removeChannel(ch)
+                    await MainActor.run { teamDirectChannel = nil }
+                }
+            }
+        }
+        .task(id: "\(thread.id.uuidString)-\(auth.session?.user.id.uuidString ?? "none")") {
+            await runTeamDirectSessionIfNeeded()
         }
     }
 
@@ -583,16 +625,23 @@ struct ChatConversationView: View {
 
     private var messageInputBar: some View {
         HStack(alignment: .bottom, spacing: AppChromeHeaderMetrics.hStackSpacing) {
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                ZStack {
-                    DashboardChromeHeaderCircleBackground(size: AppChromeHeaderMetrics.circleButtonSize)
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.95))
+            Group {
+                if usesTeamDirectServer {
+                    Color.clear
+                        .frame(width: AppChromeHeaderMetrics.circleButtonSize, height: AppChromeHeaderMetrics.circleButtonSize)
+                } else {
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        ZStack {
+                            DashboardChromeHeaderCircleBackground(size: AppChromeHeaderMetrics.circleButtonSize)
+                            Image(systemName: "paperclip")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.95))
+                        }
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(ChromeCirclePressButtonStyle())
                 }
-                .contentShape(Circle())
             }
-            .buttonStyle(ChromeCirclePressButtonStyle())
 
             HStack(alignment: .bottom, spacing: 6) {
                 ZStack(alignment: .topLeading) {
@@ -657,11 +706,128 @@ struct ChatConversationView: View {
     private func sendMessage() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if usesTeamDirectServer, let peer = thread.peerUserId {
+            draft = ""
+            Task {
+                do {
+                    let row = try await TeamDirectMessagesService.send(
+                        recipientId: peer,
+                        body: text,
+                        client: SupabaseClientProvider.shared
+                    )
+                    await MainActor.run {
+                        mergeTeamDirectInsert(row)
+                        chatInbox.applyTeamDirectOutgoing(
+                            toPeer: peer,
+                            body: row.body,
+                            date: TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+                        )
+                    }
+                } catch {
+                    await MainActor.run { draft = text }
+                }
+            }
+            return
+        }
         let now = Self.currentTimeString()
         withAnimation {
             liveMessages.append(ChatMessage(text: text, isOutgoing: true, time: now, receipt: .sent))
         }
         draft = ""
+    }
+
+    @MainActor
+    private func mergeTeamDirectInsert(_ row: TeamDirectMessagesService.Row) {
+        guard !teamDirectRows.contains(where: { $0.id == row.id }) else { return }
+        teamDirectRows.append(row)
+        teamDirectRows.sort { $0.createdAt < $1.createdAt }
+    }
+
+    @MainActor
+    private func applyTeamDirectUpdate(_ row: TeamDirectMessagesService.Row) {
+        guard let i = teamDirectRows.firstIndex(where: { $0.id == row.id }) else { return }
+        teamDirectRows[i] = row
+    }
+
+    private func runTeamDirectSessionIfNeeded() async {
+        guard usesTeamDirectServer, let peer = thread.peerUserId, let myId = auth.session?.user.id else { return }
+        teamDirectLoadError = nil
+        if let existing = teamDirectChannel {
+            await SupabaseClientProvider.shared.removeChannel(existing)
+            await MainActor.run { teamDirectChannel = nil }
+        }
+        do {
+            try await TeamDirectMessagesService.markThreadRead(
+                peerUserId: peer,
+                client: SupabaseClientProvider.shared
+            )
+            let rows = try await TeamDirectMessagesService.fetchConversation(
+                myUserId: myId,
+                peerUserId: peer,
+                client: SupabaseClientProvider.shared
+            )
+            await MainActor.run { teamDirectRows = rows }
+        } catch {
+            await MainActor.run { teamDirectLoadError = error.localizedDescription }
+        }
+
+        let client = SupabaseClientProvider.shared
+        let channel = client.channel("dm-thread-\(myId.uuidString.lowercased())-\(peer.uuidString.lowercased())")
+        let inserts = channel.postgresChange(
+            InsertAction.self,
+            schema: "public",
+            table: TeamDirectMessagesService.tableName
+        )
+        let updates = channel.postgresChange(
+            UpdateAction.self,
+            schema: "public",
+            table: TeamDirectMessagesService.tableName
+        )
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            return
+        }
+        await MainActor.run { teamDirectChannel = channel }
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await action in inserts {
+                    guard let row = try? TeamDirectMessagesService.decodeInsert(action) else { continue }
+                    let involves = (row.senderId == peer && row.recipientId == myId)
+                        || (row.senderId == myId && row.recipientId == peer)
+                    guard involves else { continue }
+                    await MainActor.run {
+                        mergeTeamDirectInsert(row)
+                    }
+                }
+            }
+            group.addTask {
+                for await action in updates {
+                    guard let row = try? TeamDirectMessagesService.decodeUpdate(action) else { continue }
+                    let involves = (row.senderId == peer && row.recipientId == myId)
+                        || (row.senderId == myId && row.recipientId == peer)
+                    guard involves else { continue }
+                    await MainActor.run {
+                        applyTeamDirectUpdate(row)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func chatMessage(from row: TeamDirectMessagesService.Row, myUserId: UUID) -> ChatMessage {
+        let outgoing = row.senderId == myUserId
+        let receipt: OutgoingReceipt? = outgoing ? (row.readAt != nil ? .read : .sent) : nil
+        let time = formatChatTime(iso: row.createdAt)
+        return ChatMessage(id: row.id, text: row.body, isOutgoing: outgoing, time: time, receipt: receipt)
+    }
+
+    private static func formatChatTime(iso: String) -> String {
+        guard let d = TeamDirectMessagesService.parseCreatedAt(iso) else { return String(iso.prefix(8)) }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: d)
     }
 
     private func dismissComposerKeyboard() {

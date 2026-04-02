@@ -89,6 +89,7 @@
 		AA000081 /* LiveSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000081 /* LiveSpeechTranscriber.swift */; };
 		AA000082 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000082 /* AppDelegate.swift */; };
 		AA000083 /* RemotePushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000083 /* RemotePushRegistration.swift */; };
+		AA000091 /* TeamDirectMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000091 /* TeamDirectMessagesService.swift */; };
 		AA000086 /* GIFAnimatedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000086 /* GIFAnimatedView.swift */; };
 		AA000087 /* LoopingMutedBundledVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000087 /* LoopingMutedBundledVideoView.swift */; };
 		AA000088 /* AIBuddyFondo.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000088 /* AIBuddyFondo.mp4 */; };
@@ -180,6 +181,7 @@
 		AB000081 /* LiveSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSpeechTranscriber.swift; sourceTree = "<group>"; };
 		AB000082 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
+		AB000091 /* TeamDirectMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectMessagesService.swift; sourceTree = "<group>"; };
 		AB000084 /* CarDashboardApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp.entitlements; sourceTree = "<group>"; };
 		AB000085 /* CarDashboardApp-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp-Release.entitlements; sourceTree = "<group>"; };
 		AB000086 /* GIFAnimatedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GIFAnimatedView.swift; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				AB000009 /* MockTelemetryService.swift */,
 				AB000059 /* AppPINKeychain.swift */,
 				AB000073 /* CommunityProfilesService.swift */,
+				AB000091 /* TeamDirectMessagesService.swift */,
 				AB000074 /* DashboardLocationHub.swift */,
 				AB000078 /* InvoiceHistoryStore.swift */,
 				AB000081 /* LiveSpeechTranscriber.swift */,
@@ -526,6 +529,7 @@
 				AA000062 /* LockScreenView.swift in Sources */,
 				AA000063 /* PINSetupView.swift in Sources */,
 				AA000072 /* CommunityProfilesService.swift in Sources */,
+				AA000091 /* TeamDirectMessagesService.swift in Sources */,
 				AA000073 /* DashboardLocationHub.swift in Sources */,
 				AA000074 /* DashboardCommunityViewModel.swift in Sources */,
 				AA000075 /* DashboardHomeRevolutSections.swift in Sources */,
@@ -671,7 +675,7 @@
 				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
@@ -703,10 +707,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp-Release.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;

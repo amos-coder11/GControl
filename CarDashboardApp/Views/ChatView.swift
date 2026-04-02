@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 import UIKit
 
 // MARK: - Lista de chat (fondo Revolut / liquid glass como Inicio)
@@ -35,6 +36,7 @@ struct ChatView: View {
     @State private var path = NavigationPath()
     @State private var listSegment: ChatInboxListSegment = .team
     @FocusState private var chatSearchFieldFocused: Bool
+    @State private var teamDirectInboxChannel: RealtimeChannelV2?
 
     private var searchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -176,6 +178,9 @@ struct ChatView: View {
             }
         }
         .accentColor(.white)
+        .task(id: auth.session?.user.id) {
+            await subscribeTeamDirectInboxIfNeeded()
+        }
         .onAppear {
             syncTeamThreadsFromDirectory()
             openPendingChatNavigation()
@@ -201,6 +206,43 @@ struct ChatView: View {
         }
         path.append(t)
         chatNav.threadToOpen = nil
+    }
+
+    /// Avisos de nuevos mensajes DM (destinatario = yo) cuando no estás en la conversación.
+    private func subscribeTeamDirectInboxIfNeeded() async {
+        guard let uid = auth.session?.user.id else {
+            if let ch = teamDirectInboxChannel {
+                await SupabaseClientProvider.shared.removeChannel(ch)
+                await MainActor.run { teamDirectInboxChannel = nil }
+            }
+            return
+        }
+        if let existing = teamDirectInboxChannel {
+            await SupabaseClientProvider.shared.removeChannel(existing)
+            await MainActor.run { teamDirectInboxChannel = nil }
+        }
+        let client = SupabaseClientProvider.shared
+        let channel = client.channel("dm-inbox-global-\(uid.uuidString.lowercased())")
+        let inserts = channel.postgresChange(
+            InsertAction.self,
+            schema: "public",
+            table: TeamDirectMessagesService.tableName,
+            filter: RealtimePostgresFilter.eq("recipient_id", value: uid)
+        )
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            return
+        }
+        await MainActor.run { teamDirectInboxChannel = channel }
+        for await action in inserts {
+            guard let row = try? TeamDirectMessagesService.decodeInsert(action) else { continue }
+            guard row.senderId != uid else { continue }
+            let date = TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+            await MainActor.run {
+                inbox.applyTeamDirectIncoming(fromPeer: row.senderId, body: row.body, date: date)
+            }
+        }
     }
 
     private var chatInboxSegmentBar: some View {
