@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CarDashboardAppApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var carsVM = CarsViewModel()
     @StateObject private var settingsVM = SettingsViewModel()
@@ -41,6 +42,11 @@ private struct AppShellRoot: View {
                 if phase == .background {
                     appLock.lock()
                 }
+            }
+            .task(id: authVM.isAuthenticated) {
+                guard authVM.isAuthenticated else { return }
+                await RemotePushRegistration.requestAuthorizationAndRegister()
+                await RemotePushRegistration.syncPendingTokenToSupabase()
             }
     }
 

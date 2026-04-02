@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // MARK: - Revolut-style auth (bienvenida + inicio / registro)
 
@@ -14,6 +13,7 @@ private let authLinkBlue = Color(red: 0.35, green: 0.55, blue: 1.0)
 
 struct LoginView: View {
     @ObservedObject var auth: AuthViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var phase: AuthPhase = .welcome
     @State private var email = ""
@@ -27,6 +27,11 @@ struct LoginView: View {
 
     private var canSubmit: Bool {
         email.contains("@") && email.contains(".") && password.count >= 6
+    }
+
+    /// Ancho máximo del contenido en iPad / ventanas anchas (legible y centrado).
+    private var authColumnMaxWidth: CGFloat {
+        horizontalSizeClass == .regular ? 560 : .infinity
     }
 
     var body: some View {
@@ -74,24 +79,13 @@ struct LoginView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                Group {
-                    if let ui = UIImage(named: "AccarLogo") ?? UIImage(named: "CarHubLogo") {
-                        Image(uiImage: ui)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 40)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                    } else {
-                        Text("CarDashboard")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                    }
-                }
+                Text("Carhub365")
+                    .font(.system(size: horizontalSizeClass == .regular ? 34 : 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
+                    .padding(.top, horizontalSizeClass == .regular ? 28 : 20)
+                    .frame(maxWidth: .infinity)
+
                 Spacer(minLength: 0)
 
                 VStack(spacing: 14) {
@@ -123,8 +117,10 @@ struct LoginView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 36)
+                .frame(maxWidth: authColumnMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
+                .padding(.bottom, horizontalSizeClass == .regular ? 48 : 36)
             }
         }
     }
@@ -158,7 +154,9 @@ struct LoginView: View {
                         showHelpAlert = true
                     }
                 }
-                .padding(.horizontal, 20)
+                .frame(maxWidth: authColumnMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
                 .padding(.top, 8)
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -230,7 +228,9 @@ struct LoginView: View {
                             .foregroundStyle(authLinkBlue)
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .frame(maxWidth: authColumnMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
                     .padding(.top, 20)
                     .padding(.bottom, 24)
                 }
@@ -278,7 +278,9 @@ struct LoginView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 20)
+                .frame(maxWidth: authColumnMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
                 .padding(.top, 8)
                 .padding(.bottom, 28)
                 .background(

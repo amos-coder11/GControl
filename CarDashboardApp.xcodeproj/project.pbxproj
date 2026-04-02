@@ -87,6 +87,8 @@
 		AA000078 /* DashboardHubScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000079 /* DashboardHubScreens.swift */; };
 		AA000080 /* TeamLocationMapViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000080 /* TeamLocationMapViews.swift */; };
 		AA000081 /* LiveSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000081 /* LiveSpeechTranscriber.swift */; };
+		AA000082 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000082 /* AppDelegate.swift */; };
+		AA000083 /* RemotePushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000083 /* RemotePushRegistration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -172,6 +174,10 @@
 		AB000079 /* DashboardHubScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHubScreens.swift; sourceTree = "<group>"; };
 		AB000080 /* TeamLocationMapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLocationMapViews.swift; sourceTree = "<group>"; };
 		AB000081 /* LiveSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSpeechTranscriber.swift; sourceTree = "<group>"; };
+		AB000082 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
+		AB000084 /* CarDashboardApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp.entitlements; sourceTree = "<group>"; };
+		AB000085 /* CarDashboardApp-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp-Release.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -199,7 +205,10 @@
 			children = (
 				AB000065 /* DeveloperSettings.xcconfig */,
 				AB000066 /* ExtraInfo.plist */,
+				AB000084 /* CarDashboardApp.entitlements */,
+				AB000085 /* CarDashboardApp-Release.entitlements */,
 				AB000001 /* CarDashboardAppApp.swift */,
+				AB000082 /* AppDelegate.swift */,
 				AD000003 /* Models */,
 				AD000004 /* ViewModels */,
 				AD000005 /* Services */,
@@ -249,6 +258,7 @@
 			isa = PBXGroup;
 			children = (
 				AB000034 /* SupabaseClientProvider.swift */,
+				AB000083 /* RemotePushRegistration.swift */,
 				AB000064 /* AnthropicContractClient.swift */,
 				AB000071 /* ContractTemplateLoader.swift */,
 				AB000072 /* ContractPDFExporter.swift */,
@@ -434,6 +444,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001 /* CarDashboardAppApp.swift in Sources */,
+				AA000082 /* AppDelegate.swift in Sources */,
 				AA000002 /* Car.swift in Sources */,
 				AA000003 /* CarMetric.swift in Sources */,
 				AA000004 /* CarStatus.swift in Sources */,
@@ -467,6 +478,7 @@
 				AA000031 /* ChatConversationView.swift in Sources */,
 				AA000032 /* ChatAvatarViews.swift in Sources */,
 				AA000035 /* SupabaseClientProvider.swift in Sources */,
+				AA000083 /* RemotePushRegistration.swift in Sources */,
 				AA000065 /* AnthropicContractClient.swift in Sources */,
 				AA000070 /* ContractTemplateLoader.swift in Sources */,
 				AA000071 /* ContractPDFExporter.swift in Sources */,
@@ -640,16 +652,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Carhub365;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -658,13 +671,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.carhub.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -674,16 +687,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp-Release.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Carhub365;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos Face ID para proteger el acceso a tu panel de vehículo";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -692,13 +706,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.carhub.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

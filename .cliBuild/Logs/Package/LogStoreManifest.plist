@@ -6,16 +6,16 @@
 	<integer>12</integer>
 	<key>logs</key>
 	<dict>
-		<key>AF468383-FF19-4F46-B447-04018E713871</key>
+		<key>281A8A3F-5127-41B7-AC47-87FE32D3CFDE</key>
 		<dict>
 			<key>className</key>
-			<string>IDECommandLineBuildLog</string>
+			<string>IDEActivityLogSection</string>
 			<key>documentTypeString</key>
 			<string>&lt;nil&gt;</string>
 			<key>domainType</key>
-			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<string>Xcode.IDEActivityLogDomainType.PackageLog</string>
 			<key>fileName</key>
-			<string>AF468383-FF19-4F46-B447-04018E713871.xcactivitylog</string>
+			<string>281A8A3F-5127-41B7-AC47-87FE32D3CFDE.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
@@ -34,24 +34,24 @@
 			<key>signature</key>
 			<string>Resolve Packages</string>
 			<key>timeStartedRecording</key>
-			<real>796681641.95444405</real>
+			<real>796830811.73472905</real>
 			<key>timeStoppedRecording</key>
-			<real>796681642.78128695</real>
+			<real>796830815.20495605</real>
 			<key>title</key>
 			<string>Resolve Packages</string>
 			<key>uniqueIdentifier</key>
-			<string>AF468383-FF19-4F46-B447-04018E713871</string>
+			<string>281A8A3F-5127-41B7-AC47-87FE32D3CFDE</string>
 		</dict>
-		<key>F87A1636-290A-4C9B-8338-EB0933D073CE</key>
+		<key>333BE701-3FE7-4164-A155-9A60E684B903</key>
 		<dict>
 			<key>className</key>
-			<string>IDECommandLineBuildLog</string>
+			<string>IDEActivityLogSection</string>
 			<key>documentTypeString</key>
 			<string>&lt;nil&gt;</string>
 			<key>domainType</key>
-			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<string>Xcode.IDEActivityLogDomainType.PackageLog</string>
 			<key>fileName</key>
-			<string>F87A1636-290A-4C9B-8338-EB0933D073CE.xcactivitylog</string>
+			<string>333BE701-3FE7-4164-A155-9A60E684B903.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
@@ -70,13 +70,85 @@
 			<key>signature</key>
 			<string>Resolve Packages</string>
 			<key>timeStartedRecording</key>
-			<real>796681702.92180204</real>
+			<real>796830841.22291398</real>
 			<key>timeStoppedRecording</key>
-			<real>796681704.96454597</real>
+			<real>796830841.60187495</real>
 			<key>title</key>
 			<string>Resolve Packages</string>
 			<key>uniqueIdentifier</key>
-			<string>F87A1636-290A-4C9B-8338-EB0933D073CE</string>
+			<string>333BE701-3FE7-4164-A155-9A60E684B903</string>
+		</dict>
+		<key>641DD93E-9B01-42B5-9815-5A3B227109AF</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.PackageLog</string>
+			<key>fileName</key>
+			<string>641DD93E-9B01-42B5-9815-5A3B227109AF.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>signature</key>
+			<string>Resolve Packages</string>
+			<key>timeStartedRecording</key>
+			<real>796830877.97853696</real>
+			<key>timeStoppedRecording</key>
+			<real>796830878.31780303</real>
+			<key>title</key>
+			<string>Resolve Packages</string>
+			<key>uniqueIdentifier</key>
+			<string>641DD93E-9B01-42B5-9815-5A3B227109AF</string>
+		</dict>
+		<key>7B1C5921-6F50-4C9D-BE71-7842CF0FDF68</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.PackageLog</string>
+			<key>fileName</key>
+			<string>7B1C5921-6F50-4C9D-BE71-7842CF0FDF68.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>signature</key>
+			<string>Resolve Packages</string>
+			<key>timeStartedRecording</key>
+			<real>796831072.65652597</real>
+			<key>timeStoppedRecording</key>
+			<real>796831073.31961</real>
+			<key>title</key>
+			<string>Resolve Packages</string>
+			<key>uniqueIdentifier</key>
+			<string>7B1C5921-6F50-4C9D-BE71-7842CF0FDF68</string>
 		</dict>
 	</dict>
 </dict>
