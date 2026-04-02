@@ -9,6 +9,8 @@ struct DashboardView: View {
 
     @StateObject private var vm = DealershipStatsViewModel()
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var homeSearchText = ""
     @State private var showFinancialDetail = false
@@ -44,6 +46,11 @@ struct DashboardView: View {
                                 onRanking: { showRankingSheet = true },
                                 onBudgets: { showInvoiceHub = true },
                                 onMore: { showBlitzSheet = true }
+                            )
+
+                            DashboardPendingCoordinatorTasksSection(
+                                myUserId: auth.session?.user.id,
+                                directory: communityVM.directory
                             )
 
                             DashboardFinancialSummaryCard(stats: vm, showDetail: $showFinancialDetail)
@@ -107,6 +114,11 @@ struct DashboardView: View {
         .sheet(isPresented: $showBlitzSheet) {
             BlitzHubSheet()
                 .environmentObject(tabRouter)
+        }
+        .task(id: auth.session?.user.id) {
+            if let uid = auth.session?.user.id {
+                await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
+            }
         }
         .onAppear {
             locationHub.onLocationForUpload = { coord in
@@ -306,6 +318,97 @@ private struct DashboardQuickActionsRow: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Tareas coordinador asignadas a ti
+
+private struct DashboardPendingCoordinatorTasksSection: View {
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
+    @EnvironmentObject private var tabRouter: MainTabRouter
+    let myUserId: UUID?
+    let directory: [CommunityProfilesService.DirectoryRow]
+
+    private var tasks: [CoordinatorOutboundTask] {
+        guard let myUserId else { return [] }
+        return chatInbox.myPendingAssignedCoordinatorTasks(myUserId: myUserId)
+    }
+
+    private static let deadlineFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_ES")
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private func senderName(for task: CoordinatorOutboundTask) -> String {
+        directory.first { $0.userId == task.senderUserId }?.resolvedDisplayName ?? "Compañero"
+    }
+
+    var body: some View {
+        if tasks.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Tareas por hacer")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.92))
+                VStack(spacing: 10) {
+                    ForEach(tasks.prefix(12)) { task in
+                        Button {
+                            openThread(for: task.senderUserId)
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "checklist")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(Color.cyan.opacity(0.9))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.title)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(.white.opacity(0.95))
+                                        .multilineTextAlignment(.leading)
+                                    Text("De: \(senderName(for: task))")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.5))
+                                    Text("Límite: \(Self.deadlineFmt.string(from: task.deadline))")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(
+                                            task.deadline < Date() && !task.isComplete
+                                                ? Color.orange.opacity(0.95)
+                                                : Color.white.opacity(0.45)
+                                        )
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.35))
+                            }
+                            .padding(14)
+                            .background {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8)
+                                    }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func openThread(for senderId: UUID) {
+        if let thread = chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == senderId }) {
+            chatNav.threadToOpen = thread
+        } else if let row = directory.first(where: { $0.userId == senderId }) {
+            chatNav.threadToOpen = ChatThread.makeTeamDirect(from: row)
+        }
+        tabRouter.selected = .chat
     }
 }
 

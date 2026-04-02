@@ -78,6 +78,8 @@ struct ChatConversationView: View {
     @State private var teamGroupRows: [TeamGroupMessagesService.Row] = []
     @State private var teamGroupChannel: RealtimeChannelV2?
     @State private var teamGroupLoadError: String?
+    @State private var deadlineEditTask: CoordinatorOutboundTask?
+    @State private var deadlineEditValue = Date()
 
     /// Mismos márgenes que el scroll (sincroniza la barra inferior al salir del GeometryReader).
     @State private var inputBarHorizontalPadding = ChatHorizontalPadding(leading: 20, trailing: 20)
@@ -165,9 +167,12 @@ struct ChatConversationView: View {
                                     .frame(maxWidth: innerW)
                                     .id(msg.id)
                             }
-                            if thread.kind == .teamDirect {
-                                ForEach(chatInbox.coordinatorTasks(forPeer: thread.id)) { task in
-                                    coordinatorTaskCard(task, maxBubbleWidth: maxBubble, innerW: innerW)
+                            if thread.kind == .teamDirect,
+                               let myId = auth.session?.user.id,
+                               let otherId = thread.peerUserId
+                            {
+                                ForEach(chatInbox.coordinatorTasksInTeamDirectThread(myUserId: myId, otherUserId: otherId)) { task in
+                                    coordinatorTaskCard(task, myUserId: myId, maxBubbleWidth: maxBubble, innerW: innerW)
                                         .id(task.id)
                                 }
                             }
@@ -293,6 +298,54 @@ struct ChatConversationView: View {
             case .lead:
                 break
             }
+        }
+        .onChange(of: deadlineEditTask) { _, task in
+            if let task {
+                deadlineEditValue = task.deadline
+            }
+        }
+        .sheet(item: $deadlineEditTask) { task in
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Nuevo plazo")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    DatePicker(
+                        "Límite",
+                        selection: $deadlineEditValue,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    Button {
+                        guard let uid = auth.session?.user.id else { return }
+                        let tid = task.id
+                        let picked = deadlineEditValue
+                        Task {
+                            try? await chatInbox.updateCoordinatorTaskDeadline(
+                                taskId: tid,
+                                newDeadline: picked,
+                                currentUserId: uid
+                            )
+                            await MainActor.run { deadlineEditTask = nil }
+                        }
+                    } label: {
+                        Text("Guardar")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(20)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cerrar") { deadlineEditTask = nil }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -558,10 +611,14 @@ struct ChatConversationView: View {
 
     // MARK: - Tareas del coordinador IA (DM equipo)
 
-    private func coordinatorTaskCard(_ task: CoordinatorOutboundTask, maxBubbleWidth: CGFloat, innerW: CGFloat) -> some View {
-        let peerId = thread.peerUserId ?? thread.id
-        return HStack {
-            Spacer(minLength: bubbleEdgeMargin)
+    private func coordinatorTaskCard(_ task: CoordinatorOutboundTask, myUserId: UUID, maxBubbleWidth: CGFloat, innerW: CGFloat) -> some View {
+        let recipientKey = task.peerUserId
+        let isAssignee = myUserId == task.peerUserId
+        let isSender = myUserId == task.senderUserId
+        let deadlineText = Self.coordinatorTaskDeadlineFormatter.string(from: task.deadline)
+        let overdue = task.deadline < Date() && !task.isComplete
+        /// Alineado al borde izquierdo del hilo (como burbujas entrantes), no centrado entre dos Spacer.
+        return HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
@@ -574,14 +631,49 @@ struct ChatConversationView: View {
                 Text(task.title)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(incomingBubbleTextColor)
+                HStack(spacing: 6) {
+                    Image(systemName: overdue ? "exclamationmark.circle.fill" : "clock")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Límite: \(deadlineText)")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(overdue ? Color.orange.opacity(0.95) : incomingBubbleMetaColor)
+                if isSender {
+                    Button {
+                        deadlineEditTask = task
+                    } label: {
+                        Text("Cambiar plazo")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.cyan.opacity(0.95))
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let ref = task.referenceImageData, let ui = UIImage(data: ref) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Vehículo de referencia")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(incomingBubbleMetaColor)
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 168)
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                            }
+                    }
+                }
                 Text(task.body)
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(incomingBubbleTextColor)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if task.acceptedAt == nil {
+                if task.acceptedAt == nil, isAssignee {
                     Button {
-                        chatInbox.acceptCoordinatorTask(peerUserId: peerId, taskId: task.id)
+                        chatInbox.acceptCoordinatorTask(recipientUserId: recipientKey, taskId: task.id)
                     } label: {
                         Text("Aceptar tarea")
                             .font(.system(size: 15, weight: .semibold))
@@ -600,9 +692,11 @@ struct ChatConversationView: View {
                         .foregroundStyle(incomingBubbleMetaColor)
                     ForEach(task.steps) { step in
                         CoordinatorTaskStepProofRow(
-                            peerUserId: peerId,
+                            recipientUserId: recipientKey,
                             taskId: task.id,
-                            step: step
+                            step: step,
+                            canAttachProof: isAssignee,
+                            canVerifyProof: isSender
                         )
                     }
                     if task.isComplete {
@@ -629,6 +723,7 @@ struct ChatConversationView: View {
             }
             Spacer(minLength: bubbleEdgeMargin)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(maxWidth: innerW, alignment: .leading)
     }
 
@@ -831,6 +926,7 @@ struct ChatConversationView: View {
 
     private func runTeamDirectSessionIfNeeded() async {
         guard usesTeamDirectServer, let peer = thread.peerUserId, let myId = auth.session?.user.id else { return }
+        await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: myId)
         teamDirectLoadError = nil
         if let existing = teamDirectChannel {
             await SupabaseClientProvider.shared.removeChannel(existing)
@@ -976,6 +1072,14 @@ struct ChatConversationView: View {
         return f.string(from: Date())
     }
 
+    private static let coordinatorTaskDeadlineFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_ES")
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
     // MARK: - Mock
 
     private static func mockMessages(for thread: ChatThread) -> [ChatMessage] {
@@ -1056,9 +1160,11 @@ struct ChatConversationView: View {
 
 private struct CoordinatorTaskStepProofRow: View {
     @EnvironmentObject private var chatInbox: ChatInboxStore
-    let peerUserId: UUID
+    let recipientUserId: UUID
     let taskId: UUID
     let step: CoordinatorTaskStep
+    var canAttachProof: Bool = true
+    var canVerifyProof: Bool = true
     @State private var pickerItem: PhotosPickerItem?
 
     private let instructionColor = Color.white
@@ -1088,55 +1194,59 @@ private struct CoordinatorTaskStepProofRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label(step.proofImageData == nil ? "Adjuntar prueba (foto)" : "Cambiar foto", systemImage: "camera.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.14))
-                    }
-            }
-            .disabled(step.verified)
-            .onChange(of: pickerItem) { _, newItem in
-                Task {
-                    guard let newItem else { return }
-                    guard let data = try? await newItem.loadTransferable(type: Data.self),
-                          let ui = UIImage(data: data),
-                          let jpeg = ui.jpegData(compressionQuality: 0.82) else { return }
-                    await MainActor.run {
-                        chatInbox.setCoordinatorStepProof(
-                            peerUserId: peerUserId,
-                            taskId: taskId,
-                            stepId: step.id,
-                            imageData: jpeg
-                        )
-                        pickerItem = nil
+            if canAttachProof {
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    Label(step.proofImageData == nil ? "Adjuntar prueba (foto)" : "Cambiar foto", systemImage: "camera.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.14))
+                        }
+                }
+                .disabled(step.verified)
+                .onChange(of: pickerItem) { _, newItem in
+                    Task {
+                        guard let newItem else { return }
+                        guard let data = try? await newItem.loadTransferable(type: Data.self),
+                              let ui = UIImage(data: data),
+                              let jpeg = ui.jpegData(compressionQuality: 0.82) else { return }
+                        await MainActor.run {
+                            chatInbox.setCoordinatorStepProof(
+                                recipientUserId: recipientUserId,
+                                taskId: taskId,
+                                stepId: step.id,
+                                imageData: jpeg
+                            )
+                            pickerItem = nil
+                        }
                     }
                 }
             }
 
-            Button {
-                chatInbox.verifyCoordinatorStep(peerUserId: peerUserId, taskId: taskId, stepId: step.id)
-            } label: {
-                Text("Validar prueba con IA")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(
-                                (step.proofImageData == nil || step.verified)
-                                    ? Color.white.opacity(0.1)
-                                    : Color.green.opacity(0.45)
-                            )
-                    }
+            if canVerifyProof {
+                Button {
+                    chatInbox.verifyCoordinatorStep(recipientUserId: recipientUserId, taskId: taskId, stepId: step.id)
+                } label: {
+                    Text("Validar prueba con IA")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(
+                                    (step.proofImageData == nil || step.verified)
+                                        ? Color.white.opacity(0.1)
+                                        : Color.green.opacity(0.45)
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(step.proofImageData == nil || step.verified)
             }
-            .buttonStyle(.plain)
-            .disabled(step.proofImageData == nil || step.verified)
         }
         .padding(11)
         .background {

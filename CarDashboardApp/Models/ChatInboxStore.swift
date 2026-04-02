@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Supabase
 
 // MARK: - Tarea enviada por el coordinador IA (el compañero acepta y sube pruebas paso a paso)
 
@@ -19,12 +20,20 @@ struct CoordinatorTaskStep: Identifiable, Equatable {
 
 struct CoordinatorOutboundTask: Identifiable, Equatable {
     let id: UUID
+    /// Quien envió la tarea (coordinador / Viera).
+    let senderUserId: UUID
+    /// Destinatario asignado (clave del bucket en `coordinatorTasksByPeer`).
     let peerUserId: UUID
     var title: String
     var body: String
     /// `nil` hasta que el compañero pulse «Aceptar tarea».
     var acceptedAt: Date?
+    /// Plazo acordado (por defecto 2 h desde el envío; el remitente puede cambiarlo).
+    var deadline: Date
+    var createdAt: Date?
     var steps: [CoordinatorTaskStep]
+    /// Foto del vehículo asignado (referencia visual en la tarjeta).
+    var referenceImageData: Data?
 
     var isComplete: Bool {
         !steps.isEmpty && steps.allSatisfy(\.verified)
@@ -32,18 +41,26 @@ struct CoordinatorOutboundTask: Identifiable, Equatable {
 
     init(
         id: UUID = UUID(),
+        senderUserId: UUID,
         peerUserId: UUID,
         title: String,
         body: String,
         acceptedAt: Date? = nil,
-        steps: [CoordinatorTaskStep]
+        deadline: Date,
+        createdAt: Date? = nil,
+        steps: [CoordinatorTaskStep],
+        referenceImageData: Data? = nil
     ) {
         self.id = id
+        self.senderUserId = senderUserId
         self.peerUserId = peerUserId
         self.title = title
         self.body = body
         self.acceptedAt = acceptedAt
+        self.deadline = deadline
+        self.createdAt = createdAt
         self.steps = steps
+        self.referenceImageData = referenceImageData
     }
 }
 
@@ -86,38 +103,167 @@ final class ChatInboxStore: ObservableObject {
         coordinatorTasksByPeer[peerUserId] ?? []
     }
 
-    func appendCoordinatorTask(peerUserId: UUID, title: String, body: String, stepInstructions: [String]) {
-        let steps = stepInstructions.map { CoordinatorTaskStep(instruction: $0) }
-        let task = CoordinatorOutboundTask(peerUserId: peerUserId, title: title, body: body, steps: steps)
-        var arr = coordinatorTasksByPeer[peerUserId] ?? []
-        arr.append(task)
-        coordinatorTasksByPeer[peerUserId] = arr
+    /// En un DM equipo con `otherUserId`: tareas que enviaste a esa persona y las que esa persona te envió a ti.
+    func coordinatorTasksInTeamDirectThread(myUserId: UUID, otherUserId: UUID) -> [CoordinatorOutboundTask] {
+        let toOther = (coordinatorTasksByPeer[otherUserId] ?? []).filter { $0.senderUserId == myUserId }
+        let fromOther = (coordinatorTasksByPeer[myUserId] ?? []).filter { $0.senderUserId == otherUserId }
+        return (toOther + fromOther).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+    }
+
+    /// Tareas pendientes asignadas al usuario actual (para el panel Inicio).
+    func myPendingAssignedCoordinatorTasks(myUserId: UUID) -> [CoordinatorOutboundTask] {
+        (coordinatorTasksByPeer[myUserId] ?? []).filter { !$0.isComplete }
+    }
+
+    /// Crea la tarea en Supabase y la fusiona en la bandeja local.
+    func createCoordinatorTaskSynced(
+        senderUserId: UUID,
+        recipientUserId: UUID,
+        title: String,
+        body: String,
+        stepInstructions: [String],
+        deadline: Date,
+        referenceImageData: Data?
+    ) async throws {
+        let b64 = referenceImageData.map { $0.base64EncodedString() }
+        let row = try await TeamCoordinatorTasksService.create(
+            recipientId: recipientUserId,
+            title: title,
+            body: body,
+            deadline: deadline,
+            stepInstructions: stepInstructions,
+            referenceImageBase64: b64,
+            client: SupabaseClientProvider.shared
+        )
+        await MainActor.run {
+            mergeCoordinatorTaskFromServer(row)
+        }
+    }
+
+    func refreshCoordinatorTasksFromServer(currentUserId: UUID) async {
+        do {
+            let rows = try await TeamCoordinatorTasksService.fetchInvolving(
+                userId: currentUserId,
+                client: SupabaseClientProvider.shared
+            )
+            await MainActor.run {
+                for row in rows {
+                    mergeCoordinatorTaskFromServer(row)
+                }
+            }
+        } catch {
+            // Tabla ausente o red: se mantiene estado local.
+        }
+    }
+
+    func mergeCoordinatorTaskFromServer(_ row: TeamCoordinatorTasksService.Row) {
+        let recipientId = row.recipientId
+        let existing = coordinatorTasksByPeer[recipientId]?.first(where: { $0.id == row.id })
+        let task = Self.coordinatorTask(from: row, mergingExisting: existing)
+        var arr = coordinatorTasksByPeer[recipientId] ?? []
+        if let i = arr.firstIndex(where: { $0.id == task.id }) {
+            arr[i] = task
+        } else {
+            arr.append(task)
+        }
+        coordinatorTasksByPeer[recipientId] = arr
         bumpCoordinatorTimeline()
     }
 
-    func acceptCoordinatorTask(peerUserId: UUID, taskId: UUID) {
-        guard var arr = coordinatorTasksByPeer[peerUserId],
-              let i = arr.firstIndex(where: { $0.id == taskId })
-        else { return }
-        arr[i].acceptedAt = Date()
-        coordinatorTasksByPeer[peerUserId] = arr
-        bumpCoordinatorTimeline()
+    func updateCoordinatorTaskDeadline(taskId: UUID, newDeadline: Date, currentUserId: UUID) async throws {
+        let allowed = await MainActor.run { () -> Bool in
+            guard let pair = findCoordinatorTask(taskId: taskId) else { return false }
+            return pair.task.senderUserId == currentUserId
+        }
+        guard allowed else { return }
+        let row = try await TeamCoordinatorTasksService.updateDeadline(
+            taskId: taskId,
+            deadline: newDeadline,
+            client: SupabaseClientProvider.shared
+        )
+        await MainActor.run {
+            mergeCoordinatorTaskFromServer(row)
+        }
     }
 
-    func setCoordinatorStepProof(peerUserId: UUID, taskId: UUID, stepId: UUID, imageData: Data) {
-        guard var arr = coordinatorTasksByPeer[peerUserId],
+    private func findCoordinatorTask(taskId: UUID) -> (recipientKey: UUID, task: CoordinatorOutboundTask)? {
+        for (key, tasks) in coordinatorTasksByPeer {
+            if let t = tasks.first(where: { $0.id == taskId }) {
+                return (key, t)
+            }
+        }
+        return nil
+    }
+
+    private static func coordinatorTask(from row: TeamCoordinatorTasksService.Row, mergingExisting: CoordinatorOutboundTask?) -> CoordinatorOutboundTask {
+        let deadline = TeamCoordinatorTasksService.parseDate(row.deadlineAt) ?? Date().addingTimeInterval(7200)
+        let accepted = row.acceptedAt.flatMap { TeamCoordinatorTasksService.parseDate($0) }
+        let created = TeamCoordinatorTasksService.parseDate(row.createdAt)
+        let refData = row.referenceImageBase64.flatMap { Data(base64Encoded: $0) }
+        let instructions = row.stepInstructions
+        let steps: [CoordinatorTaskStep]
+        if let existing = mergingExisting, existing.id == row.id, existing.steps.count == instructions.count {
+            steps = zip(instructions, existing.steps).map { instr, prev in
+                if prev.instruction == instr {
+                    prev
+                } else {
+                    CoordinatorTaskStep(instruction: instr)
+                }
+            }
+        } else {
+            steps = instructions.map { CoordinatorTaskStep(instruction: $0) }
+        }
+        return CoordinatorOutboundTask(
+            id: row.id,
+            senderUserId: row.senderId,
+            peerUserId: row.recipientId,
+            title: row.title,
+            body: row.body,
+            acceptedAt: accepted,
+            deadline: deadline,
+            createdAt: created,
+            steps: steps,
+            referenceImageData: refData
+        )
+    }
+
+    func acceptCoordinatorTask(recipientUserId: UUID, taskId: UUID) {
+        Task {
+            do {
+                let row = try await TeamCoordinatorTasksService.markAccepted(
+                    taskId: taskId,
+                    client: SupabaseClientProvider.shared
+                )
+                await MainActor.run {
+                    mergeCoordinatorTaskFromServer(row)
+                }
+            } catch {
+                await MainActor.run {
+                    guard var arr = coordinatorTasksByPeer[recipientUserId],
+                          let i = arr.firstIndex(where: { $0.id == taskId })
+                    else { return }
+                    arr[i].acceptedAt = Date()
+                    coordinatorTasksByPeer[recipientUserId] = arr
+                    bumpCoordinatorTimeline()
+                }
+            }
+        }
+    }
+
+    func setCoordinatorStepProof(recipientUserId: UUID, taskId: UUID, stepId: UUID, imageData: Data) {
+        guard var arr = coordinatorTasksByPeer[recipientUserId],
               let ti = arr.firstIndex(where: { $0.id == taskId })
         else { return }
         var task = arr[ti]
         guard let si = task.steps.firstIndex(where: { $0.id == stepId }) else { return }
         task.steps[si].proofImageData = imageData
         arr[ti] = task
-        coordinatorTasksByPeer[peerUserId] = arr
+        coordinatorTasksByPeer[recipientUserId] = arr
         bumpCoordinatorTimeline()
     }
 
-    func verifyCoordinatorStep(peerUserId: UUID, taskId: UUID, stepId: UUID) {
-        guard var arr = coordinatorTasksByPeer[peerUserId],
+    func verifyCoordinatorStep(recipientUserId: UUID, taskId: UUID, stepId: UUID) {
+        guard var arr = coordinatorTasksByPeer[recipientUserId],
               let ti = arr.firstIndex(where: { $0.id == taskId })
         else { return }
         var task = arr[ti]
@@ -125,7 +271,7 @@ final class ChatInboxStore: ObservableObject {
         guard task.steps[si].proofImageData != nil else { return }
         task.steps[si].verified = true
         arr[ti] = task
-        coordinatorTasksByPeer[peerUserId] = arr
+        coordinatorTasksByPeer[recipientUserId] = arr
         bumpCoordinatorTimeline()
     }
 
@@ -334,5 +480,168 @@ final class ChatInboxStore: ObservableObject {
         var copy = pinOverride
         copy[thread.id] = !current
         pinOverride = copy
+    }
+}
+
+// MARK: - Supabase: tareas coordinador (mismo módulo que la bandeja; evita fallos si el .swift suelto no está en el target)
+
+enum TeamCoordinatorTasksService {
+    private static let table = "team_coordinator_tasks"
+
+    struct Row: Decodable, Sendable {
+        let id: UUID
+        let senderId: UUID
+        let recipientId: UUID
+        let title: String
+        let body: String
+        let deadlineAt: String
+        let acceptedAt: String?
+        let stepInstructions: [String]
+        let referenceImageBase64: String?
+        let createdAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case senderId = "sender_id"
+            case recipientId = "recipient_id"
+            case title
+            case body
+            case deadlineAt = "deadline_at"
+            case acceptedAt = "accepted_at"
+            case stepInstructions = "step_instructions"
+            case referenceImageBase64 = "reference_image_base64"
+            case createdAt = "created_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            senderId = try c.decode(UUID.self, forKey: .senderId)
+            recipientId = try c.decode(UUID.self, forKey: .recipientId)
+            title = try c.decode(String.self, forKey: .title)
+            body = try c.decode(String.self, forKey: .body)
+            deadlineAt = try c.decode(String.self, forKey: .deadlineAt)
+            acceptedAt = try c.decodeIfPresent(String.self, forKey: .acceptedAt)
+            referenceImageBase64 = try c.decodeIfPresent(String.self, forKey: .referenceImageBase64)
+            createdAt = try c.decode(String.self, forKey: .createdAt)
+            if let arr = try? c.decode([String].self, forKey: .stepInstructions) {
+                stepInstructions = arr
+            } else if let objs = try? c.decode([[String: String]].self, forKey: .stepInstructions) {
+                stepInstructions = objs.compactMap { $0["instruction"] ?? $0["text"] }
+            } else {
+                stepInstructions = []
+            }
+        }
+    }
+
+    private struct InsertPayload: Encodable {
+        let recipientId: UUID
+        let title: String
+        let body: String
+        let deadlineAt: String
+        let stepInstructions: [String]
+        let referenceImageBase64: String?
+
+        enum CodingKeys: String, CodingKey {
+            case recipientId = "recipient_id"
+            case title
+            case body
+            case deadlineAt = "deadline_at"
+            case stepInstructions = "step_instructions"
+            case referenceImageBase64 = "reference_image_base64"
+        }
+    }
+
+    private struct AcceptPatch: Encodable {
+        let acceptedAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case acceptedAt = "accepted_at"
+        }
+    }
+
+    private struct DeadlinePatch: Encodable {
+        let deadlineAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case deadlineAt = "deadline_at"
+        }
+    }
+
+    private static func isoString(_ date: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: date)
+    }
+
+    static func parseDate(_ s: String) -> Date? {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: s) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: s)
+    }
+
+    static func fetchInvolving(userId: UUID, client: SupabaseClient) async throws -> [Row] {
+        let filter = "recipient_id.eq.\(userId.uuidString.lowercased()),sender_id.eq.\(userId.uuidString.lowercased())"
+        return try await client
+            .from(table)
+            .select()
+            .or(filter)
+            .order("created_at", ascending: false)
+            .limit(200)
+            .execute()
+            .value
+    }
+
+    static func create(
+        recipientId: UUID,
+        title: String,
+        body: String,
+        deadline: Date,
+        stepInstructions: [String],
+        referenceImageBase64: String?,
+        client: SupabaseClient
+    ) async throws -> Row {
+        let payload = InsertPayload(
+            recipientId: recipientId,
+            title: title,
+            body: body,
+            deadlineAt: isoString(deadline),
+            stepInstructions: stepInstructions,
+            referenceImageBase64: referenceImageBase64
+        )
+        return try await client
+            .from(table)
+            .insert(payload, returning: .representation)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    static func markAccepted(taskId: UUID, client: SupabaseClient) async throws -> Row {
+        let patch = AcceptPatch(acceptedAt: isoString(Date()))
+        return try await client
+            .from(table)
+            .update(patch)
+            .eq("id", value: taskId.uuidString.lowercased())
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    static func updateDeadline(taskId: UUID, deadline: Date, client: SupabaseClient) async throws -> Row {
+        let patch = DeadlinePatch(deadlineAt: isoString(deadline))
+        return try await client
+            .from(table)
+            .update(patch)
+            .eq("id", value: taskId.uuidString.lowercased())
+            .select()
+            .single()
+            .execute()
+            .value
     }
 }

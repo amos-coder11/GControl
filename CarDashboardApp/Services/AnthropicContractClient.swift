@@ -436,7 +436,9 @@ enum OpenAIChatClient {
 
     Si el usuario quiere enviar una oferta, resumen comercial o que un compañero gestione el cliente, \
     incluye en "team" el UUID del comercial indicado en COMERCIAL_DEL_EQUIPO_SUGERIDO o el que el usuario nombre del listado EQUIPO, \
-    y en "cars" los vehículos implicados, para que la app pueda mostrar al comercial y el botón de enviar oferta.
+    y en "cars" los vehículos implicados. Si nombra a una persona concreta del listado EQUIPO, incluye solo su user_id en "team". \
+    Si habla de «todo el equipo» o similar, puedes omitir "team" o listar varios: la app mostrará a todo el equipo y el usuario elegirá destinatario y coche. \
+    En la app se rellena el horario si lo dijo en el chat; el comercial recibe tarea por pasos con foto del vehículo.
     """
 
     private struct OpenAIChatCompletionResponse: Decodable {
