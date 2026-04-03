@@ -40,6 +40,9 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         profileSection
+                        if auth.isAuthenticated {
+                            notificationsSection
+                        }
                         developerSection
                         accountSection
                         aboutSection
@@ -61,6 +64,56 @@ struct SettingsView: View {
                 LiquidGlassKeyboardAccessoryBar {
                     settingsSearchFieldFocused = false
                 }
+            }
+        }
+        .task(id: auth.session?.user.id) {
+            guard let uid = auth.session?.user.id else { return }
+            await settingsVM.loadNotifyTeamPush(
+                client: SupabaseClientProvider.shared,
+                userId: uid
+            )
+        }
+    }
+
+    // MARK: - Notificaciones
+
+    private var notificationsSection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Notificaciones")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsVM.notifyTeamPushEnabled },
+                        set: { new in
+                            settingsVM.notifyTeamPushEnabled = new
+                            if let uid = auth.session?.user.id {
+                                Task {
+                                    await settingsVM.persistNotifyTeamPush(
+                                        new,
+                                        client: SupabaseClientProvider.shared,
+                                        userId: uid
+                                    )
+                                }
+                            }
+                        }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Avisos del equipo y tareas")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                        Text(
+                            "Recibir push cuando te envíen un mensaje directo, aviso de grupo o una tarea desde Viera. Desactívalo si no quieres notificaciones en este dispositivo."
+                        )
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(PremiumAccent.tabActive)
             }
         }
     }

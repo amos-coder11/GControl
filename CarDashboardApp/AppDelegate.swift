@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        CoordinatorTaskNotificationRegistration.registerCategories()
         return true
     }
 
@@ -16,7 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         #if DEBUG
-        print("APNs registro fallido: \(error.localizedDescription)")
+        print("[CarHub APNs] Registro fallido: \(error.localizedDescription)")
         #endif
     }
 
@@ -36,5 +37,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         completionHandler(.noData)
+    }
+
+    /// Acciones de notificación (p. ej. «Aceptar» en tarea Viera).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        CoordinatorTaskPushActionHandler.handleAcceptIfNeeded(response: response, completion: completionHandler)
     }
 }

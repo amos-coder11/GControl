@@ -13,7 +13,12 @@ enum RemotePushRegistration {
         let center = UNUserNotificationCenter.current()
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
-            guard granted else { return }
+            guard granted else {
+                #if DEBUG
+                print("[CarHub APNs] Permiso de notificaciones denegado: no habrá push hasta que lo actives en Ajustes.")
+                #endif
+                return
+            }
             UIApplication.shared.registerForRemoteNotifications()
         } catch {
             #if DEBUG
@@ -26,6 +31,10 @@ enum RemotePushRegistration {
     static func storeDeviceTokenFromAPNs(_ data: Data) {
         let hex = data.map { String(format: "%02.2hhx", $0) }.joined()
         UserDefaults.standard.set(hex, forKey: pendingTokenKey)
+        #if DEBUG
+        let prefix = hex.prefix(12)
+        print("[CarHub APNs] Token recibido de Apple (hex \(prefix)…, \(hex.count) chars). Subiendo a Supabase si hay sesión.")
+        #endif
         Task {
             await syncPendingTokenToSupabase()
         }
@@ -34,7 +43,12 @@ enum RemotePushRegistration {
     /// Tras iniciar sesión, reintenta subir el token pendiente.
     static func syncPendingTokenToSupabase(client: SupabaseClient = SupabaseClientProvider.shared) async {
         guard let hex = UserDefaults.standard.string(forKey: pendingTokenKey), !hex.isEmpty else { return }
-        guard let uid = client.auth.currentSession?.user.id else { return }
+        guard let uid = client.auth.currentSession?.user.id else {
+            #if DEBUG
+            print("[CarHub APNs] Hay token pero no hay sesión: inicia sesión para guardarlo en user_apns_devices.")
+            #endif
+            return
+        }
 
         struct Row: Encodable {
             let user_id: UUID
@@ -46,9 +60,12 @@ enum RemotePushRegistration {
                 .from("user_apns_devices")
                 .upsert(Row(user_id: uid, device_token: hex), onConflict: "user_id,device_token")
                 .execute()
+            #if DEBUG
+            print("[CarHub APNs] OK: token guardado en Supabase (user_apns_devices) para usuario \(uid.uuidString.prefix(8))…")
+            #endif
         } catch {
             #if DEBUG
-            print("user_apns_devices upsert: \(error)")
+            print("[CarHub APNs] Error al guardar token: \(error)")
             #endif
         }
     }

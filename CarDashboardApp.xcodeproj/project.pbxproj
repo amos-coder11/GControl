@@ -100,6 +100,9 @@
 		AA000095 /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000095 /* AudioWaveformView.swift */; };
 		AA000096 /* WaveformDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000096 /* WaveformDemoView.swift */; };
 		AA000097 /* VieraChatRichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000097 /* VieraChatRichContent.swift */; };
+		AA000098 /* CoordinatorTaskPushActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000098 /* CoordinatorTaskPushActionHandler.swift */; };
+		AA000101 /* TeamDirectVoiceStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000101 /* TeamDirectVoiceStorage.swift */; };
+		AA000102 /* VoiceMessageWaveformExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000102 /* VoiceMessageWaveformExtractor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -190,10 +193,13 @@
 		AB000095 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 		AB000096 /* WaveformDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformDemoView.swift; sourceTree = "<group>"; };
 		AB000097 /* VieraChatRichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VieraChatRichContent.swift; sourceTree = "<group>"; };
+		AB000098 /* CoordinatorTaskPushActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorTaskPushActionHandler.swift; sourceTree = "<group>"; };
 		AB000082 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AB000083 /* RemotePushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePushRegistration.swift; sourceTree = "<group>"; };
 		AB000091 /* TeamDirectMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectMessagesService.swift; sourceTree = "<group>"; };
 		AB000092 /* TeamGroupMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamGroupMessagesService.swift; sourceTree = "<group>"; };
+		AB000101 /* TeamDirectVoiceStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectVoiceStorage.swift; sourceTree = "<group>"; };
+		AB000102 /* VoiceMessageWaveformExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageWaveformExtractor.swift; sourceTree = "<group>"; };
 		AB000084 /* CarDashboardApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp.entitlements; sourceTree = "<group>"; };
 		AB000085 /* CarDashboardApp-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CarDashboardApp-Release.entitlements; sourceTree = "<group>"; };
 		AB000086 /* GIFAnimatedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GIFAnimatedView.swift; sourceTree = "<group>"; };
@@ -296,11 +302,14 @@
 				AB000059 /* AppPINKeychain.swift */,
 				AB000073 /* CommunityProfilesService.swift */,
 				AB000091 /* TeamDirectMessagesService.swift */,
+				AB000101 /* TeamDirectVoiceStorage.swift */,
+				AB000102 /* VoiceMessageWaveformExtractor.swift */,
 				AB000092 /* TeamGroupMessagesService.swift */,
 				AB000074 /* DashboardLocationHub.swift */,
 				AB000078 /* InvoiceHistoryStore.swift */,
 				AB000081 /* LiveSpeechTranscriber.swift */,
 				AB000093 /* AudioWaveformMonitor.swift */,
+				AB000098 /* CoordinatorTaskPushActionHandler.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -548,6 +557,8 @@
 				AA000063 /* PINSetupView.swift in Sources */,
 				AA000072 /* CommunityProfilesService.swift in Sources */,
 				AA000091 /* TeamDirectMessagesService.swift in Sources */,
+				AA000101 /* TeamDirectVoiceStorage.swift in Sources */,
+				AA000102 /* VoiceMessageWaveformExtractor.swift in Sources */,
 				AA000092 /* TeamGroupMessagesService.swift in Sources */,
 				AA000073 /* DashboardLocationHub.swift in Sources */,
 				AA000074 /* DashboardCommunityViewModel.swift in Sources */,
@@ -561,6 +572,7 @@
 				AA000095 /* AudioWaveformView.swift in Sources */,
 				AA000096 /* WaveformDemoView.swift in Sources */,
 				AA000097 /* VieraChatRichContent.swift in Sources */,
+				AA000098 /* CoordinatorTaskPushActionHandler.swift in Sources */,
 				AA000086 /* GIFAnimatedView.swift in Sources */,
 				AA000087 /* LoopingMutedBundledVideoView.swift in Sources */,
 			);

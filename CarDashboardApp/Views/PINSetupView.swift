@@ -3,6 +3,7 @@ import SwiftUI
 /// Tras iniciar sesión por primera vez (sin PIN en Keychain): crear PIN de 6 dígitos dos veces.
 struct PINSetupView: View {
     @EnvironmentObject private var appLock: AppLockManager
+    @EnvironmentObject private var auth: AuthViewModel
 
     @State private var phase: Phase = .enterFirst
     @State private var firstPIN = ""
@@ -66,7 +67,12 @@ struct PINSetupView: View {
                 mismatch = false
             case .confirm:
                 if new == firstPIN {
-                    appLock.savePINAndUnlock(new)
+                    if let uid = auth.session?.user.id {
+                        appLock.savePINAndUnlock(new, userId: uid)
+                    } else {
+                        mismatch = true
+                        currentEntry = ""
+                    }
                 } else {
                     mismatch = true
                     currentEntry = ""
@@ -136,4 +142,5 @@ struct PINSetupView: View {
 #Preview {
     PINSetupView()
         .environmentObject(AppLockManager())
+        .environmentObject(AuthViewModel())
 }

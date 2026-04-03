@@ -10,7 +10,10 @@ enum SupabaseClientProvider {
     static let shared: SupabaseClient = {
         SupabaseClient(
             supabaseURL: supabaseURL,
-            supabaseKey: anonKey
+            supabaseKey: anonKey,
+            options: SupabaseClientOptions(
+                auth: .init(emitLocalSessionAsInitialSession: true)
+            )
         )
     }()
 
@@ -23,7 +26,10 @@ enum SupabaseClientProvider {
             supabaseURL: supabaseURL,
             supabaseKey: anonKey,
             options: SupabaseClientOptions(
-                auth: .init(storageKey: "sb-\(ref)-auth-token-catalog-anon")
+                auth: .init(
+                    storageKey: "sb-\(ref)-auth-token-catalog-anon",
+                    emitLocalSessionAsInitialSession: true
+                )
             )
         )
     }()
@@ -63,6 +69,9 @@ enum SupabaseClientProvider {
         guard let v = fromInfoPlist, !v.isEmpty else { return "profiles" }
         return v
     }
+
+    /// Bucket privado para notas de voz en mensajes directos de equipo.
+    static let teamDirectVoiceBucket = "team_direct_voice"
 
     /// Bucket Storage para fotos de perfil (ruta relativa guardada en `avatar_url`).
     static var userAvatarBucket: String {

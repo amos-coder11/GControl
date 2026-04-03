@@ -2,7 +2,7 @@ import Foundation
 import LocalAuthentication
 import SwiftUI
 
-/// Bloqueo local: Face ID / Touch ID con fallback al código del dispositivo, más PIN de 6 dígitos de la app.
+/// Bloqueo local: Face ID / Touch ID con fallback al código del dispositivo, más PIN de 6 dígitos de la app (por usuario).
 @MainActor
 final class AppLockManager: ObservableObject {
     @Published var isUnlocked = false
@@ -10,12 +10,34 @@ final class AppLockManager: ObservableObject {
     @Published var authError: String?
     @Published private(set) var hasPINConfigured = false
 
+    /// Usuario con sesión activa; el PIN en Keychain está ligado a este id.
+    private(set) var activeUserId: UUID?
+
     init() {
-        hasPINConfigured = AppPINKeychain.loadHash() != nil
+        activeUserId = nil
+        hasPINConfigured = false
+    }
+
+    /// Llama al iniciar o cambiar sesión: no borra PINs en Keychain.
+    func setActiveUser(_ userId: UUID?) {
+        authError = nil
+        guard let uid = userId else {
+            activeUserId = nil
+            hasPINConfigured = false
+            isUnlocked = false
+            return
+        }
+        activeUserId = uid
+        hasPINConfigured = AppPINKeychain.loadHash(forUserId: uid) != nil
+        isUnlocked = false
     }
 
     func refreshPINState() {
-        hasPINConfigured = AppPINKeychain.loadHash() != nil
+        guard let uid = activeUserId else {
+            hasPINConfigured = false
+            return
+        }
+        hasPINConfigured = AppPINKeychain.loadHash(forUserId: uid) != nil
     }
 
     var biometryType: LABiometryType {
@@ -44,7 +66,11 @@ final class AppLockManager: ObservableObject {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             isAuthenticating = false
-            authError = error?.localizedDescription ?? "Autenticación no disponible en este dispositivo."
+            if let la = error as? LAError, la.code == .biometryNotAvailable {
+                authError = nil
+            } else {
+                authError = error?.localizedDescription
+            }
             return
         }
 
@@ -62,6 +88,8 @@ final class AppLockManager: ObservableObject {
                     switch err.code {
                     case .userCancel, .systemCancel, .appCancel, .userFallback:
                         self.authError = nil
+                    case .biometryNotAvailable:
+                        self.authError = nil
                     default:
                         self.authError = err.localizedDescription
                     }
@@ -73,9 +101,13 @@ final class AppLockManager: ObservableObject {
     }
 
     func submitPIN(_ pin: String) {
+        guard let uid = activeUserId else {
+            authError = "Sesión no disponible."
+            return
+        }
         guard pin.count == 6, pin.allSatisfy(\.isNumber) else { return }
-        guard let stored = AppPINKeychain.loadHash() else {
-            authError = "No hay PIN guardado."
+        guard let stored = AppPINKeychain.loadHash(forUserId: uid) else {
+            authError = "No hay PIN guardado para esta cuenta."
             return
         }
         let candidate = AppPINKeychain.hashPIN(pin)
@@ -87,10 +119,11 @@ final class AppLockManager: ObservableObject {
         }
     }
 
-    func savePINAndUnlock(_ pin: String) {
+    func savePINAndUnlock(_ pin: String, userId: UUID) {
         guard pin.count == 6, pin.allSatisfy(\.isNumber) else { return }
         let hash = AppPINKeychain.hashPIN(pin)
-        AppPINKeychain.saveHash(hash)
+        AppPINKeychain.saveHash(hash, forUserId: userId)
+        activeUserId = userId
         hasPINConfigured = true
         isUnlocked = true
         authError = nil
@@ -100,11 +133,13 @@ final class AppLockManager: ObservableObject {
         isUnlocked = false
     }
 
-    /// Tras cerrar sesión o “olvidé el PIN”.
-    func clearPIN() {
-        AppPINKeychain.delete()
-        hasPINConfigured = false
-        isUnlocked = false
+    /// Solo cuando el usuario indica que olvidó el PIN: borra el PIN **de esa cuenta** y debe volver a crearlo al entrar.
+    func clearPINForUser(_ userId: UUID) {
+        AppPINKeychain.delete(forUserId: userId)
+        if activeUserId == userId {
+            hasPINConfigured = false
+            isUnlocked = false
+        }
         authError = nil
     }
 }

@@ -4,6 +4,46 @@ import UIKit
 
 /// Lectura de perfil Supabase (`profiles`) y descarga del avatar (Storage o URL).
 enum UserProfileService {
+    private struct NotifyTeamPushRow: Decodable {
+        let notifyTeamPush: Bool?
+        enum CodingKeys: String, CodingKey {
+            case notifyTeamPush = "notify_team_push"
+        }
+    }
+
+    private struct NotifyTeamPushUpdate: Encodable {
+        let notifyTeamPush: Bool
+        enum CodingKeys: String, CodingKey {
+            case notifyTeamPush = "notify_team_push"
+        }
+    }
+
+    /// Preferencia de push de equipo (mensajes/tareas). Si no hay fila o la columna es null, se asume activado.
+    static func fetchNotifyTeamPush(userId: UUID, client: SupabaseClient) async -> Bool {
+        for value in [userId.uuidString.lowercased(), userId.uuidString] {
+            do {
+                let rows: [NotifyTeamPushRow] = try await client
+                    .from(SupabaseClientProvider.profilesTableName)
+                    .select("notify_team_push")
+                    .eq("user_id", value: value)
+                    .limit(1)
+                    .execute()
+                    .value
+                if let v = rows.first?.notifyTeamPush { return v }
+            } catch {}
+        }
+        return true
+    }
+
+    static func setNotifyTeamPush(_ enabled: Bool, userId: UUID, client: SupabaseClient) async throws {
+        let payload = NotifyTeamPushUpdate(notifyTeamPush: enabled)
+        try await client
+            .from(SupabaseClientProvider.profilesTableName)
+            .update(payload)
+            .eq("user_id", value: userId.uuidString.lowercased())
+            .execute()
+    }
+
     private struct ProfileAvatarRow: Decodable {
         let avatarUrl: String?
         enum CodingKeys: String, CodingKey {

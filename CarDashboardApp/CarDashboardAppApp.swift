@@ -51,10 +51,11 @@ private struct AppShellRoot: View {
     }
 
     private func syncAppLockWithSession() {
-        if authVM.isAuthenticated {
-            appLock.refreshPINState()
+        if authVM.isAuthenticated, let uid = authVM.session?.user.id {
+            appLock.setActiveUser(uid)
         } else {
-            appLock.clearPIN()
+            // Cerrar sesión no borra el PIN en el llavero: cada usuario conserva su código en este dispositivo.
+            appLock.setActiveUser(nil)
         }
     }
 }

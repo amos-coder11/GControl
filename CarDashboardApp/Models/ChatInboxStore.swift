@@ -107,7 +107,12 @@ final class ChatInboxStore: ObservableObject {
     func coordinatorTasksInTeamDirectThread(myUserId: UUID, otherUserId: UUID) -> [CoordinatorOutboundTask] {
         let toOther = (coordinatorTasksByPeer[otherUserId] ?? []).filter { $0.senderUserId == myUserId }
         let fromOther = (coordinatorTasksByPeer[myUserId] ?? []).filter { $0.senderUserId == otherUserId }
-        return (toOther + fromOther).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        return (toOther + fromOther).sorted {
+            let a = $0.createdAt ?? .distantPast
+            let b = $1.createdAt ?? .distantPast
+            if a != b { return a < b }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     /// Tareas pendientes asignadas al usuario actual (para el panel Inicio).
@@ -324,7 +329,7 @@ final class ChatInboxStore: ObservableObject {
 
     func applyTeamDirectOutgoing(toPeer peerId: UUID, body: String, date: Date) {
         var b = teamDirectPreviewBody
-        b[peerId] = body
+        b[peerId] = TeamDirectVoiceStorage.inboxPreviewBody(for: body)
         teamDirectPreviewBody = b
         var t = teamDirectPreviewTime
         t[peerId] = Self.formatShortListTime(date)
@@ -338,7 +343,7 @@ final class ChatInboxStore: ObservableObject {
     /// Llega un mensaje dirigido al usuario actual (p. ej. Realtime bandeja).
     func applyTeamDirectIncoming(fromPeer peerId: UUID, body: String, date: Date) {
         var b = teamDirectPreviewBody
-        b[peerId] = body
+        b[peerId] = TeamDirectVoiceStorage.inboxPreviewBody(for: body)
         teamDirectPreviewBody = b
         var t = teamDirectPreviewTime
         t[peerId] = Self.formatShortListTime(date)
@@ -575,12 +580,37 @@ enum TeamCoordinatorTasksService {
     }
 
     static func parseDate(_ s: String) -> Date? {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
         let f1 = ISO8601DateFormatter()
         f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f1.date(from: s) { return d }
+        if let d = f1.date(from: trimmed) { return d }
         let f2 = ISO8601DateFormatter()
         f2.formatOptions = [.withInternetDateTime]
-        return f2.date(from: s)
+        if let d = f2.date(from: trimmed) { return d }
+
+        // Postgres/PostgREST a veces devuelve espacio en vez de «T» entre fecha y hora.
+        var normalized = trimmed
+        if !normalized.contains("T"), let sp = normalized.firstIndex(of: " ") {
+            let head = normalized[..<sp]
+            if head.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil {
+                normalized.replaceSubrange(sp...sp, with: "T")
+                if let d = f2.date(from: normalized) { return d }
+                if let d = f1.date(from: normalized) { return d }
+            }
+        }
+
+        // Microsegundos largos (p. ej. .123456): recortar a 3 dígitos fraccionarios para ISO8601.
+        if let range = normalized.range(of: #"\.\d{4,}"#, options: .regularExpression) {
+            let fracStart = normalized.index(after: range.lowerBound)
+            let cut = normalized.index(fracStart, offsetBy: 2, limitedBy: range.upperBound) ?? fracStart
+            normalized = String(normalized[..<fracStart]) + String(normalized[fracStart...cut]) + String(normalized[range.upperBound...])
+            if let d = f1.date(from: normalized) { return d }
+            if let d = f2.date(from: normalized) { return d }
+        }
+
+        return nil
     }
 
     static func fetchInvolving(userId: UUID, client: SupabaseClient) async throws -> [Row] {

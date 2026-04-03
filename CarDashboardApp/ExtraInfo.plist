@@ -13,6 +13,10 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

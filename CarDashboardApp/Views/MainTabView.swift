@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import Speech
 import SwiftUI
 import UIKit
 
@@ -98,10 +99,22 @@ struct MainTabView: View {
         .task {
             await carsVM.loadVehicles()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .coordinatorTaskAcceptedFromPush)) { _ in
+            guard let uid = auth.session?.user.id else { return }
+            Task {
+                await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
+            }
+        }
     }
 }
 
 // MARK: - Pestaña IA (mismo archivo que MainTabView para evitar «Cannot find TeamAITabView in scope» si falta el .swift en el target)
+
+/// Borrador del compositor aislado: al teclear no se invalida el `ScrollView` de burbujas (menos jank con teclado).
+@MainActor
+private final class TeamAIComposerState: ObservableObject {
+    @Published var draft: String = ""
+}
 
 @MainActor
 private final class TeamAIAssistantSession: ObservableObject {
@@ -124,9 +137,13 @@ private final class TeamAIAssistantSession: ObservableObject {
     var vieraAppContextBuilder: (() -> String)?
 
     @Published var bubbles: [Bubble] = []
-    @Published var draft: String = ""
+    /// Asignado desde la vista (`attachComposer`); el texto del campo «Mensaje» vive en `TeamAIComposerState`.
+    private weak var composerRef: TeamAIComposerState?
+
     @Published var liveTranscript: String = ""
     @Published var isRecordingAudio = false
+    /// Grabación tipo «nota de voz» (mantener pulsado); al soltar se transcribe y se envía.
+    @Published var isRecordingVoiceNote = false
     @Published var isSending = false
     /// Texto parcial mientras llega el stream de OpenAI (efecto «typewriter»).
     @Published var streamingAssistantText: String = ""
@@ -135,6 +152,8 @@ private final class TeamAIAssistantSession: ObservableObject {
     private let transcriber: LiveSpeechTranscriber
     fileprivate let waveformMonitor = AudioWaveformMonitor()
     private var cancellables = Set<AnyCancellable>()
+    private var voiceNoteRecorder: AVAudioRecorder?
+    private var voiceNoteURL: URL?
 
     init() {
         transcriber = LiveSpeechTranscriber(waveformMonitor: waveformMonitor)
@@ -146,8 +165,12 @@ private final class TeamAIAssistantSession: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func attachComposer(_ composer: TeamAIComposerState) {
+        composerRef = composer
+    }
+
     func beginVoiceInput() {
-        guard !isRecordingAudio else { return }
+        guard !isRecordingAudio, !isRecordingVoiceNote else { return }
         statusHint = nil
         isRecordingAudio = true
         liveTranscript = ""
@@ -202,13 +225,13 @@ private final class TeamAIAssistantSession: ObservableObject {
     }
 
     private func mergeCapturedTranscriptIntoDraft(_ captured: String) {
-        guard !captured.isEmpty else { return }
-        if draft.isEmpty {
-            draft = captured
-        } else if draft.hasSuffix(" ") {
-            draft += captured
+        guard let c = composerRef, !captured.isEmpty else { return }
+        if c.draft.isEmpty {
+            c.draft = captured
+        } else if c.draft.hasSuffix(" ") {
+            c.draft += captured
         } else {
-            draft += " " + captured
+            c.draft += " " + captured
         }
     }
 
@@ -220,10 +243,128 @@ private final class TeamAIAssistantSession: ObservableObject {
         liveTranscript = ""
     }
 
+    // MARK: - Nota de voz (mantener pulsado en el mic / onda)
+
+    func startVoiceNoteRecording() async {
+        guard !isRecordingAudio, !isRecordingVoiceNote else { return }
+        statusHint = nil
+        let mic = await requestMicrophonePermission()
+        guard mic else {
+            statusHint = "Activa el micrófono en Ajustes para enviar notas de voz."
+            return
+        }
+        let speech = await transcriber.requestSpeechAuthorization()
+        guard speech else {
+            statusHint = "Activa el reconocimiento de voz en Ajustes."
+            return
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("viera-vn-\(UUID().uuidString).m4a")
+        voiceNoteURL = url
+        do {
+            let av = AVAudioSession.sharedInstance()
+            try av.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
+            try av.setActive(true)
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            ]
+            let rec = try AVAudioRecorder(url: url, settings: settings)
+            rec.prepareToRecord()
+            guard rec.record() else {
+                throw NSError(domain: "CarHub", code: 1, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
+            }
+            voiceNoteRecorder = rec
+            isRecordingVoiceNote = true
+        } catch {
+            voiceNoteURL = nil
+            voiceNoteRecorder = nil
+            statusHint = error.localizedDescription
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    func cancelVoiceNoteRecording() {
+        voiceNoteRecorder?.stop()
+        voiceNoteRecorder = nil
+        if let url = voiceNoteURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        voiceNoteURL = nil
+        isRecordingVoiceNote = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Detiene la grabación, transcribe el archivo y envía el texto a Viera (mensaje de voz → texto).
+    func finishVoiceNoteRecordingAndSend() async {
+        guard isRecordingVoiceNote else { return }
+        voiceNoteRecorder?.stop()
+        voiceNoteRecorder = nil
+        isRecordingVoiceNote = false
+
+        guard let url = voiceNoteURL else {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            return
+        }
+        voiceNoteURL = nil
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        request.shouldReportPartialResults = false
+
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES")), recognizer.isAvailable else {
+            statusHint = "El reconocimiento de voz no está disponible ahora."
+            return
+        }
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            let lock = NSLock()
+            var finished = false
+            func finishOnce() {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !finished else { return }
+                finished = true
+                cont.resume()
+            }
+            recognizer.recognitionTask(with: request) { result, error in
+                if let error {
+                    DispatchQueue.main.async {
+                        self.statusHint = error.localizedDescription
+                        finishOnce()
+                    }
+                    return
+                }
+                guard let result else {
+                    DispatchQueue.main.async { finishOnce() }
+                    return
+                }
+                if result.isFinal {
+                    let text = result.bestTranscription.formattedString
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    DispatchQueue.main.async {
+                        if text.isEmpty {
+                            self.statusHint = "No se ha entendido el audio. Mantén pulsado y vuelve a intentarlo."
+                        } else if let c = self.composerRef {
+                            c.draft = text
+                            self.send()
+                        }
+                        finishOnce()
+                    }
+                }
+            }
+        }
+    }
+
     func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let c = composerRef else { return }
+        let text = c.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
-        draft = ""
+        c.draft = ""
         bubbles.append(Bubble(isUser: true, text: text))
         isSending = true
         statusHint = nil
@@ -387,8 +528,298 @@ private struct StreamingTextCaret: View {
     }
 }
 
+/// Toca = dictado en vivo; mantén ~0,45 s = nota de voz → al soltar se transcribe y se envía a Viera.
+private struct VieraTapOrHoldVoiceControl: View {
+    @ObservedObject var session: TeamAIAssistantSession
+    var systemName: String
+    var pointSize: CGFloat
+    var fontWeight: Font.Weight = .medium
+    var hitSide: CGFloat = 44
+    var foreground: Color
+    var accessibilityLabelText: String
+
+    @State private var pressToken = 0
+    @State private var fingerDown = false
+
+    private let holdNanoseconds: UInt64 = 450_000_000
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: pointSize, weight: fontWeight))
+            .foregroundStyle(foreground)
+            .frame(width: hitSide, height: hitSide)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !session.isRecordingAudio else { return }
+                        if !fingerDown {
+                            fingerDown = true
+                            pressToken &+= 1
+                            let token = pressToken
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: holdNanoseconds)
+                                guard !Task.isCancelled, token == pressToken, fingerDown else { return }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                await session.startVoiceNoteRecording()
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        guard !session.isRecordingAudio else {
+                            fingerDown = false
+                            return
+                        }
+                        pressToken &+= 1
+                        let wasVoiceNote = session.isRecordingVoiceNote
+                        fingerDown = false
+                        if wasVoiceNote {
+                            Task { await session.finishVoiceNoteRecordingAndSend() }
+                        } else {
+                            session.beginVoiceInput()
+                        }
+                    }
+            )
+            .accessibilityLabel(accessibilityLabelText)
+            .accessibilityHint("Mantén pulsado para grabar una nota de voz y enviarla. Toca para dictado en vivo.")
+    }
+}
+
+/// Compositor inferior aislado: al editar «Mensaje…» no se recompone el `ScrollView` de burbujas (teclado más fluido).
+private struct TeamAIComposerDockView: View {
+    @ObservedObject var session: TeamAIAssistantSession
+    @ObservedObject var composerState: TeamAIComposerState
+    @Binding var showPlusMenuSheet: Bool
+    @Binding var showTextDraftSheet: Bool
+
+    @FocusState private var composerFieldFocused: Bool
+
+    private let composerInlineLineRange = 1...8
+    private let teamAIComposerWaveformStripHeight: CGFloat = 26
+    private let teamAIComposerRowMinHeight: CGFloat = 44
+
+    private func shouldShowComposerExpandButton(draft: String, isRecording: Bool) -> Bool {
+        guard !isRecording, !draft.isEmpty else { return false }
+        let newlines = draft.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
+        return draft.count >= 100 || newlines >= 2
+    }
+
+    private func submitComposerMessageIfPossible() {
+        let text = composerState.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !session.isSending else { return }
+        session.send()
+        composerFieldFocused = false
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let hint = session.statusHint, !hint.isEmpty {
+                Text(hint)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.orange.opacity(0.92))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 22)
+            }
+
+            if session.isRecordingVoiceNote {
+                Text("Suelta para transcribir y enviar")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.cyan.opacity(0.85))
+                    .multilineTextAlignment(.center)
+            }
+
+            unifiedComposerBar
+        }
+        .padding(.bottom, 10)
+    }
+
+    private var unifiedComposerBar: some View {
+        let trimmed = composerState.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLive = session.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasText = !trimmed.isEmpty
+        let canSendIdle = hasText && !session.isSending
+        let recording = session.isRecordingAudio
+        let canSendWhileRecording = !session.isSending && (hasText || !trimmedLive.isEmpty)
+        let showExpand = shouldShowComposerExpandButton(draft: composerState.draft, isRecording: recording)
+
+        return HStack(alignment: .bottom, spacing: 10) {
+            if recording {
+                Button {
+                    session.endVoiceInput()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 44, height: 44)
+                        .background {
+                            TeamAIGlassCircleBackground()
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pausar dictado")
+            } else {
+                Button {
+                    showPlusMenuSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .frame(width: 44, height: 44)
+                        .background {
+                            TeamAIGlassCircleBackground()
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Más opciones")
+            }
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ZStack(alignment: .topLeading) {
+                    TextField(
+                        "",
+                        text: $composerState.draft,
+                        prompt: Text("Mensaje…")
+                            .foregroundStyle(Color.white.opacity(0.42)),
+                        axis: .vertical
+                    )
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.white)
+                    .tint(Color(red: 0, green: 0.48, blue: 1))
+                    .lineLimit(composerInlineLineRange)
+                    .textFieldStyle(.plain)
+                    .focused($composerFieldFocused)
+                    .submitLabel(.send)
+                    .onSubmit { submitComposerMessageIfPossible() }
+                    .opacity(recording ? 0.02 : 1)
+                    .padding(.trailing, showExpand && !recording ? 26 : 0)
+
+                    if recording {
+                        AudioWaveformView(
+                            monitor: session.waveformMonitor,
+                            barColor: Color.white.opacity(0.88),
+                            barWidth: 1,
+                            spacing: 1,
+                            layoutHeight: teamAIComposerWaveformStripHeight,
+                            fillsAvailableWidth: true
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: teamAIComposerWaveformStripHeight, maxHeight: teamAIComposerWaveformStripHeight)
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black.opacity(0.12), location: 0),
+                                    .init(color: .black, location: 0.12),
+                                    .init(color: .black, location: 0.88),
+                                    .init(color: .black.opacity(0.12), location: 1)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if showExpand && !recording {
+                        Button {
+                            showTextDraftSheet = true
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.5))
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ampliar mensaje")
+                        .padding(.top, 2)
+                        .padding(.trailing, 2)
+                    }
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .padding(.vertical, 10)
+                .frame(minHeight: teamAIComposerRowMinHeight, alignment: .center)
+
+                if !recording && !hasText {
+                    VieraTapOrHoldVoiceControl(
+                        session: session,
+                        systemName: "mic.fill",
+                        pointSize: 17,
+                        foreground: session.isRecordingVoiceNote
+                            ? Color.red.opacity(0.92)
+                            : Color.white.opacity(0.88),
+                        accessibilityLabelText: "Micrófono"
+                    )
+                }
+            }
+            .background {
+                TeamAIGlassComposerFieldBackground()
+            }
+
+            if recording {
+                Button {
+                    session.endVoiceInputAndSend()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(canSendWhileRecording ? Color.black : Color.black.opacity(0.38))
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(canSendWhileRecording ? Color.white : Color.white.opacity(0.38))
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSendWhileRecording)
+                .accessibilityLabel("Enviar mensaje")
+            } else if hasText {
+                Button {
+                    submitComposerMessageIfPossible()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(canSendIdle ? Color.black : Color.black.opacity(0.38))
+                        .frame(width: 48, height: 48)
+                        .background {
+                            Circle()
+                                .fill(canSendIdle ? Color.white : Color.white.opacity(0.38))
+                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(session.isSending)
+                .accessibilityLabel("Enviar mensaje")
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(session.isRecordingVoiceNote ? Color.red.opacity(0.35) : Color.white)
+                        .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                        .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                        .frame(width: 48, height: 48)
+                    VieraTapOrHoldVoiceControl(
+                        session: session,
+                        systemName: "waveform",
+                        pointSize: 20,
+                        fontWeight: .semibold,
+                        hitSide: 48,
+                        foreground: session.isRecordingVoiceNote ? Color.white : Color.black,
+                        accessibilityLabelText: "Voz"
+                    )
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 16)
+    }
+}
+
 struct TeamAITabView: View {
     @StateObject private var session = TeamAIAssistantSession()
+    @StateObject private var composerState = TeamAIComposerState()
     @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
@@ -398,7 +829,6 @@ struct TeamAITabView: View {
 
     @State private var showTextDraftSheet = false
     @State private var showPlusMenuSheet = false
-    @FocusState private var composerFieldFocused: Bool
 
     @State private var speechSynth = AVSpeechSynthesizer()
     /// 0 ninguno, 1 pulgar arriba, -1 pulgar abajo (por id de burbuja del asistente).
@@ -419,10 +849,12 @@ struct TeamAITabView: View {
     private let vieraAccentBright = Color(red: 0.45, green: 0.78, blue: 1)
     private let vieraIndigo = Color(red: 0.18, green: 0.28, blue: 0.52)
 
-    /// Espacio vacío bajo el hilo (estilo ChatGPT: mensajes largos «respiran» sobre el compositor).
+    /// Espacio vacío bajo el hilo (estilo ChatGPT). Valores muy altos + teclado fuerzan relayout costoso.
     private var chatScrollBottomBreathingRoom: CGFloat {
-        max(300, UIScreen.main.bounds.height * 0.48)
+        max(220, UIScreen.main.bounds.height * 0.36)
     }
+
+    @State private var streamScrollDebounceTask: Task<Void, Never>?
 
     private func isVeryLongUserMessage(_ text: String) -> Bool {
         let n = text.count
@@ -468,7 +900,7 @@ struct TeamAITabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .scrollContentBackground(.hidden)
                 .background(cgptBlack)
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.automatic)
                 .onChange(of: session.bubbles.count) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
@@ -476,16 +908,26 @@ struct TeamAITabView: View {
                     scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: session.streamingAssistantText) { _, _ in
-                    scrollToBottom(proxy: proxy, animated: false)
+                    scheduleDebouncedStreamScroll(proxy: proxy)
                 }
             }
 
-            bottomControlsChatStyle
+            TeamAIComposerDockView(
+                session: session,
+                composerState: composerState,
+                showPlusMenuSheet: $showPlusMenuSheet,
+                showTextDraftSheet: $showTextDraftSheet
+            )
         }
         .background(Color.clear)
         .preferredColorScheme(.dark)
         .tint(.white)
+        .onDisappear {
+            streamScrollDebounceTask?.cancel()
+            streamScrollDebounceTask = nil
+        }
         .onAppear {
+            session.attachComposer(composerState)
             session.vieraAppContextBuilder = { [communityVM, carsVM, auth] in
                 VieraChatContextBuilder.build(
                     directory: communityVM.directory,
@@ -507,15 +949,14 @@ struct TeamAITabView: View {
         }
         .sheet(isPresented: $showTextDraftSheet) {
             TeamAILongMessageDraftSheet(
-                text: $session.draft,
+                text: $composerState.draft,
                 isSending: session.isSending,
                 onDismiss: { showTextDraftSheet = false },
                 onSend: {
-                    let t = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let t = composerState.draft.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty, !session.isSending else { return }
                     session.send()
                     showTextDraftSheet = false
-                    composerFieldFocused = false
                 }
             )
             .presentationDetents([.large])
@@ -706,7 +1147,6 @@ struct TeamAITabView: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentTransition(.interpolate)
-                .animation(.easeOut(duration: 0.14), value: visible.count)
             StreamingTextCaret()
                 .padding(.bottom, 2)
         }
@@ -852,227 +1292,14 @@ struct TeamAITabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var bottomControlsChatStyle: some View {
-        VStack(spacing: 12) {
-            if let hint = session.statusHint, !hint.isEmpty {
-                Text(hint)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.orange.opacity(0.92))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 22)
-            }
-
-            chatGPTUnifiedComposerBar
+    private func scheduleDebouncedStreamScroll(proxy: ScrollViewProxy) {
+        streamScrollDebounceTask?.cancel()
+        streamScrollDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 160_000_000)
+            guard !Task.isCancelled else { return }
+            scrollToBottom(proxy: proxy, animated: false)
         }
-        .padding(.bottom, 10)
     }
-
-    /// Líneas visibles en el compositor inline (un poco más que antes; textos enormes → hoja con scroll).
-    private let composerInlineLineRange = 1...8
-    /// Muestra la «flechita» ampliar cuando ya hay bastante texto o varias líneas.
-    private func shouldShowComposerExpandButton(draft: String, isRecording: Bool) -> Bool {
-        guard !isRecording, !draft.isEmpty else { return false }
-        let newlines = draft.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
-        return draft.count >= 100 || newlines >= 2
-    }
-
-    /// Misma fila en idle y en dictado: el `TextField` sigue en la jerarquía para no perder el teclado.
-    private var chatGPTUnifiedComposerBar: some View {
-        let trimmed = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedLive = session.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasText = !trimmed.isEmpty
-        let canSendIdle = hasText && !session.isSending
-        let recording = session.isRecordingAudio
-        /// Durante la grabación solo se muestra la onda; el texto en vivo no se enseña hasta pausar o enviar.
-        let canSendWhileRecording = !session.isSending && (hasText || !trimmedLive.isEmpty)
-        let showExpand = shouldShowComposerExpandButton(draft: session.draft, isRecording: recording)
-
-        return HStack(alignment: .bottom, spacing: 10) {
-            if recording {
-                Button {
-                    session.endVoiceInput()
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 44, height: 44)
-                        .background {
-                            TeamAIGlassCircleBackground()
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Pausar dictado")
-            } else {
-                Button {
-                    showPlusMenuSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.95))
-                        .frame(width: 44, height: 44)
-                        .background {
-                            TeamAIGlassCircleBackground()
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Más opciones")
-            }
-
-            HStack(alignment: .bottom, spacing: 4) {
-                ZStack(alignment: .topLeading) {
-                    TextField(
-                        "",
-                        text: $session.draft,
-                        prompt: Text("Mensaje…")
-                            .foregroundStyle(Color.white.opacity(0.42)),
-                        axis: .vertical
-                    )
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(Color.white)
-                    .tint(Color(red: 0, green: 0.48, blue: 1))
-                    .lineLimit(composerInlineLineRange)
-                    .textFieldStyle(.plain)
-                    .focused($composerFieldFocused)
-                    .submitLabel(.send)
-                    .onSubmit { submitComposerMessageIfPossible() }
-                    .opacity(recording ? 0.02 : 1)
-                    .padding(.trailing, showExpand && !recording ? 26 : 0)
-
-                    if recording {
-                        AudioWaveformView(
-                            monitor: session.waveformMonitor,
-                            barColor: Color.white.opacity(0.88),
-                            barWidth: 1,
-                            spacing: 1,
-                            layoutHeight: teamAIComposerWaveformStripHeight,
-                            fillsAvailableWidth: true
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: teamAIComposerWaveformStripHeight, maxHeight: teamAIComposerWaveformStripHeight)
-                        .mask {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black.opacity(0.12), location: 0),
-                                    .init(color: .black, location: 0.12),
-                                    .init(color: .black, location: 0.88),
-                                    .init(color: .black.opacity(0.12), location: 1)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        }
-                        .allowsHitTesting(false)
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if showExpand && !recording {
-                        Button {
-                            showTextDraftSheet = true
-                        } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.5))
-                                .padding(6)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Ampliar mensaje")
-                        .padding(.top, 2)
-                        .padding(.trailing, 2)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 8)
-                .padding(.vertical, 10)
-                .frame(minHeight: teamAIComposerRowMinHeight, alignment: .center)
-
-                if !recording && !hasText {
-                    Button {
-                        session.beginVoiceInput()
-                    } label: {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.88))
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Dictar")
-                }
-            }
-            .background {
-                TeamAIGlassComposerFieldBackground()
-            }
-
-            if recording {
-                Button {
-                    session.endVoiceInputAndSend()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(canSendWhileRecording ? Color.black : Color.black.opacity(0.38))
-                        .frame(width: 48, height: 48)
-                        .background {
-                            Circle()
-                                .fill(canSendWhileRecording ? Color.white : Color.white.opacity(0.38))
-                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
-                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSendWhileRecording)
-                .accessibilityLabel("Enviar mensaje")
-            } else if hasText {
-                Button {
-                    submitComposerMessageIfPossible()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(canSendIdle ? Color.black : Color.black.opacity(0.38))
-                        .frame(width: 48, height: 48)
-                        .background {
-                            Circle()
-                                .fill(canSendIdle ? Color.white : Color.white.opacity(0.38))
-                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
-                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .disabled(session.isSending)
-                .accessibilityLabel("Enviar mensaje")
-            } else {
-                Button {
-                    session.beginVoiceInput()
-                } label: {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(Color.black)
-                        .frame(width: 48, height: 48)
-                        .background {
-                            Circle()
-                                .fill(Color.white)
-                                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
-                                .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Modo voz")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .padding(.bottom, 16)
-    }
-
-    private func submitComposerMessageIfPossible() {
-        let text = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !session.isSending else { return }
-        session.send()
-        composerFieldFocused = false
-    }
-
-    /// Altura del área de ondas dentro de la cápsula (una línea, alineada al campo «Mensaje…»).
-    private var teamAIComposerWaveformStripHeight: CGFloat { 26 }
-    /// Misma altura mínima de fila que el `TextField` del compositor idle.
-    private var teamAIComposerRowMinHeight: CGFloat { 44 }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         let target: TeamAIScrollID?

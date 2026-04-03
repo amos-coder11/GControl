@@ -47,6 +47,9 @@ struct LockScreenView: View {
 
                 Button {
                     Task {
+                        if let uid = auth.session?.user.id {
+                            appLock.clearPINForUser(uid)
+                        }
                         await auth.signOut()
                     }
                 } label: {
