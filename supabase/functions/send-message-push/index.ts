@@ -9,6 +9,10 @@
  * 2. Database Webhooks: dos disparadores INSERT → URL de esta función,
  *    cabecera `x-push-secret: <PUSH_WEBHOOK_SECRET>`.
  * 3. Deploy: supabase functions deploy send-message-push --no-verify-jwt
+ *
+ * PRODUCCIÓN (TestFlight / App Store): NO definas APNS_USE_SANDBOX o ponla en "false".
+ * Solo "true" usa api.sandbox.push.apple.com (builds instalados desde Xcode en debug).
+ * Si mezclas entornos, APNs responde 403 BadDeviceToken.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { SignJWT, importPKCS8 } from "npm:jose@5.9.6";
@@ -154,11 +158,19 @@ async function sendApnsAlert(
   });
   const text = await res.text();
   if (!res.ok) {
+    const badToken =
+      res.status === 403 && /BadDeviceToken|DeviceTokenNotForTopic/i.test(text);
+    const envHint = badToken
+      ? sandbox
+        ? "Token de app PRODUCCIÓN (TestFlight/App Store) pero el servidor usa SANDBOX. En Supabase → Functions → Secrets: borra APNS_USE_SANDBOX o pon APNS_USE_SANDBOX=false y vuelve a desplegar."
+        : "Token de app DESARROLLO (Xcode Run) pero el servidor usa PRODUCCIÓN. Pon APNS_USE_SANDBOX=true en secrets, O instala build de producción y abre la app para registrar un token nuevo."
+      : null;
     console.error("[send-message-push] APNs rechazó el envío", {
       status: res.status,
       body: text.slice(0, 500),
       tokenPrefix: deviceTokenHex.slice(0, 8),
       sandbox,
+      ...(envHint ? { fixHint: envHint } : {}),
     });
   }
   return { ok: res.ok, status: res.status, body: text };

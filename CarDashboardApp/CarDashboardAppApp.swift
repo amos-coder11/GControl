@@ -43,8 +43,9 @@ private struct AppShellRoot: View {
                     appLock.lock()
                 }
             }
-            .task(id: authVM.isAuthenticated) {
-                guard authVM.isAuthenticated else { return }
+            // Evita el diálogo de notificaciones (y posibles conflictos de ventana) durante «Crea tu PIN» o la pantalla de bloqueo.
+            .task(id: "\(authVM.isAuthenticated)-\(appLock.hasPINConfigured)-\(appLock.isUnlocked)") {
+                guard authVM.isAuthenticated, appLock.hasPINConfigured, appLock.isUnlocked else { return }
                 await RemotePushRegistration.requestAuthorizationAndRegister()
                 await RemotePushRegistration.syncPendingTokenToSupabase()
             }

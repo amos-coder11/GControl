@@ -14,8 +14,10 @@ struct LockScreenView: View {
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .clipped()
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
             Color.black.opacity(0.42)
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 Spacer(minLength: 24)
@@ -60,6 +62,7 @@ struct LockScreenView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 36)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             pinEntry = ""
@@ -114,16 +117,25 @@ struct LockScreenView: View {
         }
     }
 
+    private var keypadButtonSize: CGFloat { 72 }
+
     private var pinKeypad: some View {
-        let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
-        return LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(["1", "2", "3", "4", "5", "6", "7", "8", "9"], id: \.self) { key in
-                keypadDigitButton(key)
+        VStack(spacing: 18) {
+            ForEach(0 ..< 3, id: \.self) { row in
+                HStack(spacing: 18) {
+                    ForEach(0 ..< 3, id: \.self) { col in
+                        let digit = String(row * 3 + col + 1)
+                        keypadDigitButton(digit)
+                    }
+                }
             }
-            keypadBiometryButton
-            keypadDigitButton("0")
-            keypadDeleteButton
+            HStack(spacing: 18) {
+                keypadBiometryButton
+                keypadDigitButton("0")
+                keypadDeleteButton
+            }
         }
+        .frame(maxWidth: 400)
         .padding(.horizontal, 40)
     }
 
@@ -138,9 +150,9 @@ struct LockScreenView: View {
             Text(digit)
                 .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 72)
+                .frame(width: keypadButtonSize, height: keypadButtonSize)
                 .background(Color.white.opacity(0.18), in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(appLock.isAuthenticating)
@@ -153,9 +165,9 @@ struct LockScreenView: View {
             Image(systemName: biometrySymbol)
                 .font(.system(size: 26, weight: .regular))
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 72)
+                .frame(width: keypadButtonSize, height: keypadButtonSize)
                 .background(Color.white.opacity(0.18), in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(appLock.isAuthenticating)
@@ -171,9 +183,9 @@ struct LockScreenView: View {
             Image(systemName: "delete.left")
                 .font(.system(size: 22, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
-                .frame(maxWidth: .infinity)
-                .frame(height: 72)
+                .frame(width: keypadButtonSize, height: keypadButtonSize)
                 .background(Color.white.opacity(0.12), in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
     }

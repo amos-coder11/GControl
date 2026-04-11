@@ -23,8 +23,10 @@ struct PINSetupView: View {
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .clipped()
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
             Color.black.opacity(0.42)
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 Spacer(minLength: 32)
@@ -56,6 +58,7 @@ struct PINSetupView: View {
 
                 Spacer(minLength: 40)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: currentEntry) { _, new in
             guard new.count == 6 else { return }
@@ -91,51 +94,60 @@ struct PINSetupView: View {
         }
     }
 
+    private var keypadButtonSize: CGFloat { 72 }
+
+    /// `LazyVGrid` + `Button` puede fallar en el reconocimiento de toques en iPad; `VStack`/`HStack` es estable.
     private var setupKeypad: some View {
-        let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
-        return LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(["1", "2", "3", "4", "5", "6", "7", "8", "9"], id: \.self) { key in
-                Button {
-                    guard currentEntry.count < 6 else { return }
-                    currentEntry.append(key)
-                } label: {
-                    Text(key)
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 72)
-                        .background(Color.white.opacity(0.18), in: Circle())
+        VStack(spacing: 18) {
+            ForEach(0 ..< 3, id: \.self) { row in
+                HStack(spacing: 18) {
+                    ForEach(0 ..< 3, id: \.self) { col in
+                        let digit = String(row * 3 + col + 1)
+                        keypadDigitButton(digit)
+                    }
                 }
-                .buttonStyle(.plain)
             }
-            Color.clear.frame(height: 72)
-            Button {
-                guard currentEntry.count < 6 else { return }
-                currentEntry.append("0")
-            } label: {
-                Text("0")
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 72)
-                    .background(Color.white.opacity(0.18), in: Circle())
+            HStack(spacing: 18) {
+                Color.clear
+                    .frame(width: keypadButtonSize, height: keypadButtonSize)
+                    .allowsHitTesting(false)
+                keypadDigitButton("0")
+                keypadDeleteButton
             }
-            .buttonStyle(.plain)
-            Button {
-                if !currentEntry.isEmpty {
-                    currentEntry.removeLast()
-                }
-            } label: {
-                Image(systemName: "delete.left")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 72)
-                    .background(Color.white.opacity(0.12), in: Circle())
-            }
-            .buttonStyle(.plain)
         }
+        .frame(maxWidth: 400)
         .padding(.horizontal, 40)
+    }
+
+    private func keypadDigitButton(_ digit: String) -> some View {
+        Button {
+            guard currentEntry.count < 6 else { return }
+            currentEntry.append(digit)
+        } label: {
+            Text(digit)
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: keypadButtonSize, height: keypadButtonSize)
+                .background(Color.white.opacity(0.18), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var keypadDeleteButton: some View {
+        Button {
+            if !currentEntry.isEmpty {
+                currentEntry.removeLast()
+            }
+        } label: {
+            Image(systemName: "delete.left")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(width: keypadButtonSize, height: keypadButtonSize)
+                .background(Color.white.opacity(0.12), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
