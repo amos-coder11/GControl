@@ -51,6 +51,20 @@ enum SupabaseClientProvider {
         return true
     }
 
+    /// Si es `true` (`VEHICLES_BROWSE_LIMIT_TO_SESSION_USER` en Info): la pestaña Coches solo pide filas con
+    /// `user_id` = usuario con sesión, no mezcla cliente anon ni la RPC `marketplace_vehicles_page` (que devuelve todo el inventario).
+    /// Si todos los coches comparten el mismo `user_id` (cuenta de integración), este filtro no reduce nada: usa
+    /// `VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION`.
+    static var vehiclesBrowseLimitToSessionUser: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "VEHICLES_BROWSE_LIMIT_TO_SESSION_USER") as? Bool ?? false
+    }
+
+    /// Si es `true` (`VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION`): Coches filtra `vehicles.organization_id` = el de `user_profiles`
+    /// del usuario con sesión (multi‑usuario / mismo `user_id` en todos los anuncios).
+    static var vehiclesBrowseLimitToOrganization: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION") as? Bool ?? false
+    }
+
     /// Bucket donde la app espera URLs/descargas de miniaturas públicas.
     static let publicVehiclesBucket = "vehicles"
 

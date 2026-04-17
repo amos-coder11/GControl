@@ -5,14 +5,14 @@ import UIKit
 // MARK: - Cargador de imágenes de vehículos optimizado para velocidad
 
 /// Carga imágenes con: caché L1 (memoria) + L2 (disco URLCache), deduplicación,
-/// downsampling al tamaño de pantalla, prefetch de vecinos, timeouts agresivos,
+/// downsampling al tamaño de pantalla, prefetch de vecinos, timeouts razonables para CDN externos,
 /// y conexión HTTP/2 multiplexada.
 enum CarUIImageLoader {
 
     // MARK: - Configuración
 
-    /// Timeout global por imagen (incluye reintentos)
-    private static let imageTimeoutSeconds: TimeInterval = 8
+    /// Timeout global por imagen (reintentos + CDN lentos)
+    private static let imageTimeoutSeconds: TimeInterval = 72
 
     /// Tamaño máximo al que se reduce la imagen (lado más largo en puntos × escala)
     private static let maxPixelSize: CGFloat = {
@@ -33,22 +33,61 @@ enum CarUIImageLoader {
 
     private static let inflight = InflightCoordinator()
 
+    /// Evita decenas de handshakes QUIC/TLS a la vez (`quic_crypto_queue_append max 5 reached`): pocas descargas HTTP reales en paralelo.
+    private actor HTTPImageDownloadGate {
+        static let shared = HTTPImageDownloadGate()
+        private let limit = 2
+        private var active = 0
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func run<T: Sendable>(_ work: @Sendable () async throws -> T) async rethrows -> T {
+            await acquire()
+            do {
+                let out = try await work()
+                await release()
+                return out
+            } catch {
+                await release()
+                throw error
+            }
+        }
+
+        private func acquire() async {
+            if active < limit {
+                active += 1
+                return
+            }
+            await withCheckedContinuation { cont in
+                waiters.append(cont)
+            }
+            active += 1
+        }
+
+        private func release() {
+            active -= 1
+            if !waiters.isEmpty {
+                let c = waiters.removeFirst()
+                c.resume()
+            }
+        }
+    }
+
     // MARK: - URLSession optimizada
 
-    /// Sesión dedicada: HTTP/2 multiplexing, cache agresivo en disco, conexiones paralelas.
+    /// Sesión dedicada: HTTP/2 multiplexing, cache agresivo en disco.
     static let imageSession: URLSession = {
         let config = URLSessionConfiguration.default
-        // Timeouts cortos: falla rápido, no bloquea el scroll
-        config.timeoutIntervalForRequest = 6
-        config.timeoutIntervalForResource = 10
+        // CDNs externos (p. ej. precf.media.ccdn.es) a menudo superan 6–10 s en móvil; si no, -1001 y placeholder.
+        config.timeoutIntervalForRequest = 50
+        config.timeoutIntervalForResource = 120
         // Cache grande en disco: las imágenes se guardan entre sesiones
         config.urlCache = URLCache(
             memoryCapacity: 50 * 1024 * 1024,   // 50 MB en RAM
             diskCapacity: 300 * 1024 * 1024       // 300 MB en disco
         )
         config.requestCachePolicy = .returnCacheDataElseLoad
-        // Más conexiones simultáneas para Supabase
-        config.httpMaximumConnectionsPerHost = 10
+        // Muy pocas conexiones por host: reduce colas QUIC y timeouts en ccdn.es con listas largas.
+        config.httpMaximumConnectionsPerHost = 2
         // HTTP/2 multiplexing (por defecto en iOS, pero lo aseguramos)
         config.multipathServiceType = .none
         // Desactivar cookies (no las necesitamos) para reducir overhead
@@ -203,35 +242,78 @@ enum CarUIImageLoader {
         case let .url(s):
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let u = VehicleImageResolution.resolvedHTTPURL(from: t) else { return nil }
-            return await fetchAndDownsample(url: u, auth: auth)
+            let fetchURL = thumbnailOptimizedHTTPURL(u)
+            return await fetchAndDownsample(url: fetchURL, auth: auth)
         }
+    }
+
+    /// Dealcar / ccdn: `rule=large` descarga JPEG muy pesados y dispara timeouts en 4G; `medium` suele bastar para miniaturas.
+    private static func thumbnailOptimizedHTTPURL(_ url: URL) -> URL {
+        guard let host = url.host?.lowercased(),
+              host.contains("ccdn.es") || host.contains("media.ccdn")
+        else { return url }
+        guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var items = c.queryItems ?? []
+        var changed = false
+        items = items.map { item in
+            guard item.name.lowercased() == "rule", let v = item.value?.lowercased() else { return item }
+            let heavy = ["large", "xl", "xlarge", "original", "full", "medium"]
+            guard heavy.contains(v) else { return item }
+            changed = true
+            return URLQueryItem(name: item.name, value: "small")
+        }
+        if changed {
+            c.queryItems = items.isEmpty ? nil : items
+            if let out = c.url { return out }
+        }
+        return url
     }
 
     // MARK: - Descarga HTTP + downsampling
 
     private static func fetchAndDownsample(url: URL, auth: AuthViewModel) async -> UIImage? {
         let accessToken = await MainActor.run { auth.session?.accessToken }
-
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-
         let isSupabase = url.host?.contains("supabase") == true
-        if isSupabase {
-            request.setValue(SupabaseClientProvider.anonKey, forHTTPHeaderField: "apikey")
-            if let token = accessToken {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            } else {
-                request.setValue("Bearer \(SupabaseClientProvider.anonKey)", forHTTPHeaderField: "Authorization")
+        let perRequestTimeout: TimeInterval = isSupabase ? 28 : 52
+        let maxAttempts = isSupabase ? 2 : 4
+
+        for attempt in 0..<maxAttempts {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            request.timeoutInterval = perRequestTimeout
+
+            if isSupabase {
+                request.setValue(SupabaseClientProvider.anonKey, forHTTPHeaderField: "apikey")
+                if let token = accessToken {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                } else {
+                    request.setValue("Bearer \(SupabaseClientProvider.anonKey)", forHTTPHeaderField: "Authorization")
+                }
+            }
+
+            do {
+                let (data, response) = try await HTTPImageDownloadGate.shared.run {
+                    try await imageSession.data(for: request)
+                }
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+                return downsample(data: data)
+            } catch let error as URLError {
+                let retryable = error.code == .timedOut
+                    || error.code == .networkConnectionLost
+                    || error.code == .cannotConnectToHost
+                    || error.code == .dnsLookupFailed
+                let last = attempt == maxAttempts - 1
+                if !last, retryable {
+                    let backoff = UInt64(400_000_000 + 350_000_000 * UInt64(attempt))
+                    try? await Task.sleep(nanoseconds: backoff)
+                    continue
+                }
+                return nil
+            } catch {
+                return nil
             }
         }
-
-        do {
-            let (data, response) = try await imageSession.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
-            return downsample(data: data)
-        } catch {
-            return nil
-        }
+        return nil
     }
 
     // MARK: - Descarga desde Storage SDK

@@ -17,12 +17,18 @@
 	<string>Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.</string>
 	<key>USER_PROFILES_TABLE</key>
 	<string>user_profiles</string>
+	<key>VEHICLES_BROWSE_LIMIT_TO_SESSION_USER</key>
+	<false/>
+	<key>VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION</key>
+	<true/>
 	<key>ANTHROPIC_API_KEY</key>
 	<string>$(ANTHROPIC_API_KEY)</string>
 	<key>ANTHROPIC_MODEL</key>
@@ -31,5 +37,29 @@
 	<string>$(OPENAI_API_KEY)</string>
 	<key>OPENAI_MODEL</key>
 	<string>$(OPENAI_MODEL)</string>
+	<key>VEHICLES_COL_ID</key>
+	<string>$(VEHICLES_COL_ID)</string>
+	<key>VEHICLES_COL_USER_ID</key>
+	<string>$(VEHICLES_COL_USER_ID)</string>
+	<key>VEHICLES_COL_ORGANIZATION_ID</key>
+	<string>$(VEHICLES_COL_ORGANIZATION_ID)</string>
+	<key>VEHICLES_COL_COMPANY_ID</key>
+	<string>$(VEHICLES_COL_COMPANY_ID)</string>
+	<key>VEHICLES_COL_BRAND</key>
+	<string>$(VEHICLES_COL_BRAND)</string>
+	<key>VEHICLES_COL_MODEL</key>
+	<string>$(VEHICLES_COL_MODEL)</string>
+	<key>VEHICLES_COL_YEAR</key>
+	<string>$(VEHICLES_COL_YEAR)</string>
+	<key>VEHICLES_COL_LICENSE_PLATE</key>
+	<string>$(VEHICLES_COL_LICENSE_PLATE)</string>
+	<key>VEHICLES_COL_PRICE</key>
+	<string>$(VEHICLES_COL_PRICE)</string>
+	<key>VEHICLES_COL_MILEAGE</key>
+	<string>$(VEHICLES_COL_MILEAGE)</string>
+	<key>VEHICLES_COL_FUEL_TYPE</key>
+	<string>$(VEHICLES_COL_FUEL_TYPE)</string>
+	<key>VEHICLES_COL_TRANSMISSION</key>
+	<string>$(VEHICLES_COL_TRANSMISSION)</string>
 </dict>
 </plist>

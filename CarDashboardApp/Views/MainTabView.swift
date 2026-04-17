@@ -97,7 +97,7 @@ struct MainTabView: View {
         .toolbarColorScheme(.dark, for: .tabBar)
         .tabBarMinimizeBehavior(.onScrollDown)
         .task {
-            await carsVM.loadVehicles()
+            await carsVM.loadVehicles(companyId: auth.companyId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .coordinatorTaskAcceptedFromPush)) { _ in
             guard let uid = auth.session?.user.id else { return }

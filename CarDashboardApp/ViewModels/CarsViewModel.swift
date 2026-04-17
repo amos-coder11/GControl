@@ -25,7 +25,8 @@ final class CarsViewModel: ObservableObject {
     }
 
     /// Carga progresiva: primera página rápido, luego el resto en background.
-    func loadVehicles() async {
+    /// Si se pasa `companyId`, solo trae vehículos de esa empresa (+ catálogo público sin empresa).
+    func loadVehicles(companyId: UUID? = nil) async {
         isLoadingVehicles = true
         vehiclesError = nil
         hasMorePages = true
@@ -33,17 +34,17 @@ final class CarsViewModel: ObservableObject {
 
         do {
             try Task.checkCancellation()
-            let rows = try await VehiclesService.fetchAllMergedForMarketplace()
+            let rows = try await VehiclesService.fetchAllMergedForMarketplace(companyId: companyId) { partial in
+                await MainActor.run {
+                    self.applyLoadedVehicleRows(partial)
+                    self.isLoadingVehicles = false
+                }
+            }
             try Task.checkCancellation()
-            lastFetchHadZeroRowsFromBackend = rows.isEmpty
-            cars = rows.enumerated().map { idx, row in row.toCar(index: idx) }
+            applyLoadedVehicleRows(rows)
             hasMorePages = false
             isLoadingVehicles = false
             isLoadingMoreVehicles = false
-
-            if selectedCarId == nil || cars.first(where: { $0.id == selectedCarId }) == nil {
-                selectedCarId = cars.first?.id
-            }
 
         } catch is CancellationError {
             // La tarea fue cancelada (ej. al navegar fuera) — no mostrar error al usuario
@@ -53,6 +54,14 @@ final class CarsViewModel: ObservableObject {
             vehiclesError = error.localizedDescription
             isLoadingVehicles = false
             isLoadingMoreVehicles = false
+        }
+    }
+
+    private func applyLoadedVehicleRows(_ rows: [VehicleRow]) {
+        lastFetchHadZeroRowsFromBackend = rows.isEmpty
+        cars = rows.enumerated().map { idx, row in row.toCar(index: idx) }
+        if selectedCarId == nil || cars.first(where: { $0.id == selectedCarId }) == nil {
+            selectedCarId = cars.first?.id
         }
     }
 

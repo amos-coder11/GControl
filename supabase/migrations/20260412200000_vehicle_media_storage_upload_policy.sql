@@ -1,0 +1,20 @@
+-- =============================================================================
+-- Storage: subida de fotos de inventario (alta desde la app iOS)
+-- =============================================================================
+-- La app sube JPEG a `vehicle-media` (o el bucket de VEHICLE_MEDIA_BUCKET) en:
+--   `{auth.uid()}/{vehicle_id}/001.jpg`, `002.jpg`, …
+--
+-- Crea políticas en el bucket si las subidas fallan con 403. Ejemplo (ajusta el
+-- nombre del bucket si no es `vehicle-media`):
+--
+-- insert into storage.policies (name, bucket_id, definition)
+-- ...
+--
+-- Desde el panel: Storage → vehicle-media → Policies → New policy
+--   - Allowed operation: INSERT (y opcionalmente SELECT para lectura pública)
+--   - Target roles: authenticated
+--   - Policy:  (storage.foldername(name))[1] = auth.uid()::text
+--   o usa el asistente «Users can upload to own folder».
+--
+-- Este archivo no ejecuta SQL automático: cada proyecto tiene buckets distintos.
+-- =============================================================================

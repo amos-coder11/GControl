@@ -101,8 +101,10 @@ struct DashboardView: View {
             DashboardNotificationsSheet(store: notificationsStore)
         }
         .sheet(isPresented: $showAddCarSheet) {
-            AddVehicleGuidanceSheet()
+            AddVehicleSheet()
                 .environmentObject(tabRouter)
+                .environmentObject(auth)
+                .environmentObject(carsVM)
         }
         .sheet(isPresented: $showRankingSheet) {
             CommercialRankingSheet(profiles: communityVM.directory)

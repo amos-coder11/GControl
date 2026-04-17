@@ -32,7 +32,7 @@ enum MockData {
             locationText: "A Coruña",
             sellerKind: "Profesional",
             sellerRating: 4.6,
-            dgtLabel: "ECO",
+            dgtLabel: "C",
             powerCv: 350,
             transmission: "Automático",
             equipmentSummary: "Techo panorámico, LED Matrix, asientos calefactados",

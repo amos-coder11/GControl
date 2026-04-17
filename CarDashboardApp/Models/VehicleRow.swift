@@ -133,6 +133,8 @@ struct VehicleRow: Decodable, Sendable {
     var userId: UUID?
     /// Id externo Dealcar u otro CRM si existe en la fila.
     var dealcar_vehicle_id: String?
+    /// Empresa propietaria del vehículo (filtrado por concesionario).
+    var companyId: UUID?
 
     /// Campos opcionales de ficha / marketplace (columnas habituales en Supabase).
     var listPriceEUR: Double?
@@ -430,6 +432,10 @@ struct VehicleRow: Decodable, Sendable {
         dealcar_vehicle_id = Self.optString(c, [
             "dealcar_vehicle_id", "dealcarVehicleId", "dealcar_id", "dealcarId", "external_vehicle_id",
         ])
+        companyId = Self.optUUID(c, [
+            "company_id", "companyId", "empresa_id", "empresaId", "dealer_id", "dealerId",
+            "organization_id", "organizationId", "org_id", "orgId", "tenant_id", "tenantId",
+        ])
 
         var galleryCandidates: [String] = []
         if let t = trimmedNonEmpty(img) {
@@ -501,9 +507,10 @@ struct VehicleRow: Decodable, Sendable {
         sellerKindDecoded = Self.normalizeSellerKind(sellerRaw)
         sellerRatingDecoded = Self.optDouble(c, ["seller_rating", "rating", "stars", "valoracion", "sellerRating"])
 
-        dgtLabelDecoded = Self.optString(c, [
-            "dgt_label", "dgt", "etiqueta_dgt", "environmental_label", "eco_label",
-        ])
+        // Solo la columna explícita del distintivo. Cualquier otra (`environmental_label`, etc.) suele traer
+        // valores tipo «Eco» que no son el adhesivo DGT y generan falsos positivos en la tarjeta.
+        let primaryDGT = Self.optString(c, ["dgt_label"])
+        dgtLabelDecoded = primaryDGT ?? Self.optString(c, ["etiqueta_dgt"])
         powerCvDecoded = Self.optInt(c, ["power_cv", "cv", "horsepower", "hp", "potencia", "power"])
         transmissionDecoded = Self.optString(c, ["transmission", "cambio", "gearbox"])
         equipmentDecoded = Self.optString(c, ["equipment", "equipamiento", "features", "extras"])
@@ -523,6 +530,44 @@ struct VehicleRow: Decodable, Sendable {
         if l.contains("prof") || l.contains("dealer") || l.contains("conces") { return "Profesional" }
         if l.contains("part") || l.contains("private") || l.contains("partic") { return "Particular" }
         return t.prefix(1).uppercased() + t.dropFirst()
+    }
+
+    /// Distintivo DGT mostrable (0 emisiones, ECO, C, B). Nil si está vacío, es marcador tipo «según combustible» o no es reconocible.
+    private static func canonicalDGTEtiquetaAmbiental(_ raw: String?) -> String? {
+        guard let t0 = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !t0.isEmpty else { return nil }
+        let es = Locale(identifier: "es_ES")
+        let t = t0
+            .folding(options: .diacriticInsensitive, locale: es)
+            .lowercased()
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let hide: Set<String> = [
+            "segun combustible", "según combustible", "s/c", "sc", "-", "—", "n/a", "na", "pendiente", "?",
+            "desconocido", "no indicado", "no indicada", "sin etiqueta", "sin distintivo", "unknown",
+            "no aplica", "tbd",
+        ]
+        if hide.contains(t) { return nil }
+
+        let compact = t.replacingOccurrences(of: " ", with: "")
+
+        // No mostrar «ECO» en la pastilla: en BD suele colarse por error (p. ej. confundido con modo Eco / híbrido suave).
+        // Los distintivos 0 / C / B siguen mostrándose. Si más adelante quieres ECO real, mejor icono DGT en detalle.
+        if t == "eco" || compact == "eco" || t.hasSuffix(" eco") || t == "dgt eco" { return nil }
+        if t == "c" || compact == "c" || t.hasSuffix(" c") || t.contains("etiqueta c") { return "C" }
+        if t == "b" || compact == "b" || t.hasSuffix(" b") || t.contains("etiqueta b") { return "B" }
+        if t.contains("cero emision") || t.contains("sin emision") || t.contains("0emisiones")
+            || compact == "0" || t == "0 emisiones" {
+            return "0 emisiones"
+        }
+
+        let upper = t0.uppercased(with: es)
+        if upper == "ECO" { return nil }
+        if upper == "C" { return "C" }
+        if upper == "B" { return "B" }
+        if upper.contains("0") && upper.contains("EMISION") { return "0 emisiones" }
+
+        return nil
     }
 
     private func buildImageSlots() -> [CarImageSlot] {
@@ -634,7 +679,7 @@ struct VehicleRow: Decodable, Sendable {
             locationText: trimmedNonEmpty(locationDecoded),
             sellerKind: trimmedNonEmpty(sellerKindDecoded),
             sellerRating: sellerRatingDecoded,
-            dgtLabel: trimmedNonEmpty(dgtLabelDecoded),
+            dgtLabel: Self.canonicalDGTEtiquetaAmbiental(dgtLabelDecoded),
             powerCv: powerCvDecoded,
             transmission: trimmedNonEmpty(transmissionDecoded),
             equipmentSummary: trimmedNonEmpty(equipmentDecoded),

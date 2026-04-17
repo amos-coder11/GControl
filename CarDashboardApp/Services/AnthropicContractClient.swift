@@ -591,4 +591,67 @@ enum OpenAIChatClient {
         if text.isEmpty { throw OpenAIError.decodingFailed }
         return text
     }
+
+    private static let vehicleListingSystemPrompt = """
+    Eres redactor de anuncios de vehículos de ocasión para concesionarios en España.
+    Redactas en español, tono profesional, cercano y claro, sin exagerar ni prometer garantías no indicadas en los datos.
+
+    FORMATO DE SALIDA (obligatorio): texto plano únicamente. La app no interpreta Markdown.
+    No uses asteriscos, almohadillas, tablas, ni listas densas con guiones. Separa ideas con párrafos y una línea en blanco entre ellos.
+    Entre 2 y 5 párrafos según la cantidad de datos útiles.
+
+    REGLAS:
+    - Solo afirma hechos que consten explícitamente en el bloque de datos. Si falta algo relevante, no lo inventes.
+    - No incluyas en el anuncio datos personales del dueño (nombre, teléfono, email) ni precios de compra.
+    - Puedes mencionar el precio de venta al contado solo si aparece en los datos como «precio venta» o similar.
+    - Menciona equipamiento destacado solo si aparece listado en los datos.
+    - Si el bloque está muy vacío, redacta un párrafo breve invitando a contactar para más información, sin inventar especificaciones.
+    """
+
+    /// Borrador de descripción de anuncio a partir de hechos estructurados (texto plano).
+    static func generateVehicleListingDescription(factsBlock: String) async throws -> String {
+        guard let key = openAIKey else { throw OpenAIError.missingAPIKey }
+
+        let trimmed = factsBlock.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userContent: String
+        if trimmed.isEmpty {
+            userContent = "No hay datos estructurados. Escribe un párrafo muy breve genérico invitando a solicitar información del vehículo en el concesionario, sin inventar marca ni modelo."
+        } else {
+            userContent = """
+            Datos del vehículo y del formulario (usa solo lo que consta; ignora líneas vacías o «no indicado»):
+
+            \(trimmed)
+            """
+        }
+
+        let messages = [
+            OpenAIChatMessageDTO(role: "system", content: vehicleListingSystemPrompt),
+            OpenAIChatMessageDTO(role: "user", content: userContent),
+        ]
+        let body = OpenAINonStreamRequestBody(model: openAIModel, messages: messages)
+        var request = URLRequest(url: openAIEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw OpenAIError.invalidResponse }
+
+        guard (200 ... 299).contains(http.statusCode) else {
+            if let env = try? JSONDecoder().decode(OpenAIAPIErrorEnvelope.self, from: data),
+               let m = env.error?.message, !m.isEmpty {
+                throw OpenAIError.httpStatus(http.statusCode, m)
+            }
+            let snippet = String(data: data, encoding: .utf8)
+            throw OpenAIError.httpStatus(http.statusCode, snippet)
+        }
+
+        let decoded = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
+        let text = decoded.choices?.first?.message?.content?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if text.isEmpty { throw OpenAIError.decodingFailed }
+        return text
+    }
 }

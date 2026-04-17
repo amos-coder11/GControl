@@ -303,6 +303,111 @@ struct LiquidGlassSearchPillBackground: View {
     }
 }
 
+/// Degradado suave para campos sobre fondo oscuro (evita el velo blanco demasiado fuerte de `liquidGlassFill`).
+private let liquidGlassFormFieldOnDarkFill = LinearGradient(
+    colors: [
+        Color.white.opacity(0.38),
+        Color.white.opacity(0.14),
+        Color.white.opacity(0.05),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+private let liquidGlassFormFieldOnDarkStroke = LinearGradient(
+    colors: [
+        Color.white.opacity(0.88),
+        Color.white.opacity(0.38),
+        Color.white.opacity(0.1),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+/// Campo de formulario en hoja oscura: cristal más legible, brillo superior y bisel definido.
+struct LiquidGlassFormFieldBackground: View {
+    var cornerRadius: CGFloat = 16
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.thinMaterial)
+            .environment(\.colorScheme, .dark)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(liquidGlassFormFieldOnDarkFill)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.3), location: 0),
+                                .init(color: Color.white.opacity(0.08), location: 0.2),
+                                .init(color: Color.clear, location: 0.55),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(liquidGlassFormFieldOnDarkStroke, lineWidth: 0.7)
+            }
+            .shadow(color: .black.opacity(0.55), radius: 10, x: 0, y: 4)
+            .shadow(color: .white.opacity(0.06), radius: 1, x: 0, y: -0.5)
+    }
+}
+
+/// Agrupa campos en formularios modales oscuros: contenedor más suave para que resalten los inputs.
+struct LiquidGlassDarkFormPanel<Content: View>: View {
+    var cornerRadius: CGFloat = 20
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+                    .background {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.09),
+                                        Color.white.opacity(0.035),
+                                        Color.white.opacity(0.015),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.38),
+                                        Color.white.opacity(0.14),
+                                        Color.white.opacity(0.06),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.65
+                            )
+                    }
+                    .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
+                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+            }
+    }
+}
+
 private let keyboardAccessoryShape = UnevenRoundedRectangle(
     cornerRadii: RectangleCornerRadii(
         topLeading: 14,
@@ -360,21 +465,60 @@ struct LiquidGlassKeyboardAccessoryBar: View {
     }
 }
 
-/// Botón circular ordenar / filtros / destacados.
+/// Degradado + bisel alineados con `LiquidGlassTabBar.floatingGlassCapsule` (misma lectura que las pestañas del sistema).
+private let tabMatchedGlassFill = LinearGradient(
+    colors: [
+        Color.white.opacity(0.62),
+        Color.white.opacity(0.18),
+        Color.white.opacity(0.05),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+private let tabMatchedGlassStroke = LinearGradient(
+    colors: [
+        Color.white.opacity(0.95),
+        Color.white.opacity(0.3),
+        Color.gray.opacity(0.12),
+    ],
+    startPoint: .topLeading,
+    endPoint: .bottomTrailing
+)
+
+/// Botón circular: mismo lenguaje que la cápsula glass de la barra de pestañas (brillo superior, bisel y sombras más profundas).
 struct LiquidGlassCircleButtonBackground: View {
     var body: some View {
         Circle()
             .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
             .background {
                 Circle()
-                    .fill(liquidGlassFill)
+                    .fill(tabMatchedGlassFill)
+            }
+            .overlay {
+                // Reflejo tipo «lente» en la parte superior (acerca el aspecto al liquid glass del tab bar).
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.white.opacity(0.38),
+                                Color.white.opacity(0.12),
+                                Color.clear,
+                            ],
+                            center: UnitPoint(x: 0.38, y: 0.28),
+                            startRadius: 1,
+                            endRadius: 32
+                        )
+                    )
+                    .allowsHitTesting(false)
             }
             .overlay {
                 Circle()
-                    .strokeBorder(liquidGlassStroke, lineWidth: 0.75)
+                    .strokeBorder(tabMatchedGlassStroke, lineWidth: 0.75)
             }
-            .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 5)
-            .shadow(color: .black.opacity(0.03), radius: 1, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.08), radius: 24, x: 0, y: 12)
+            .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }
 

@@ -138,11 +138,35 @@ private enum VehicleJSONImageFinder {
 private struct MarketplaceVehiclesPageParams: Encodable, Sendable {
     let p_limit: Int
     let p_offset: Int
+    let p_company_id: String?
+
+    /// PostgREST solo resuelve `marketplace_vehicles_page(integer, integer)` si el cuerpo JSON no incluye la tercera clave.
+    /// Enviar `p_company_id: null` hace que falle el matcheo con la función de 2 argumentos (BD sin migración `20260412100000`).
+    enum CodingKeys: String, CodingKey {
+        case p_limit
+        case p_offset
+        case p_company_id
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_limit, forKey: .p_limit)
+        try c.encode(p_offset, forKey: .p_offset)
+        if let p_company_id {
+            try c.encode(p_company_id, forKey: .p_company_id)
+        }
+    }
 }
 
 enum VehiclesService {
-    /// Decodifica JSON PostgREST y enriquece imágenes (misma lógica que `fetchPage`).
-    private static func decodeAndEnrichVehicleRows(rawObjects: [JSONObject], client: SupabaseClient) async -> [VehicleRow] {
+    /// Decodifica JSON PostgREST y enriquece imágenes.
+    /// - `forMarketplaceList`: solo usa columnas JSON (`images`, `main_image_url`, etc.). Omite RPC Storage y sondas HEAD
+    ///   para que el listado de Coches aparezca en segundos con cientos de filas; el detalle puede enriquecer después.
+    private static func decodeAndEnrichVehicleRows(
+        rawObjects: [JSONObject],
+        client: SupabaseClient,
+        forMarketplaceList: Bool
+    ) async -> [VehicleRow] {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
 
@@ -153,6 +177,10 @@ enum VehiclesService {
                   var row = try? decoder.decode(VehicleRow.self, from: data) else { continue }
             VehicleJSONImageFinder.merge(into: &row, rowJSON: obj)
             rows.append(row)
+        }
+
+        if forMarketplaceList {
+            return rows
         }
 
         do {
@@ -178,23 +206,66 @@ enum VehiclesService {
     }
 
     /// Página de vehículos con offset/limit para paginación incremental.
+    /// Si se pasa `companyId`, filtra solo los vehículos de esa empresa (+ los de company_id NULL = catálogo público).
     static func fetchPage(
         offset: Int,
         limit: Int,
-        client: SupabaseClient = SupabaseClientProvider.shared
+        companyId: UUID? = nil,
+        organizationId: UUID? = nil,
+        ownerUserId: UUID? = nil,
+        client: SupabaseClient = SupabaseClientProvider.shared,
+        forMarketplaceList: Bool = true
     ) async throws -> [VehicleRow] {
-        let objects: [JSONObject] = try await client
+        var query = client
             .from(SupabaseClientProvider.vehiclesTableName)
             .select()
-            .range(from: offset, to: offset + limit - 1)
-            .execute()
-            .value
 
-        return await decodeAndEnrichVehicleRows(rawObjects: objects, client: client)
+        if let uid = ownerUserId {
+            query = query.eq("user_id", value: uid.uuidString.lowercased())
+        }
+
+        if let oid = organizationId {
+            query = query.eq("organization_id", value: oid.uuidString.lowercased())
+        }
+
+        if let cid = companyId {
+            // Filtra por empresa: muestra los de la empresa + los de catálogo público (company_id IS NULL).
+            query = query.or("company_id.eq.\(cid.uuidString),company_id.is.null")
+        }
+
+        do {
+            let objects: [JSONObject] = try await query
+                .range(from: offset, to: offset + limit - 1)
+                .execute()
+                .value
+            return await decodeAndEnrichVehicleRows(
+                rawObjects: objects,
+                client: client,
+                forMarketplaceList: forMarketplaceList
+            )
+        } catch {
+            // Si la tabla aún no tiene `company_id` (migración pendiente), PostgREST rechaza el `.or(...)` sobre esa columna.
+            if companyId != nil {
+                return try await fetchPage(
+                    offset: offset,
+                    limit: limit,
+                    companyId: nil,
+                    organizationId: organizationId,
+                    ownerUserId: ownerUserId,
+                    client: client,
+                    forMarketplaceList: forMarketplaceList
+                )
+            }
+            throw error
+        }
     }
 
-    /// Catálogo vía RPC `SECURITY DEFINER` (mismas filas para todas las cuentas si la función está desplegada).
-    private static func fetchAllViaMarketplaceRPC(client: SupabaseClient) async throws -> [VehicleRow] {
+    /// Catálogo vía RPC `SECURITY DEFINER`. Si se pasa `companyId`, filtra por empresa.
+    private static func fetchAllViaMarketplaceRPC(
+        client: SupabaseClient,
+        companyId: UUID? = nil,
+        onAccumulated: (([VehicleRow]) async -> Void)? = nil
+    ) async throws -> [VehicleRow] {
         var all: [VehicleRow] = []
         var offset = 0
         let pageSize = 50
@@ -202,13 +273,24 @@ enum VehiclesService {
             try Task.checkCancellation()
             let objects: [JSONObject] = try await client.rpc(
                 SupabaseClientProvider.marketplaceVehiclesRPCName,
-                params: MarketplaceVehiclesPageParams(p_limit: pageSize, p_offset: offset)
+                params: MarketplaceVehiclesPageParams(
+                    p_limit: pageSize,
+                    p_offset: offset,
+                    p_company_id: companyId?.uuidString
+                )
             )
             .execute()
             .value
             if objects.isEmpty { break }
-            let chunk = await decodeAndEnrichVehicleRows(rawObjects: objects, client: client)
+            let chunk = await decodeAndEnrichVehicleRows(
+                rawObjects: objects,
+                client: client,
+                forMarketplaceList: true
+            )
             all.append(contentsOf: chunk)
+            if let onAccumulated {
+                await onAccumulated(dedupeVehicleRowsForMarketplace(all))
+            }
             if objects.count < pageSize { break }
             offset += pageSize
         }
@@ -216,16 +298,32 @@ enum VehiclesService {
     }
 
     /// Lee filas como árbol JSON completo y fusiona imágenes desde `AnyJSON` (p. ej. `image_url` jsonb).
-    /// Mantiene compatibilidad pero ahora usa paginación interna.
-    static func fetchAll(client: SupabaseClient = SupabaseClientProvider.shared) async throws -> [VehicleRow] {
+    /// Mantiene compatibilidad pero ahora usa paginación interna. Filtra por `companyId` si se indica.
+    static func fetchAll(
+        companyId: UUID? = nil,
+        organizationId: UUID? = nil,
+        ownerUserId: UUID? = nil,
+        client: SupabaseClient = SupabaseClientProvider.shared,
+        onPartial: (([VehicleRow]) async -> Void)? = nil
+    ) async throws -> [VehicleRow] {
         var allRows: [VehicleRow] = []
         let pageSize = 50
         var offset = 0
 
         while true {
             try Task.checkCancellation()
-            let page = try await fetchPage(offset: offset, limit: pageSize, client: client)
+            let page = try await fetchPage(
+                offset: offset,
+                limit: pageSize,
+                companyId: companyId,
+                organizationId: organizationId,
+                ownerUserId: ownerUserId,
+                client: client
+            )
             allRows.append(contentsOf: page)
+            if let onPartial {
+                await onPartial(dedupeVehicleRowsForMarketplace(allRows))
+            }
             if page.count < pageSize { break }
             offset += pageSize
         }
@@ -234,13 +332,20 @@ enum VehiclesService {
     }
 
     /// Paginación completa sin propagar error (p. ej. consultas `anon` cuando RLS devuelve 403 o falla la red).
-    private static func accumulatePagesLenient(client: SupabaseClient) async -> [VehicleRow] {
+    private static func accumulatePagesLenient(companyId: UUID? = nil, client: SupabaseClient) async -> [VehicleRow] {
         var all: [VehicleRow] = []
         var offset = 0
         let pageSize = 50
         while true {
             do {
-                let page = try await fetchPage(offset: offset, limit: pageSize, client: client)
+                let page = try await fetchPage(
+                    offset: offset,
+                    limit: pageSize,
+                    companyId: companyId,
+                    organizationId: nil,
+                    ownerUserId: nil,
+                    client: client
+                )
                 if page.isEmpty { break }
                 all.append(contentsOf: page)
                 if page.count < pageSize { break }
@@ -292,29 +397,395 @@ enum VehiclesService {
 
     /// Unión del inventario visible como `anon` y con JWT (`shared`). Así el listado refleja todas las filas que
     /// permita cualquiera de los dos conjuntos de políticas RLS (p. ej. anuncios públicos + stock del concesionario).
-    static func fetchAllMergedForMarketplace() async throws -> [VehicleRow] {
+    /// Si se pasa `companyId`, filtra por empresa del usuario (solo ve coches de su empresa + catálogo público).
+    ///
+    /// `onPartial`: notificación tras cada página de la RPC (y una vez al terminar la ruta por tabla) para pintar el listado al instante.
+    static func fetchAllMergedForMarketplace(
+        companyId: UUID? = nil,
+        onPartial: (([VehicleRow]) async -> Void)? = nil
+    ) async throws -> [VehicleRow] {
+        // Inventario de la organización del perfil (`user_profiles.organization_id` → `vehicles.organization_id`).
+        if SupabaseClientProvider.vehiclesBrowseLimitToOrganization {
+            let orgId = await fetchMyOrganizationId()
+            guard let orgId else {
+                if let onPartial { await onPartial([]) }
+                return []
+            }
+            let rows = try await fetchAll(
+                companyId: companyId,
+                organizationId: orgId,
+                ownerUserId: nil,
+                client: SupabaseClientProvider.shared,
+                onPartial: onPartial
+            )
+            return dedupeVehicleRowsForMarketplace(rows)
+        }
+
+        // Inventario solo del usuario con sesión: útil si cada vendedor tiene su `user_id` en filas.
+        if SupabaseClientProvider.vehiclesBrowseLimitToSessionUser {
+            let uid: UUID
+            do {
+                uid = try await SupabaseClientProvider.shared.auth.session.user.id
+            } catch {
+                if let onPartial { await onPartial([]) }
+                return []
+            }
+            let rows = try await fetchAll(
+                companyId: companyId,
+                organizationId: nil,
+                ownerUserId: uid,
+                client: SupabaseClientProvider.shared,
+                onPartial: onPartial
+            )
+            return dedupeVehicleRowsForMarketplace(rows)
+        }
+
         if SupabaseClientProvider.prefersMarketplaceVehiclesRPC {
             do {
                 try Task.checkCancellation()
-                let viaRpc = try await fetchAllViaMarketplaceRPC(client: SupabaseClientProvider.shared)
+                let viaRpc = try await fetchAllViaMarketplaceRPC(
+                    client: SupabaseClientProvider.shared,
+                    companyId: companyId,
+                    onAccumulated: onPartial
+                )
                 if !viaRpc.isEmpty { return dedupeVehicleRowsForMarketplace(viaRpc) }
             } catch {
                 // La RPC aún no existe en el proyecto o falló: se sigue con lectura por tabla.
             }
         }
 
+        // El cliente anon no tiene company_id (no hay sesión), así que solo trae catálogo público (company_id IS NULL via RLS).
         async let fromAnonTask = accumulatePagesLenient(client: SupabaseClientProvider.catalogAnon)
         let fromSession: [VehicleRow]
         do {
             try Task.checkCancellation()
-            fromSession = try await fetchAll(client: SupabaseClientProvider.shared)
+            // La lectura por tabla filtra via RLS (vehicles_company_select_authenticated)
+            // + filtro explícito por company_id en la query PostgREST.
+            fromSession = try await fetchAll(companyId: companyId, client: SupabaseClientProvider.shared)
         } catch {
             let anonOnly = await fromAnonTask
             if anonOnly.isEmpty { throw error }
-            return dedupeVehicleRowsForMarketplace(anonOnly.sorted { $0.id.uuidString < $1.id.uuidString })
+            let sorted = dedupeVehicleRowsForMarketplace(anonOnly.sorted { $0.id.uuidString < $1.id.uuidString })
+            if let onPartial { await onPartial(sorted) }
+            return sorted
         }
         let anonRows = await fromAnonTask
-        return dedupeVehicleRowsForMarketplace(mergeVehicleRowsByIdPreferSession(anonRows, fromSession))
+        let merged = dedupeVehicleRowsForMarketplace(mergeVehicleRowsByIdPreferSession(anonRows, fromSession))
+        if let onPartial { await onPartial(merged) }
+        return merged
+    }
+
+    private struct UserProfileOrganizationRow: Decodable, Sendable {
+        let organization_id: UUID?
+    }
+
+    /// Organización del usuario (`user_profiles.organization_id` / tabla en `USER_PROFILES_TABLE`).
+    static func fetchMyOrganizationId() async -> UUID? {
+        do {
+            let uid = try await SupabaseClientProvider.shared.auth.session.user.id
+            let rows: [UserProfileOrganizationRow] = try await SupabaseClientProvider.shared
+                .from(SupabaseClientProvider.profilesTableName)
+                .select("organization_id")
+                .eq("user_id", value: uid.uuidString.lowercased())
+                .limit(1)
+                .execute()
+                .value
+            return rows.first?.organization_id
+        } catch {
+            return nil
+        }
+    }
+
+    /// Obtiene el `company_id` del usuario autenticado llamando a la RPC `get_my_company_id`.
+    /// La RPC devuelve `uuid`; Supabase lo serializa como string JSON.
+    static func fetchMyCompanyId() async -> UUID? {
+        // Intentar decodificar directamente como String (formato habitual de Supabase para uuid).
+        do {
+            let result: String = try await SupabaseClientProvider.shared
+                .rpc("get_my_company_id")
+                .execute()
+                .value
+            let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
+            return UUID(uuidString: trimmed)
+        } catch {
+            // Si falla como String, intentar como JSON arbitrario por si viene como null o formato inesperado.
+            do {
+                let data = try await SupabaseClientProvider.shared
+                    .rpc("get_my_company_id")
+                    .execute()
+                    .data
+                guard let raw = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\""))) else { return nil }
+                if raw == "null" || raw.isEmpty { return nil }
+                return UUID(uuidString: raw)
+            } catch {
+                return nil
+            }
+        }
+    }
+
+    enum InsertVehicleError: LocalizedError {
+        case notAuthenticated
+        case noTenantAssigned
+        case invalidForm(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "Inicia sesión para añadir vehículos."
+            case .noTenantAssigned:
+                return "Tu cuenta no tiene organización ni empresa asignada. Un administrador debe enlazar tu perfil en Supabase (user_profiles.organization_id o profiles.company_id)."
+            case let .invalidForm(msg):
+                return msg
+            }
+        }
+    }
+
+    /// Insert: ficha completa + columnas de anuncio cuando existen en BD (`listing_extra` jsonb, precios, etc.).
+    private struct VehicleInsertRow: Encodable, Sendable {
+        let id: UUID
+        let user_id: UUID
+        let organization_id: UUID?
+        let company_id: UUID?
+        let brand: String
+        let model: String
+        let year: Int
+        let license_plate: String?
+        let price: Double?
+        let mileage: Int?
+        let fuel_type: String?
+        let transmission: String?
+        let vin: String?
+        let exterior_color: String?
+        let dgt_label: String?
+        let purchase_price: Double?
+        let market_price: Double?
+        let financed_price: Double?
+        let listing_description: String?
+        let listing_extra: VehicleListingExtraJSON?
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: VehiclesInsertDynamicKey.self)
+            try c.encode(id, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.id))
+            try c.encode(user_id, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.userId))
+            try c.encodeIfPresent(organization_id, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.organizationId))
+            try c.encodeIfPresent(company_id, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.companyId))
+            try c.encode(brand, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.brand))
+            try c.encode(model, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.model))
+            try c.encode(year, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.year))
+            try c.encodeIfPresent(license_plate, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.licensePlate))
+            try c.encodeIfPresent(price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.price))
+            try c.encodeIfPresent(mileage, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.mileage))
+            try c.encodeIfPresent(fuel_type, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.fuelType))
+            try c.encodeIfPresent(transmission, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.transmission))
+            try c.encodeIfPresent(vin, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.vin))
+            try c.encodeIfPresent(exterior_color, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.color))
+            try c.encodeIfPresent(dgt_label, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.dgtLabel))
+            try c.encodeIfPresent(purchase_price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.purchasePrice))
+            try c.encodeIfPresent(market_price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.marketPrice))
+            try c.encodeIfPresent(financed_price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.financedPrice))
+            try c.encodeIfPresent(listing_description, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.listingDescription))
+            try c.encodeIfPresent(listing_extra, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.listingExtra))
+        }
+    }
+
+    /// Inserta en `vehicles` con el tenant del usuario.
+    /// Si hay JPEG, se suben a `vehicle-media/{user_id}/{vehicle_id}/` y se intenta guardar la URL pública en `main_image_url` (migración `20260419160000_vehicles_main_image_url_and_update_rls.sql`).
+    static func insertVehicleFromApp(
+        _ payload: VehicleAppListingPayload,
+        imagesJPEGData: [Data] = [],
+        client: SupabaseClient = SupabaseClientProvider.shared
+    ) async throws -> VehicleRow {
+        let session: Session
+        do {
+            session = try await client.auth.session
+        } catch {
+            throw InsertVehicleError.notAuthenticated
+        }
+        let uid = session.user.id
+
+        async let orgTask = fetchMyOrganizationId()
+        let compId = await fetchMyCompanyId()
+        let orgId = await orgTask
+
+        guard orgId != nil || compId != nil else {
+            throw InsertVehicleError.noTenantAssigned
+        }
+
+        let b = payload.brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let m = payload.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !b.isEmpty, !m.isEmpty else {
+            throw InsertVehicleError.invalidForm("Marca y modelo son obligatorios.")
+        }
+
+        let y = payload.year
+        guard (1950...2035).contains(y) else {
+            throw InsertVehicleError.invalidForm("El año debe estar entre 1950 y 2035.")
+        }
+
+        let plateRaw = payload.licensePlate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let plate: String? = plateRaw.isEmpty ? nil : plateRaw
+
+        let vehicleId = UUID()
+
+        let extra = Self.sanitizedListingExtra(payload.listingExtra)
+
+        // ── 1. Insertar el vehículo ───────────────────────────────────
+        let row = VehicleInsertRow(
+            id: vehicleId,
+            user_id: uid,
+            organization_id: orgId,
+            company_id: compId,
+            brand: b,
+            model: m,
+            year: y,
+            license_plate: plate,
+            price: payload.salePriceEUR,
+            mileage: payload.mileageKm,
+            fuel_type: Self.trimmedNilIfEmpty(payload.fuelType),
+            transmission: Self.trimmedNilIfEmpty(payload.transmission),
+            vin: Self.trimmedNilIfEmpty(payload.vin),
+            exterior_color: Self.trimmedNilIfEmpty(payload.exteriorColor),
+            dgt_label: Self.sanitizedDGTLabelForStorage(payload.dgtLabel),
+            purchase_price: payload.purchasePriceEUR,
+            market_price: payload.marketPriceEUR,
+            financed_price: payload.financedPriceEUR,
+            listing_description: Self.trimmedNilIfEmpty(payload.listingDescription),
+            listing_extra: extra
+        )
+
+        let inserted: VehicleRow = try await client
+            .from(SupabaseClientProvider.vehiclesTableName)
+            .insert(row)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        let trimmedJPEG = imagesJPEGData.filter { !$0.isEmpty }
+        guard !trimmedJPEG.isEmpty else {
+            return inserted
+        }
+
+        let mediaBucket = SupabaseClientProvider.vehicleMediaBucket
+        let folder = "\(uid.uuidString.lowercased())/\(vehicleId.uuidString.lowercased())"
+        let maxBytes = 14 * 1024 * 1024
+        let maxFiles = 8
+
+        // Subida en serie: menos presión QUIC y errores RLS más claros que muchas tareas a la vez.
+        var coverUploadOK = false
+        for (index, jpegData) in trimmedJPEG.prefix(maxFiles).enumerated() {
+            guard jpegData.count <= maxBytes else {
+                print("[VehiclesService] Imagen \(index + 1) supera 14 MB, omitida.")
+                continue
+            }
+            let fileName = String(format: "%03d.jpg", index + 1)
+            let storagePath = "\(folder)/\(fileName)"
+            do {
+                _ = try await client.storage
+                    .from(mediaBucket)
+                    .upload(
+                        storagePath,
+                        data: jpegData,
+                        options: FileOptions(contentType: "image/jpeg", upsert: true)
+                    )
+                if index == 0 { coverUploadOK = true }
+            } catch {
+                print("[VehiclesService] Error subiendo imagen \(fileName): \(error)")
+            }
+        }
+
+        let coverPublicURL = SupabaseClientProvider.publicStorageObjectURL(
+            bucket: mediaBucket,
+            path: "\(folder)/001.jpg"
+        )
+        if coverUploadOK {
+            await patchVehicleMainImageURLColumn(
+                client: client,
+                vehicleId: vehicleId,
+                publicURLString: coverPublicURL
+            )
+        }
+
+        do {
+            let refreshed: VehicleRow = try await client
+                .from(SupabaseClientProvider.vehiclesTableName)
+                .select()
+                .eq("id", value: vehicleId.uuidString.lowercased())
+                .single()
+                .execute()
+                .value
+            return refreshed
+        } catch {
+            return inserted
+        }
+    }
+
+    /// Actualiza la columna configurable (`main_image_url` por defecto) para que el listado marketplace muestre la portada sin listar Storage.
+    private static func patchVehicleMainImageURLColumn(
+        client: SupabaseClient,
+        vehicleId: UUID,
+        publicURLString: String
+    ) async {
+        struct Patch: Encodable {
+            let value: String
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: VehiclesInsertDynamicKey.self)
+                try c.encode(value, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.mainImageURL))
+            }
+        }
+        do {
+            try await client
+                .from(SupabaseClientProvider.vehiclesTableName)
+                .update(Patch(value: publicURLString))
+                .eq("id", value: vehicleId.uuidString.lowercased())
+                .execute()
+        } catch {
+            print("[VehiclesService] No se pudo guardar \(VehiclesInsertColumnMap.mainImageURL) (¿columna o política UPDATE?): \(error)")
+        }
+    }
+
+    private static func trimmedNilIfEmpty(_ s: String?) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
+
+    /// No guardar «ECO» como distintivo: en alta suele colarse por error; la tarjeta tampoco lo muestra.
+    private static func sanitizedDGTLabelForStorage(_ s: String?) -> String? {
+        guard let t = trimmedNilIfEmpty(s) else { return nil }
+        let folded = t.folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
+        let compact = folded.lowercased().replacingOccurrences(of: " ", with: "")
+        if compact == "eco" || compact == "dgteco" { return nil }
+        return t
+    }
+
+    /// Evita escribir `listing_extra` vacío en jsonb.
+    private static func sanitizedListingExtra(_ raw: VehicleListingExtraJSON?) -> VehicleListingExtraJSON? {
+        guard var e = raw else { return nil }
+        if let codes = e.equipmentCodes, codes.isEmpty { e.equipmentCodes = nil }
+        let empty =
+            e.acquisitionCategory == nil
+            && e.vatDeductible == nil
+            && e.singleOwner == nil
+            && e.serviceBook == nil
+            && e.officialServiceBook == nil
+            && e.nationalVehicle == nil
+            && e.dgtLabelNote == nil
+            && e.storeLocation == nil
+            && (e.equipmentCodes == nil || e.equipmentCodes?.isEmpty == true)
+            && e.ownerName == nil
+            && e.ownerPhone == nil
+            && e.ownerEmail == nil
+            && e.ownerZone == nil
+            && e.ownerCanVisitOffice == nil
+            && e.publishAllPlatforms == nil
+            && e.publishAutoScout == nil
+            && e.publishCochesNet == nil
+            && e.publishWallapop == nil
+            && e.publishOwnWeb == nil
+            && e.lastServiceKm == nil
+            && e.lastServiceYear == nil
+        return empty ? nil : e
     }
 }
 

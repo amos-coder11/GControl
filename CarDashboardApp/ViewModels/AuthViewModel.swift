@@ -12,9 +12,12 @@ final class AuthViewModel: ObservableObject {
     @Published var lastErrorMessage: String?
     /// Foto de perfil del usuario con sesión iniciada (`profiles.avatar_url` o metadatos OAuth).
     @Published private(set) var profileAvatarImage: UIImage?
+    /// Empresa del usuario autenticado (cargada desde `profiles.company_id` vía RPC).
+    @Published private(set) var companyId: UUID?
 
     private var authStateTask: Task<Void, Never>?
     private var profileAvatarTask: Task<Void, Never>?
+    private var companyIdTask: Task<Void, Never>?
 
     init(client: SupabaseClient = SupabaseClientProvider.shared) {
         self.client = client
@@ -23,10 +26,12 @@ final class AuthViewModel: ObservableObject {
         startAuthStateListener()
         Task { await refreshSessionIfNeeded() }
         scheduleProfileAvatarLoad()
+        scheduleCompanyIdLoad()
     }
 
     deinit {
         authStateTask?.cancel()
+        companyIdTask?.cancel()
     }
 
     var isAuthenticated: Bool {
@@ -73,6 +78,7 @@ final class AuthViewModel: ObservableObject {
                     self.session = newSession
                     self.isRestoringSession = false
                     self.scheduleProfileAvatarLoad()
+                    self.scheduleCompanyIdLoad()
                 }
             }
         }
@@ -85,11 +91,29 @@ final class AuthViewModel: ObservableObject {
             await MainActor.run {
                 self.session = s
                 self.scheduleProfileAvatarLoad()
+                self.scheduleCompanyIdLoad()
             }
         } catch {
             await MainActor.run {
                 self.session = client.auth.currentSession
                 self.scheduleProfileAvatarLoad()
+                self.scheduleCompanyIdLoad()
+            }
+        }
+    }
+
+    /// Carga el `company_id` del usuario autenticado desde Supabase (`profiles.company_id`).
+    private func scheduleCompanyIdLoad() {
+        companyIdTask?.cancel()
+        guard session != nil else {
+            companyId = nil
+            return
+        }
+        companyIdTask = Task {
+            let cid = await VehiclesService.fetchMyCompanyId()
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.companyId = cid
             }
         }
     }
@@ -164,7 +188,9 @@ final class AuthViewModel: ObservableObject {
         do {
             try await client.auth.signOut()
             profileAvatarTask?.cancel()
+            companyIdTask?.cancel()
             profileAvatarImage = nil
+            companyId = nil
             session = nil
         } catch {
             lastErrorMessage = error.localizedDescription

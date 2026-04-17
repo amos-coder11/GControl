@@ -60,9 +60,8 @@ struct CarListingCard: View {
             }
         }
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .onAppear {
-            CarUIImageLoader.prefetchGallery(car: car, auth: auth)
-        }
+        // No usar prefetchGallery aquí: dispara decenas de descargas al CDN por tarjeta (p. ej. ccdn.es)
+        // y provoca -1001. La miniatura se carga en .task; el prefetch de vecinos va en CarsView.prefetch.
         .onChange(of: car.id) { _, _ in galleryIndex = 0 }
         .onChange(of: imageSlots.count) { _, newCount in
             if newCount == 0 {
@@ -141,9 +140,12 @@ struct CarListingCard: View {
     private var listingThumbnailFlushLeft: some View {
         listingThumbnailCore
             .containerRelativeFrame(.horizontal) { width, _ in
-                min(210, max(132, width * 0.52))
+                let w = (width.isFinite && width > 1) ? width : 320
+                return min(210, max(132, w * 0.52))
             }
             .aspectRatio(1 / 0.66, contentMode: .fit)
+            // Evita CAMetalLayer drawable 0×0 cuando el layout aún no propaga tamaño (LazyVStack).
+            .frame(minWidth: 160, minHeight: 104)
             .clipped()
     }
 
@@ -302,6 +304,9 @@ private struct CarHeroImageSlotView: View {
     let slot: CarImageSlot
 
     @State private var image: UIImage?
+    @State private var loadFinishedWithoutImage = false
+    /// Si la fila sale del `LazyVStack`, SwiftUI cancela `.task` y puede quedar el spinner para siempre sin esto.
+    @State private var needsReloadAfterVisibility = false
 
     var body: some View {
         ZStack {
@@ -313,6 +318,10 @@ private struct CarHeroImageSlotView: View {
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
+            } else if loadFinishedWithoutImage {
+                Image(systemName: "photo")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
             } else {
                 ProgressView()
                     .scaleEffect(0.8)
@@ -321,9 +330,35 @@ private struct CarHeroImageSlotView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .task(id: slot.id) {
-            let loaded = await CarUIImageLoader.load(payload: slot.payload, auth: auth)
+            await loadImageForSlot(resetState: true)
+        }
+        .onAppear {
+            guard needsReloadAfterVisibility else { return }
+            needsReloadAfterVisibility = false
+            Task { await loadImageForSlot(resetState: false) }
+        }
+        .onDisappear {
+            if image == nil {
+                needsReloadAfterVisibility = true
+            }
+        }
+    }
+
+    private func loadImageForSlot(resetState: Bool) async {
+        if resetState {
+            await MainActor.run {
+                image = nil
+                loadFinishedWithoutImage = false
+            }
+        }
+        let loaded = await CarUIImageLoader.load(payload: slot.payload, auth: auth)
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
             if let loaded {
                 image = loaded
+                loadFinishedWithoutImage = false
+            } else {
+                loadFinishedWithoutImage = true
             }
         }
     }

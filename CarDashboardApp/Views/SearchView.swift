@@ -86,7 +86,7 @@ struct SearchView: View {
                         .frame(minWidth: 0, maxWidth: .infinity)
                     }
                     .refreshable {
-                        await carsVM.loadVehicles()
+                        await carsVM.loadVehicles(companyId: auth.companyId)
                     }
                 }
                 .frame(maxWidth: .infinity)
