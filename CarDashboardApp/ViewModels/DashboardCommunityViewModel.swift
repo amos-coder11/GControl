@@ -39,7 +39,16 @@ final class DashboardCommunityViewModel: ObservableObject {
         lastError = nil
         defer { isLoading = false }
         do {
-            directory = try await CommunityProfilesService.fetchDirectory(client: SupabaseClientProvider.shared)
+            let orgId = await VehiclesService.fetchMyOrganizationId()
+            guard let orgId else {
+                lastError = "Tu cuenta no tiene empresa/organización asignada. Un administrador debe asignarte `user_profiles.organization_id`."
+                directory = []
+                return
+            }
+            directory = try await CommunityProfilesService.fetchDirectory(
+                client: SupabaseClientProvider.shared,
+                organizationId: orgId
+            )
         } catch {
             lastError = error.localizedDescription
             directory = []

@@ -131,6 +131,12 @@ struct DashboardView: View {
         .onDisappear {
             locationHub.stopUpdates()
         }
+        .task(id: carsVM.cars.count) {
+            vm.refreshFromInventory(cars: carsVM.cars)
+        }
+        .onChange(of: carsVM.cars) { _, newCars in
+            vm.refreshFromInventory(cars: newCars)
+        }
     }
 }
 

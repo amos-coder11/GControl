@@ -12,6 +12,8 @@ enum CommunityProfilesService {
         let avatarUrl: String?
         let latitude: Double?
         let longitude: Double?
+        /// Organización/empresa (tenant) del usuario.
+        let organizationId: UUID?
         /// ISO8601 desde Supabase (`location_updated_at`).
         let locationUpdatedAt: String?
 
@@ -22,6 +24,7 @@ enum CommunityProfilesService {
             case avatarUrl = "avatar_url"
             case latitude
             case longitude
+            case organizationId = "organization_id"
             case locationUpdatedAt = "location_updated_at"
         }
 
@@ -57,18 +60,43 @@ enum CommunityProfilesService {
         }
     }
 
-    private static let selectColumns = "id, user_id, avatar_url, full_name, latitude, longitude, location_updated_at"
+    private static let selectColumns =
+        "id, user_id, avatar_url, full_name, latitude, longitude, organization_id, location_updated_at"
 
     /// Listado para carrusel y mapa (requiere RLS que permita leer el directorio; ver `supabase/migrations`).
-    static func fetchDirectory(client: SupabaseClient) async throws -> [DirectoryRow] {
-        let rows: [DirectoryRow] = try await client
+    static func fetchDirectory(
+        client: SupabaseClient,
+        organizationId: UUID? = nil
+    ) async throws -> [DirectoryRow] {
+        var query = client
             .from(SupabaseClientProvider.profilesTableName)
             .select(selectColumns)
-            .order("location_updated_at", ascending: false, nullsFirst: false)
-            .limit(500)
-            .execute()
-            .value
-        return rows
+
+        if let organizationId {
+            query = query.eq("organization_id", value: organizationId.uuidString.lowercased())
+        }
+
+        do {
+            let rows: [DirectoryRow] = try await query
+                .order("location_updated_at", ascending: false, nullsFirst: false)
+                .limit(500)
+                .execute()
+                .value
+            return rows
+        } catch {
+            // Compatibilidad: si la tabla no tiene `organization_id` o no se puede filtrar, devolvemos el directorio sin filtro.
+            if organizationId != nil {
+                let fallback: [DirectoryRow] = try await client
+                    .from(SupabaseClientProvider.profilesTableName)
+                    .select(selectColumns)
+                    .order("location_updated_at", ascending: false, nullsFirst: false)
+                    .limit(500)
+                    .execute()
+                    .value
+                return fallback
+            }
+            throw error
+        }
     }
 
     /// Sube la posición del usuario actual (silencioso si falla).
