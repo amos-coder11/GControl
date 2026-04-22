@@ -492,13 +492,13 @@ struct VehicleRow: Decodable, Sendable {
         mileageKm = Self.optInt(c, ["mileage", "kilometers", "km", "odometer", "odometro", "kilometraje", "mileage_km"])
 
         fuelTypeDecoded = Self.optString(c, [
-            "fuel_type", "fuelType", "combustible", "motor", "engine_type", "engineType", "tipo_motor",
+            "fuel", "fuel_type", "fuelType", "combustible", "motor", "engine_type", "engineType", "tipo_motor",
         ])
         vehicleBodyType = Self.optString(c, [
             "body_type", "bodyType", "vehicle_type", "vehicleType", "tipo_coche", "tipo", "category", "car_type",
         ])
         locationDecoded = Self.optString(c, [
-            "city", "location", "ubicacion", "ciudad", "province", "provincia", "town",
+            "store", "tienda", "city", "location", "ubicacion", "ciudad", "province", "provincia", "town",
         ])
 
         let sellerRaw = Self.optString(c, [
@@ -510,12 +510,14 @@ struct VehicleRow: Decodable, Sendable {
         // Solo la columna explícita del distintivo. Cualquier otra (`environmental_label`, etc.) suele traer
         // valores tipo «Eco» que no son el adhesivo DGT y generan falsos positivos en la tarjeta.
         let primaryDGT = Self.optString(c, ["dgt_label"])
-        dgtLabelDecoded = primaryDGT ?? Self.optString(c, ["etiqueta_dgt"])
+        dgtLabelDecoded = primaryDGT ?? Self.optString(c, ["etiqueta_dgt", "environmental_label"])
         powerCvDecoded = Self.optInt(c, ["power_cv", "cv", "horsepower", "hp", "potencia", "power"])
-        transmissionDecoded = Self.optString(c, ["transmission", "cambio", "gearbox"])
-        equipmentDecoded = Self.optString(c, ["equipment", "equipamiento", "features", "extras"])
+        transmissionDecoded = Self.optString(c, ["transmission", "cambio", "gearbox", "gear_box"])
+        equipmentDecoded = Self.optString(c, [
+            "featured_equipment", "equipment", "equipamiento", "features", "extras",
+        ])
         exteriorColorDecoded = Self.optString(c, [
-            "body_color", "exterior_color", "paint_color", "color_carroceria", "car_color",
+            "color", "body_color", "exterior_color", "paint_color", "color_carroceria", "car_color",
         ])
 
         onlineListingDecoded = Self.optBool(c, [

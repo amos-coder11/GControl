@@ -14,10 +14,16 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var profileAvatarImage: UIImage?
     /// Empresa del usuario autenticado (cargada desde `profiles.company_id` vía RPC).
     @Published private(set) var companyId: UUID?
+    /// Organización del usuario autenticado (cargada desde `user_profiles.organization_id`).
+    @Published private(set) var organizationId: UUID?
 
     private var authStateTask: Task<Void, Never>?
     private var profileAvatarTask: Task<Void, Never>?
     private var companyIdTask: Task<Void, Never>?
+    private var organizationIdTask: Task<Void, Never>?
+    private static let aiBlockedOrganizationIDs: Set<UUID> = [
+        UUID(uuidString: "1d8bfc03-fa2b-419c-9f2a-bcce92651c5d")!,
+    ]
 
     init(client: SupabaseClient = SupabaseClientProvider.shared) {
         self.client = client
@@ -27,11 +33,13 @@ final class AuthViewModel: ObservableObject {
         Task { await refreshSessionIfNeeded() }
         scheduleProfileAvatarLoad()
         scheduleCompanyIdLoad()
+        scheduleOrganizationIdLoad()
     }
 
     deinit {
         authStateTask?.cancel()
         companyIdTask?.cancel()
+        organizationIdTask?.cancel()
     }
 
     var isAuthenticated: Bool {
@@ -70,6 +78,16 @@ final class AuthViewModel: ObservableObject {
         return "?"
     }
 
+    var canAccessIASection: Bool {
+        guard let organizationId else { return true }
+        return !Self.aiBlockedOrganizationIDs.contains(organizationId)
+    }
+
+    var canAccessTeamLocationSection: Bool {
+        guard let organizationId else { return true }
+        return !Self.aiBlockedOrganizationIDs.contains(organizationId)
+    }
+
     private func startAuthStateListener() {
         authStateTask?.cancel()
         authStateTask = Task { [client] in
@@ -79,6 +97,7 @@ final class AuthViewModel: ObservableObject {
                     self.isRestoringSession = false
                     self.scheduleProfileAvatarLoad()
                     self.scheduleCompanyIdLoad()
+                    self.scheduleOrganizationIdLoad()
                 }
             }
         }
@@ -92,12 +111,14 @@ final class AuthViewModel: ObservableObject {
                 self.session = s
                 self.scheduleProfileAvatarLoad()
                 self.scheduleCompanyIdLoad()
+                self.scheduleOrganizationIdLoad()
             }
         } catch {
             await MainActor.run {
                 self.session = client.auth.currentSession
                 self.scheduleProfileAvatarLoad()
                 self.scheduleCompanyIdLoad()
+                self.scheduleOrganizationIdLoad()
             }
         }
     }
@@ -114,6 +135,22 @@ final class AuthViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.companyId = cid
+            }
+        }
+    }
+
+    /// Carga el `organization_id` del usuario autenticado desde Supabase (`user_profiles.organization_id`).
+    private func scheduleOrganizationIdLoad() {
+        organizationIdTask?.cancel()
+        guard session != nil else {
+            organizationId = nil
+            return
+        }
+        organizationIdTask = Task {
+            let oid = await VehiclesService.fetchMyOrganizationId()
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.organizationId = oid
             }
         }
     }
@@ -189,8 +226,10 @@ final class AuthViewModel: ObservableObject {
             try await client.auth.signOut()
             profileAvatarTask?.cancel()
             companyIdTask?.cancel()
+            organizationIdTask?.cancel()
             profileAvatarImage = nil
             companyId = nil
+            organizationId = nil
             session = nil
         } catch {
             lastErrorMessage = error.localizedDescription

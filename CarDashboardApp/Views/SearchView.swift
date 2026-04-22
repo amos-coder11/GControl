@@ -34,9 +34,11 @@ struct SearchView: View {
                 VStack(spacing: 0) {
                     stickyBrowseChrome
 
-                    iaShortcutRow
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
+                    if auth.canAccessIASection {
+                        iaShortcutRow
+                            .padding(.horizontal, 16)
+                            .padding(.top, 10)
+                    }
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 18) {

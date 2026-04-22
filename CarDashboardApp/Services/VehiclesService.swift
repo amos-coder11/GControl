@@ -591,6 +591,52 @@ enum VehiclesService {
         }
     }
 
+    /// Actualización ampliada para reflejar en columnas escalares los datos del formulario de publicación.
+    private struct VehicleExtendedPatchRow: Encodable, Sendable {
+        let store: String?
+        let environmental_label: String?
+        let description: String?
+        let sale_management: String?
+        let iva_deductible: String?
+        let single_owner: Bool?
+        let has_service_book: Bool?
+        let official_service_book: Bool?
+        let origin_type: String?
+        let last_service_km: Int?
+        let last_service_year: Int?
+        let featured_equipment: String?
+        let owner_name: String?
+        let owner_phone: String?
+        let owner_email: String?
+        let owner_region: String?
+        let owner_can_travel: Bool?
+        let gv_price_cash: Double?
+        let gv_price_financed: Double?
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: VehiclesInsertDynamicKey.self)
+            try c.encodeIfPresent(store, forKey: VehiclesInsertDynamicKey("store"))
+            try c.encodeIfPresent(environmental_label, forKey: VehiclesInsertDynamicKey("environmental_label"))
+            try c.encodeIfPresent(description, forKey: VehiclesInsertDynamicKey("description"))
+            try c.encodeIfPresent(sale_management, forKey: VehiclesInsertDynamicKey("sale_management"))
+            try c.encodeIfPresent(iva_deductible, forKey: VehiclesInsertDynamicKey("iva_deductible"))
+            try c.encodeIfPresent(single_owner, forKey: VehiclesInsertDynamicKey("single_owner"))
+            try c.encodeIfPresent(has_service_book, forKey: VehiclesInsertDynamicKey("has_service_book"))
+            try c.encodeIfPresent(official_service_book, forKey: VehiclesInsertDynamicKey("official_service_book"))
+            try c.encodeIfPresent(origin_type, forKey: VehiclesInsertDynamicKey("origin_type"))
+            try c.encodeIfPresent(last_service_km, forKey: VehiclesInsertDynamicKey("last_service_km"))
+            try c.encodeIfPresent(last_service_year, forKey: VehiclesInsertDynamicKey("last_service_year"))
+            try c.encodeIfPresent(featured_equipment, forKey: VehiclesInsertDynamicKey("featured_equipment"))
+            try c.encodeIfPresent(owner_name, forKey: VehiclesInsertDynamicKey("owner_name"))
+            try c.encodeIfPresent(owner_phone, forKey: VehiclesInsertDynamicKey("owner_phone"))
+            try c.encodeIfPresent(owner_email, forKey: VehiclesInsertDynamicKey("owner_email"))
+            try c.encodeIfPresent(owner_region, forKey: VehiclesInsertDynamicKey("owner_region"))
+            try c.encodeIfPresent(owner_can_travel, forKey: VehiclesInsertDynamicKey("owner_can_travel"))
+            try c.encodeIfPresent(gv_price_cash, forKey: VehiclesInsertDynamicKey("gv_price_cash"))
+            try c.encodeIfPresent(gv_price_financed, forKey: VehiclesInsertDynamicKey("gv_price_financed"))
+        }
+    }
+
     /// Inserta en `vehicles` con el tenant del usuario.
     /// Si hay JPEG, se suben a `vehicle-media/{user_id}/{vehicle_id}/` y se intenta guardar la URL pública en `main_image_url` (migración `20260419160000_vehicles_main_image_url_and_update_rls.sql`).
     static func insertVehicleFromApp(
@@ -664,6 +710,12 @@ enum VehiclesService {
             .single()
             .execute()
             .value
+
+        await patchVehicleExtendedColumns(
+            client: client,
+            vehicleId: vehicleId,
+            payload: payload
+        )
 
         let trimmedJPEG = imagesJPEGData.filter { !$0.isEmpty }
         guard !trimmedJPEG.isEmpty else {
@@ -745,6 +797,49 @@ enum VehiclesService {
                 .execute()
         } catch {
             print("[VehiclesService] No se pudo guardar \(VehiclesInsertColumnMap.mainImageURL) (¿columna o política UPDATE?): \(error)")
+        }
+    }
+
+    /// Replica en columnas "web/listado" los campos extendidos del formulario.
+    private static func patchVehicleExtendedColumns(
+        client: SupabaseClient,
+        vehicleId: UUID,
+        payload: VehicleAppListingPayload
+    ) async {
+        let extra = payload.listingExtra
+        let equipmentText: String? = {
+            guard let codes = extra?.equipmentCodes, !codes.isEmpty else { return nil }
+            return codes.joined(separator: ", ")
+        }()
+        let patch = VehicleExtendedPatchRow(
+            store: trimmedNilIfEmpty(extra?.storeLocation),
+            environmental_label: trimmedNilIfEmpty(payload.dgtLabel),
+            description: trimmedNilIfEmpty(payload.listingDescription),
+            sale_management: trimmedNilIfEmpty(extra?.acquisitionCategory),
+            iva_deductible: trimmedNilIfEmpty(extra?.vatDeductible),
+            single_owner: extra?.singleOwner,
+            has_service_book: extra?.serviceBook,
+            official_service_book: extra?.officialServiceBook,
+            origin_type: (extra?.nationalVehicle == nil) ? nil : (extra?.nationalVehicle == true ? "nacional" : "importado"),
+            last_service_km: extra?.lastServiceKm,
+            last_service_year: extra?.lastServiceYear,
+            featured_equipment: equipmentText,
+            owner_name: trimmedNilIfEmpty(extra?.ownerName),
+            owner_phone: trimmedNilIfEmpty(extra?.ownerPhone),
+            owner_email: trimmedNilIfEmpty(extra?.ownerEmail),
+            owner_region: trimmedNilIfEmpty(extra?.ownerZone),
+            owner_can_travel: extra?.ownerCanVisitOffice,
+            gv_price_cash: payload.salePriceEUR,
+            gv_price_financed: payload.financedPriceEUR
+        )
+        do {
+            try await client
+                .from(SupabaseClientProvider.vehiclesTableName)
+                .update(patch)
+                .eq("id", value: vehicleId.uuidString.lowercased())
+                .execute()
+        } catch {
+            print("[VehiclesService] No se pudieron reflejar columnas extendidas del vehículo: \(error)")
         }
     }
 

@@ -123,6 +123,14 @@ struct CarListingCard: View {
 
                 secondaryPriceLine
 
+                if let specs = technicalDetailLine {
+                    Text(specs)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(ListingPalette.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+                }
+
                 if let meta = metaDetailLine {
                     Text(meta)
                         .font(.system(size: 10, weight: .medium))
@@ -220,14 +228,30 @@ struct CarListingCard: View {
         return "\(formatIntegerES(Int(p.rounded()))) €"
     }
 
-    /// Transmisión, color exterior y ubicación cuando existan en datos.
-    private var metaDetailLine: String? {
+    /// Resumen técnico principal visible en listado (datos de tabla `vehicles`).
+    private var technicalDetailLine: String? {
         var parts: [String] = []
+        if let km = car.mileageKm, km > 0 {
+            parts.append("\(formatIntegerES(km)) km")
+        }
+        if let fuel = car.fuelType?.trimmingCharacters(in: .whitespacesAndNewlines), !fuel.isEmpty {
+            parts.append(fuel)
+        }
         if let cv = car.powerCv, cv > 0 {
             parts.append("\(cv) CV")
         }
+        if parts.isEmpty { return nil }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Segunda línea con caja/carrocería/color/ubicación cuando existan en datos.
+    private var metaDetailLine: String? {
+        var parts: [String] = []
         if let t = car.transmission?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
             parts.append(t)
+        }
+        if let bt = car.bodyType?.trimmingCharacters(in: .whitespacesAndNewlines), !bt.isEmpty {
+            parts.append(bt)
         }
         if let c = car.exteriorColorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
             parts.append(c)

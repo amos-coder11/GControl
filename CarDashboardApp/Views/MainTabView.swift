@@ -58,10 +58,12 @@ struct MainTabView: View {
             }
             .badge(chatInbox.totalUnansweredMessageCount)
 
-            Tab("IA", systemImage: "sparkles", value: CarHubMainTab.ai) {
-                TeamAITabView()
-                    .toolbar(.hidden, for: .tabBar)
-                    .toolbarBackground(.hidden, for: .tabBar)
+            if auth.canAccessIASection {
+                Tab("IA", systemImage: "sparkles", value: CarHubMainTab.ai) {
+                    TeamAITabView()
+                        .toolbar(.hidden, for: .tabBar)
+                        .toolbarBackground(.hidden, for: .tabBar)
+                }
             }
 
             Tab("Ajustes", systemImage: "gearshape.fill", value: CarHubMainTab.settings) {
@@ -91,6 +93,11 @@ struct MainTabView: View {
         .onChange(of: auth.session?.user.id) { _, _ in
             communityVM.attach(auth: auth)
             Task { await communityVM.refresh() }
+        }
+        .onChange(of: auth.organizationId) { _, _ in
+            if !auth.canAccessIASection, tabRouter.selected == .ai {
+                tabRouter.selected = .home
+            }
         }
         .toolbarBackground(PremiumAccent.tabBarDockBackgroundGradient, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)

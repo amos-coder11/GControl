@@ -55,14 +55,16 @@ struct DashboardView: View {
 
                             DashboardFinancialSummaryCard(stats: vm, showDetail: $showFinancialDetail)
 
-                            DashboardTeamMapCard(
-                                community: communityVM,
-                                locationHub: locationHub,
-                                currentUserId: auth.session?.user.id,
-                                accessToken: auth.session?.accessToken,
-                                currentUserProfileImage: auth.profileAvatarImage,
-                                currentUserInitials: auth.userInitials
-                            )
+                            if auth.canAccessTeamLocationSection {
+                                DashboardTeamMapCard(
+                                    community: communityVM,
+                                    locationHub: locationHub,
+                                    currentUserId: auth.session?.user.id,
+                                    accessToken: auth.session?.accessToken,
+                                    currentUserProfileImage: auth.profileAvatarImage,
+                                    currentUserInitials: auth.userInitials
+                                )
+                            }
 
                             DashboardConnectedUsersStrip(
                                 members: communityVM.directory,
