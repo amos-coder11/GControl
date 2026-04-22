@@ -231,6 +231,7 @@ struct AddVehicleSheet: View {
     @State private var plate = ""
     @State private var priceText = ""
     @State private var mileageText = ""
+    @State private var powerCvText = ""
     @State private var fuel = ""
     @State private var transmission = ""
     @State private var tenantLine = ""
@@ -327,7 +328,7 @@ struct AddVehicleSheet: View {
                         sectionHeader(
                             icon: "list.bullet.rectangle.fill",
                             title: "Detalles del vehículo",
-                            subtitle: "Matrícula, precio, kilometraje, combustible y transmisión"
+                            subtitle: "Matrícula, kilometraje, potencia, combustible y transmisión"
                         )
 
                         LiquidGlassDarkFormPanel {
@@ -336,6 +337,8 @@ struct AddVehicleSheet: View {
                                 formField($plate, prompt: "3344 ABC")
                                 formFieldLabel("Kilometraje")
                                 formField($mileageText, prompt: "12000", keyboard: .numberPad)
+                                formFieldLabel("Caballos (CV)")
+                                formField($powerCvText, prompt: "Ej. 184", keyboard: .numberPad)
                                 formFieldLabel("Combustible")
                                 formField($fuel, prompt: "Gasolina, diésel, eléctrico, híbrido…")
                                 formFieldLabel("Transmisión")
@@ -361,6 +364,7 @@ struct AddVehicleSheet: View {
                                         yearText: yearText,
                                         plate: plate,
                                         mileageText: mileageText,
+                                        powerCvText: powerCvText,
                                         fuel: fuel,
                                         transmission: transmission,
                                         salePriceText: priceText,
@@ -864,9 +868,12 @@ struct AddVehicleSheet: View {
     }
 
     /// Escala y comprime a JPEG para subir a Storage.
+    /// Si la imagen es vertical, la normaliza al ratio de tarjeta para mantener coherencia en el listado.
     private static func prepareJPEGForUpload(_ data: Data) -> Data? {
-        guard let img = UIImage(data: data) else { return nil }
+        guard let rawImage = UIImage(data: data) else { return nil }
+        let img = normalizedUprightImage(rawImage)
         let maxSide: CGFloat = 2400
+        let listingAspectRatio: CGFloat = 1 / 0.66
         let w = img.size.width
         let h = img.size.height
         let longest = max(w, h)
@@ -876,11 +883,74 @@ struct AddVehicleSheet: View {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: target, format: format)
+        let sourceAspect = target.width / max(target.height, 1)
+        let normalizedSize: CGSize
+        if sourceAspect < listingAspectRatio * 0.95 {
+            // Forzamos un lienzo horizontal para que las portadas verticales no rompan la composición del feed.
+            let width = maxSide
+            normalizedSize = CGSize(width: width, height: max(width / listingAspectRatio, 1))
+        } else {
+            normalizedSize = target
+        }
+
+        let renderer = UIGraphicsImageRenderer(size: normalizedSize, format: format)
         let drawn = renderer.image { _ in
-            img.draw(in: CGRect(origin: .zero, size: target))
+            let canvas = CGRect(origin: .zero, size: normalizedSize)
+            if normalizedSize == target {
+                img.draw(in: canvas)
+                return
+            }
+
+            // Fondo adaptado para fotos verticales: rellena sin huecos.
+            img.draw(in: aspectFillRect(imageSize: target, in: canvas))
+            UIColor.black.withAlphaComponent(0.32).setFill()
+            UIRectFillUsingBlendMode(canvas, .sourceAtop)
+
+            // Imagen principal completa encima, manteniendo proporción.
+            let insetCanvas = canvas.insetBy(dx: 24, dy: 24)
+            img.draw(in: aspectFitRect(imageSize: target, in: insetCanvas))
         }
         return drawn.jpegData(compressionQuality: 0.82)
+    }
+
+    /// Aplana la orientación EXIF para que `size` refleje la imagen visual real.
+    private static func normalizedUprightImage(_ image: UIImage) -> UIImage {
+        if image.imageOrientation == .up { return image }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = image.scale
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+    }
+
+    private static func aspectFillRect(imageSize: CGSize, in bounds: CGRect) -> CGRect {
+        let scale = max(
+            bounds.width / max(imageSize.width, 1),
+            bounds.height / max(imageSize.height, 1)
+        )
+        let drawSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: bounds.midX - drawSize.width / 2,
+            y: bounds.midY - drawSize.height / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+    }
+
+    private static func aspectFitRect(imageSize: CGSize, in bounds: CGRect) -> CGRect {
+        let scale = min(
+            bounds.width / max(imageSize.width, 1),
+            bounds.height / max(imageSize.height, 1)
+        )
+        let drawSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: bounds.midX - drawSize.width / 2,
+            y: bounds.midY - drawSize.height / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
     }
 
     @ViewBuilder
@@ -1165,6 +1235,7 @@ struct AddVehicleSheet: View {
         defer { isSaving = false }
         do {
             let km = Self.parseOptionalInt(mileageText)
+            let powerCv = Self.parseOptionalInt(powerCvText)
             let financed = (sale * 0.9).rounded()
             let extra = VehicleListingExtraJSON(
                 acquisitionCategory: listingXF.acquisitionCategory,
@@ -1200,6 +1271,7 @@ struct AddVehicleSheet: View {
                 marketPriceEUR: Self.parseOptionalDouble(listingXF.marketPriceText),
                 financedPriceEUR: financed,
                 mileageKm: km,
+                powerCv: powerCv,
                 fuelType: fuel,
                 transmission: transmission,
                 vin: Self.trimOptional(listingXF.vinText),
@@ -1234,6 +1306,7 @@ struct AddVehicleSheet: View {
                 yearText: yearText,
                 plate: plate,
                 mileageText: mileageText,
+                powerCvText: powerCvText,
                 fuel: fuel,
                 transmission: transmission,
                 salePriceText: priceText,
@@ -1260,6 +1333,7 @@ struct AddVehicleSheet: View {
         yearText: String,
         plate: String,
         mileageText: String,
+        powerCvText: String,
         fuel: String,
         transmission: String,
         salePriceText: String,
@@ -1280,6 +1354,8 @@ struct AddVehicleSheet: View {
         }
         let km = mileageText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !km.isEmpty { lines.append("Kilometraje: \(km) km") }
+        let powerCv = powerCvText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !powerCv.isEmpty { lines.append("Potencia: \(powerCv) CV") }
         let f = fuel.trimmingCharacters(in: .whitespacesAndNewlines)
         if !f.isEmpty { lines.append("Combustible: \(f)") }
         let tr = transmission.trimmingCharacters(in: .whitespacesAndNewlines)

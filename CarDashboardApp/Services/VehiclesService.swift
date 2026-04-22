@@ -553,6 +553,7 @@ enum VehiclesService {
         let license_plate: String?
         let price: Double?
         let mileage: Int?
+        let power_cv: Int?
         let fuel_type: String?
         let transmission: String?
         let vin: String?
@@ -576,6 +577,7 @@ enum VehiclesService {
             try c.encodeIfPresent(license_plate, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.licensePlate))
             try c.encodeIfPresent(price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.price))
             try c.encodeIfPresent(mileage, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.mileage))
+            try c.encodeIfPresent(power_cv, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.powerCv))
             try c.encodeIfPresent(fuel_type, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.fuelType))
             try c.encodeIfPresent(transmission, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.transmission))
             try c.encodeIfPresent(vin, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.vin))
@@ -642,6 +644,7 @@ enum VehiclesService {
             license_plate: plate,
             price: payload.salePriceEUR,
             mileage: payload.mileageKm,
+            power_cv: payload.powerCv,
             fuel_type: Self.trimmedNilIfEmpty(payload.fuelType),
             transmission: Self.trimmedNilIfEmpty(payload.transmission),
             vin: Self.trimmedNilIfEmpty(payload.vin),

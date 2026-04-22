@@ -23,6 +23,7 @@ enum VehiclesInsertColumnMap {
     static var licensePlate: String { resolved("VEHICLES_COL_LICENSE_PLATE", default: "license_plate") }
     static var price: String { resolved("VEHICLES_COL_PRICE", default: "price") }
     static var mileage: String { resolved("VEHICLES_COL_MILEAGE", default: "kilometers") }
+    static var powerCv: String { resolved("VEHICLES_COL_POWER_CV", default: "power_cv") }
     static var fuelType: String { resolved("VEHICLES_COL_FUEL_TYPE", default: "fuel") }
     static var transmission: String { resolved("VEHICLES_COL_TRANSMISSION", default: "transmission") }
     /// Columna para la URL de portada tras subir fotos a Storage (listado marketplace solo lee columnas JSON).

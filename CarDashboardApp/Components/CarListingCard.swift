@@ -36,6 +36,7 @@ struct CarListingCard: View {
 
     private let cardCornerRadius: CGFloat = 18
     private let horizontalPadding: CGFloat = 11
+    private let thumbnailHeight: CGFloat = 138
 
     var body: some View {
         Button(action: onSelect) {
@@ -143,7 +144,8 @@ struct CarListingCard: View {
                 let w = (width.isFinite && width > 1) ? width : 320
                 return min(210, max(132, w * 0.52))
             }
-            .aspectRatio(1 / 0.66, contentMode: .fit)
+            // Altura fija para que ninguna imagen (vertical u horizontal) estire la tarjeta.
+            .frame(height: thumbnailHeight)
             // Evita CAMetalLayer drawable 0×0 cuando el layout aún no propaga tamaño (LazyVStack).
             .frame(minWidth: 160, minHeight: 104)
             .clipped()
@@ -221,6 +223,9 @@ struct CarListingCard: View {
     /// Transmisión, color exterior y ubicación cuando existan en datos.
     private var metaDetailLine: String? {
         var parts: [String] = []
+        if let cv = car.powerCv, cv > 0 {
+            parts.append("\(cv) CV")
+        }
         if let t = car.transmission?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
             parts.append(t)
         }
@@ -313,10 +318,20 @@ private struct CarHeroImageSlotView: View {
             Rectangle().fill(Color.white.opacity(0.08))
 
             if let ui = image {
+                // Fondo adaptado + foto completa: evita recortes feos en vertical y mantiene coherencia visual.
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .blur(radius: 18)
+                    .overlay(Color.black.opacity(0.34))
+                    .clipped()
+
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(6)
                     .clipped()
             } else if loadFinishedWithoutImage {
                 Image(systemName: "photo")

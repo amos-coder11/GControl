@@ -65,6 +65,7 @@ struct VehicleAppListingPayload: Sendable {
     var marketPriceEUR: Double?
     var financedPriceEUR: Double?
     var mileageKm: Int?
+    var powerCv: Int?
     var fuelType: String?
     var transmission: String?
     var vin: String?
