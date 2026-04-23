@@ -1,3 +1,4 @@
+import AVFoundation
 import Photos
 import PhotosUI
 import SwiftUI
@@ -11,6 +12,7 @@ struct CarsView: View {
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
     @State private var showAddVehicleSheet = false
+    @State private var editingCar: Car?
     /// Baja el FAB con la tab bar al hacer scroll hacia abajo (`tabBarMinimizeBehavior(.onScrollDown)`).
     @State private var fabSunkToMatchHiddenTabBar = false
     @FocusState private var browseSearchFieldFocused: Bool
@@ -84,6 +86,7 @@ struct CarsView: View {
                                             isSelected: carsVM.isSelected(car)
                                         ) {
                                             carsVM.selectCar(car)
+                                            editingCar = car
                                         }
                                         .frame(maxWidth: .infinity)
                                         // Sin prefetch de vecinos: con CDN lento compite por las mismas ranuras HTTP
@@ -167,6 +170,11 @@ struct CarsView: View {
                     .environmentObject(tabRouter)
                     .environmentObject(auth)
                     .environmentObject(carsVM)
+            }
+            .sheet(item: $editingCar) { car in
+                EditVehicleDictationSheet(car: car) {
+                    Task { await carsVM.loadVehicles(companyId: auth.companyId) }
+                }
             }
             .task {
                 if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
@@ -1523,6 +1531,405 @@ private struct AddVehicleRecentGalleryThumb: View {
                 thumbnail = img
             }
         }
+    }
+}
+
+// MARK: - Edición por dictado (tap en tarjeta de coche)
+
+struct EditVehicleDictationSheet: View {
+    let car: Car
+    var onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @StateObject private var transcriber = LiveSpeechTranscriber()
+    @State private var isDictating = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var infoMessage: String?
+
+    @State private var brand = ""
+    @State private var model = ""
+    @State private var yearText = ""
+    @State private var plate = ""
+    @State private var priceText = ""
+    @State private var mileageText = ""
+    @State private var powerCvText = ""
+    @State private var fuel = ""
+    @State private var transmission = ""
+    @State private var color = ""
+    @State private var dgtLabel = ""
+    @State private var listingDescription = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Edita los datos del vehículo")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Text("Puedes modificar campos manualmente o usar el micrófono de arriba.")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .padding(12)
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if isDictating {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Escuchando… toca el micrófono para terminar")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
+
+                    if !transcriber.partialText.isEmpty {
+                        Text(transcriber.partialText)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .padding(10)
+                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
+                    field("Marca", text: $brand)
+                    field("Modelo", text: $model)
+                    field("Año", text: $yearText, keyboard: .numberPad)
+                    field("Matrícula", text: $plate)
+                    field("Precio", text: $priceText, keyboard: .decimalPad)
+                    field("Kilómetros", text: $mileageText, keyboard: .numberPad)
+                    field("Potencia CV", text: $powerCvText, keyboard: .numberPad)
+                    field("Combustible", text: $fuel)
+                    field("Transmisión", text: $transmission)
+                    field("Color", text: $color)
+                    field("Etiqueta DGT", text: $dgtLabel)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Descripción")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.62))
+                        TextEditor(text: $listingDescription)
+                            .frame(minHeight: 120)
+                            .padding(8)
+                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .foregroundStyle(.white)
+                    }
+
+                    if let infoMessage, !infoMessage.isEmpty {
+                        Text(infoMessage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.green.opacity(0.9))
+                    }
+
+                    if let errorMessage, !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.red.opacity(0.95))
+                    }
+
+                    Button {
+                        Task { await saveChanges() }
+                    } label: {
+                        HStack {
+                            if isSaving { ProgressView().tint(.white) }
+                            Text(isSaving ? "Guardando..." : "Guardar cambios")
+                                .font(.system(size: 15, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.16), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSaving)
+                    .opacity(isSaving ? 0.6 : 1)
+                }
+                .padding(16)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Editar coche")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { await toggleDictation() }
+                    } label: {
+                        Image(systemName: isDictating ? "stop.circle.fill" : "mic.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(isDictating ? Color.red.opacity(0.95) : Color.white.opacity(0.95))
+                    }
+                    .accessibilityLabel(isDictating ? "Detener dictado" : "Iniciar dictado")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cerrar") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onDisappear { stopDictationIfNeeded() }
+        .task {
+            loadFromCar()
+        }
+    }
+
+    private func field(_ title: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.62))
+            TextField("", text: text)
+                .keyboardType(keyboard)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    @MainActor
+    private func toggleDictation() async {
+        if isDictating {
+            stopDictationAndApply()
+        } else {
+            await startDictation()
+        }
+    }
+
+    @MainActor
+    private func startDictation() async {
+        errorMessage = nil
+        infoMessage = nil
+        let micGranted = await requestMicrophonePermission()
+        guard micGranted else {
+            errorMessage = "Activa micrófono en Ajustes para dictar."
+            return
+        }
+        let speechGranted = await transcriber.requestSpeechAuthorization()
+        guard speechGranted else {
+            errorMessage = "Activa reconocimiento de voz en Ajustes."
+            return
+        }
+        do {
+            isDictating = true
+            try transcriber.startLiveTranscription()
+        } catch {
+            isDictating = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func stopDictationAndApply() {
+        let spoken = transcriber.partialText.trimmingCharacters(in: .whitespacesAndNewlines)
+        transcriber.stopLiveTranscription()
+        isDictating = false
+        guard !spoken.isEmpty else { return }
+        applyDictatedText(spoken)
+    }
+
+    private func stopDictationIfNeeded() {
+        guard isDictating else { return }
+        transcriber.stopLiveTranscription()
+        isDictating = false
+    }
+
+    private func applyDictatedText(_ spoken: String) {
+        let parsed = VehicleDictationParser.parse(spoken)
+        if let v = parsed.brand { brand = v }
+        if let v = parsed.model { model = v }
+        if let v = parsed.year { yearText = String(v) }
+        if let v = parsed.plate { plate = v }
+        if let v = parsed.price { priceText = String(format: "%.0f", v) }
+        if let v = parsed.mileage { mileageText = String(v) }
+        if let v = parsed.powerCv { powerCvText = String(v) }
+        if let v = parsed.fuelType { fuel = v }
+        if let v = parsed.transmission { transmission = v }
+        if let v = parsed.color { color = v }
+        if let v = parsed.dgtLabel { dgtLabel = v }
+        if let v = parsed.description { listingDescription = v }
+        infoMessage = "Dictado aplicado. Revisa los campos antes de guardar."
+    }
+
+    @MainActor
+    private func saveChanges() async {
+        errorMessage = nil
+        infoMessage = nil
+        isSaving = true
+        defer { isSaving = false }
+
+        guard let year = Int(yearText.filter(\.isNumber)), (1950 ... 2035).contains(year) else {
+            errorMessage = "Año no válido."
+            return
+        }
+        let price = Self.parseOptionalDouble(priceText)
+        let mileage = Self.parseOptionalInt(mileageText)
+        let power = Self.parseOptionalInt(powerCvText)
+
+        let payload = VehicleAppListingPayload(
+            brand: brand,
+            model: model,
+            year: year,
+            licensePlate: Self.trimmed(plate),
+            salePriceEUR: price,
+            purchasePriceEUR: nil,
+            marketPriceEUR: nil,
+            financedPriceEUR: nil,
+            mileageKm: mileage,
+            powerCv: power,
+            fuelType: Self.trimmed(fuel),
+            transmission: Self.trimmed(transmission),
+            vin: nil,
+            exteriorColor: Self.trimmed(color),
+            listingDescription: Self.trimmed(listingDescription),
+            dgtLabel: Self.trimmed(dgtLabel),
+            listingExtra: nil
+        )
+
+        do {
+            _ = try await VehiclesService.updateVehicleFromApp(vehicleId: car.id, payload: payload)
+            onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadFromCar() {
+        brand = car.brandName ?? ""
+        model = car.model
+        yearText = String(car.year)
+        plate = car.plate == "—" ? "" : car.plate
+        if let p = car.listPriceEUR {
+            priceText = String(format: "%.0f", p)
+        }
+        if let km = car.mileageKm {
+            mileageText = String(km)
+        }
+        if let p = car.powerCv {
+            powerCvText = String(p)
+        }
+        fuel = car.fuelType ?? ""
+        transmission = car.transmission ?? ""
+        color = car.exteriorColorLabel ?? ""
+        dgtLabel = car.dgtLabel ?? ""
+    }
+
+    private static func trimmed(_ raw: String) -> String? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private static func parseOptionalDouble(_ raw: String) -> Double? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return nil }
+        let normalized = t
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .filter { "0123456789.".contains($0) }
+        return Double(normalized)
+    }
+
+    private static func parseOptionalInt(_ raw: String) -> Int? {
+        let digits = raw.filter(\.isNumber)
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    private func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { cont in
+            AVAudioSession.sharedInstance().requestRecordPermission { ok in
+                cont.resume(returning: ok)
+            }
+        }
+    }
+}
+
+private struct VehicleDictationFields {
+    var brand: String?
+    var model: String?
+    var year: Int?
+    var plate: String?
+    var price: Double?
+    var mileage: Int?
+    var powerCv: Int?
+    var fuelType: String?
+    var transmission: String?
+    var color: String?
+    var dgtLabel: String?
+    var description: String?
+}
+
+private enum VehicleDictationParser {
+    private static let stopWords = [
+        "modelo", "año", "ano", "matricula", "matrícula", "precio", "kilometros", "kilómetros",
+        "combustible", "transmision", "transmisión", "color", "descripcion", "descripción", "potencia", "cv", "dgt",
+    ]
+
+    static func parse(_ text: String) -> VehicleDictationFields {
+        var out = VehicleDictationFields()
+        out.brand = extract(after: "marca", in: text)
+        out.model = extract(after: "modelo", in: text)
+        if let y = extract(after: "año", in: text) ?? extract(after: "ano", in: text) {
+            out.year = Int(y.filter(\.isNumber))
+        }
+        if let m = extract(after: "matrícula", in: text) ?? extract(after: "matricula", in: text) {
+            out.plate = m.replacingOccurrences(of: " ", with: "").uppercased()
+        }
+        if let p = extract(after: "precio", in: text) {
+            out.price = parseDouble(p)
+        }
+        if let km = extract(after: "kilómetros", in: text) ?? extract(after: "kilometros", in: text) {
+            out.mileage = Int(km.filter(\.isNumber))
+        }
+        if let cv = extract(after: "potencia", in: text) ?? extract(after: "cv", in: text) {
+            out.powerCv = Int(cv.filter(\.isNumber))
+        }
+        out.fuelType = extract(after: "combustible", in: text)
+        out.transmission = extract(after: "transmisión", in: text) ?? extract(after: "transmision", in: text)
+        out.color = extract(after: "color", in: text)
+        out.dgtLabel = extract(after: "dgt", in: text)
+        out.description = extract(after: "descripción", in: text) ?? extract(after: "descripcion", in: text)
+        return out
+    }
+
+    private static func extract(after field: String, in text: String) -> String? {
+        let normalized = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let key = field.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        guard let range = normalized.range(of: key) else { return nil }
+        let start = normalized[range.upperBound...]
+        var candidate = start.trimmingCharacters(in: .whitespacesAndNewlines)
+        if candidate.hasPrefix(":") || candidate.hasPrefix("-") {
+            candidate.removeFirst()
+            candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if candidate.isEmpty { return nil }
+        let endIndex = firstStopWordIndex(in: candidate)
+        let value = endIndex.map { String(candidate[..<$0]) } ?? String(candidate)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func firstStopWordIndex(in text: String) -> String.Index? {
+        let lower = text.lowercased()
+        var best: String.Index?
+        for word in stopWords {
+            guard let r = lower.range(of: " \(word)") else { continue }
+            if let b = best {
+                if r.lowerBound < b { best = r.lowerBound }
+            } else {
+                best = r.lowerBound
+            }
+        }
+        return best
+    }
+
+    private static func parseDouble(_ value: String) -> Double? {
+        let normalized = value
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .filter { "0123456789.".contains($0) }
+        return Double(normalized)
     }
 }
 

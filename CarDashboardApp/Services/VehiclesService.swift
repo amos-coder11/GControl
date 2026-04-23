@@ -541,6 +541,26 @@ enum VehiclesService {
         }
     }
 
+    enum UpdateVehicleError: LocalizedError {
+        case notAuthenticated
+        case noTenantAssigned
+        case invalidForm(String)
+        case notAllowedForTenant
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "Inicia sesión para editar vehículos."
+            case .noTenantAssigned:
+                return "Tu cuenta no tiene organización ni empresa asignada."
+            case let .invalidForm(msg):
+                return msg
+            case .notAllowedForTenant:
+                return "No tienes permisos para editar este vehículo en tu empresa."
+            }
+        }
+    }
+
     /// Insert: ficha completa + columnas de anuncio cuando existen en BD (`listing_extra` jsonb, precios, etc.).
     private struct VehicleInsertRow: Encodable, Sendable {
         let id: UUID
@@ -588,6 +608,40 @@ enum VehiclesService {
             try c.encodeIfPresent(financed_price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.financedPrice))
             try c.encodeIfPresent(listing_description, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.listingDescription))
             try c.encodeIfPresent(listing_extra, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.listingExtra))
+        }
+    }
+
+    /// Patch de edición rápida desde listado (dictado / formulario).
+    private struct VehicleUpdateRow: Encodable, Sendable {
+        let brand: String?
+        let model: String?
+        let year: Int?
+        let license_plate: String?
+        let price: Double?
+        let mileage: Int?
+        let power_cv: Int?
+        let fuel_type: String?
+        let transmission: String?
+        let vin: String?
+        let exterior_color: String?
+        let dgt_label: String?
+        let listing_description: String?
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: VehiclesInsertDynamicKey.self)
+            try c.encodeIfPresent(brand, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.brand))
+            try c.encodeIfPresent(model, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.model))
+            try c.encodeIfPresent(year, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.year))
+            try c.encodeIfPresent(license_plate, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.licensePlate))
+            try c.encodeIfPresent(price, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.price))
+            try c.encodeIfPresent(mileage, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.mileage))
+            try c.encodeIfPresent(power_cv, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.powerCv))
+            try c.encodeIfPresent(fuel_type, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.fuelType))
+            try c.encodeIfPresent(transmission, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.transmission))
+            try c.encodeIfPresent(vin, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.vin))
+            try c.encodeIfPresent(exterior_color, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.color))
+            try c.encodeIfPresent(dgt_label, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.dgtLabel))
+            try c.encodeIfPresent(listing_description, forKey: VehiclesInsertDynamicKey(VehiclesInsertColumnMap.listingDescription))
         }
     }
 
@@ -774,6 +828,72 @@ enum VehiclesService {
         } catch {
             return inserted
         }
+    }
+
+    /// Actualiza un vehículo existente, restringiendo por tenant del usuario actual (organization_id o company_id).
+    static func updateVehicleFromApp(
+        vehicleId: UUID,
+        payload: VehicleAppListingPayload,
+        client: SupabaseClient = SupabaseClientProvider.shared
+    ) async throws -> VehicleRow {
+        do {
+            _ = try await client.auth.session
+        } catch {
+            throw UpdateVehicleError.notAuthenticated
+        }
+
+        let b = payload.brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let m = payload.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !b.isEmpty, !m.isEmpty else {
+            throw UpdateVehicleError.invalidForm("Marca y modelo son obligatorios.")
+        }
+
+        guard (1950 ... 2035).contains(payload.year) else {
+            throw UpdateVehicleError.invalidForm("El año debe estar entre 1950 y 2035.")
+        }
+
+        let patch = VehicleUpdateRow(
+            brand: b,
+            model: m,
+            year: payload.year,
+            license_plate: trimmedNilIfEmpty(payload.licensePlate),
+            price: payload.salePriceEUR,
+            mileage: payload.mileageKm,
+            power_cv: payload.powerCv,
+            fuel_type: trimmedNilIfEmpty(payload.fuelType),
+            transmission: trimmedNilIfEmpty(payload.transmission),
+            vin: trimmedNilIfEmpty(payload.vin),
+            exterior_color: trimmedNilIfEmpty(payload.exteriorColor),
+            dgt_label: sanitizedDGTLabelForStorage(payload.dgtLabel),
+            listing_description: trimmedNilIfEmpty(payload.listingDescription)
+        )
+
+        let query = try client
+            .from(SupabaseClientProvider.vehiclesTableName)
+            .update(patch)
+            .eq("id", value: vehicleId.uuidString.lowercased())
+
+        do {
+            _ = try await query.execute()
+        } catch {
+            throw UpdateVehicleError.notAllowedForTenant
+        }
+
+        await patchVehicleExtendedColumns(
+            client: client,
+            vehicleId: vehicleId,
+            payload: payload
+        )
+
+        let refreshed: VehicleRow = try await client
+            .from(SupabaseClientProvider.vehiclesTableName)
+            .select()
+            .eq("id", value: vehicleId.uuidString.lowercased())
+            .single()
+            .execute()
+            .value
+
+        return refreshed
     }
 
     /// Actualiza la columna configurable (`main_image_url` por defecto) para que el listado marketplace muestre la portada sin listar Storage.
