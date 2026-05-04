@@ -63,6 +63,7 @@ struct LockScreenView: View {
                 .padding(.bottom, 36)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .zIndex(1)
         }
         .onAppear {
             pinEntry = ""
@@ -137,25 +138,27 @@ struct LockScreenView: View {
         }
         .frame(maxWidth: 400)
         .padding(.horizontal, 40)
+        .contentShape(Rectangle())
     }
 
     private func keypadDigitButton(_ digit: String) -> some View {
-        Button {
-            guard pinEntry.count < 6 else { return }
-            pinEntry.append(digit)
-            if pinEntry.count == 6 {
-                appLock.submitPIN(pinEntry)
+        Text(digit)
+            .font(.system(size: 28, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(minWidth: keypadButtonSize, minHeight: keypadButtonSize)
+            .background(Color.white.opacity(0.18), in: Circle())
+            .contentShape(Circle())
+            .opacity(appLock.isAuthenticating ? 0.45 : 1)
+            .allowsHitTesting(!appLock.isAuthenticating)
+            .onTapGesture {
+                guard pinEntry.count < 6 else { return }
+                pinEntry.append(digit)
+                if pinEntry.count == 6 {
+                    appLock.submitPIN(pinEntry)
+                }
             }
-        } label: {
-            Text(digit)
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: keypadButtonSize, height: keypadButtonSize)
-                .background(Color.white.opacity(0.18), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(appLock.isAuthenticating)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text("Dígito \(digit)"))
     }
 
     private var keypadBiometryButton: some View {
@@ -174,20 +177,22 @@ struct LockScreenView: View {
     }
 
     private var keypadDeleteButton: some View {
-        Button {
-            if !pinEntry.isEmpty {
-                pinEntry.removeLast()
-                appLock.authError = nil
+        Image(systemName: "delete.left")
+            .font(.system(size: 22, weight: .medium))
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(minWidth: keypadButtonSize, minHeight: keypadButtonSize)
+            .background(Color.white.opacity(0.12), in: Circle())
+            .contentShape(Circle())
+            .opacity(appLock.isAuthenticating ? 0.45 : 1)
+            .allowsHitTesting(!appLock.isAuthenticating)
+            .onTapGesture {
+                if !pinEntry.isEmpty {
+                    pinEntry.removeLast()
+                    appLock.authError = nil
+                }
             }
-        } label: {
-            Image(systemName: "delete.left")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .frame(width: keypadButtonSize, height: keypadButtonSize)
-                .background(Color.white.opacity(0.12), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text("Borrar"))
     }
 
     private var biometrySymbol: String {

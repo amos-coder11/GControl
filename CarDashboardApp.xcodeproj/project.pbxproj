@@ -727,7 +727,7 @@
 				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
@@ -762,7 +762,7 @@
 				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = D92F49ZXPK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;

@@ -59,6 +59,7 @@ struct PINSetupView: View {
                 Spacer(minLength: 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .zIndex(1)
         }
         .onChange(of: currentEntry) { _, new in
             guard new.count == 6 else { return }
@@ -96,14 +97,15 @@ struct PINSetupView: View {
 
     private var keypadButtonSize: CGFloat { 72 }
 
-    /// `LazyVGrid` + `Button` puede fallar en el reconocimiento de toques en iPad; `VStack`/`HStack` es estable.
+    /// Teclado numérico: `onTapGesture` + `contentShape` evita fallos de `Button` en iPad
+    /// (comportamiento reportado en revisión de App Store sobre «Crea tu PIN»).
     private var setupKeypad: some View {
         VStack(spacing: 18) {
             ForEach(0 ..< 3, id: \.self) { row in
                 HStack(spacing: 18) {
                     ForEach(0 ..< 3, id: \.self) { col in
                         let digit = String(row * 3 + col + 1)
-                        keypadDigitButton(digit)
+                        keypadDigitCell(digit)
                     }
                 }
             }
@@ -111,43 +113,44 @@ struct PINSetupView: View {
                 Color.clear
                     .frame(width: keypadButtonSize, height: keypadButtonSize)
                     .allowsHitTesting(false)
-                keypadDigitButton("0")
-                keypadDeleteButton
+                keypadDigitCell("0")
+                keypadDeleteCell
             }
         }
         .frame(maxWidth: 400)
         .padding(.horizontal, 40)
+        .contentShape(Rectangle())
     }
 
-    private func keypadDigitButton(_ digit: String) -> some View {
-        Button {
-            guard currentEntry.count < 6 else { return }
-            currentEntry.append(digit)
-        } label: {
-            Text(digit)
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: keypadButtonSize, height: keypadButtonSize)
-                .background(Color.white.opacity(0.18), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var keypadDeleteButton: some View {
-        Button {
-            if !currentEntry.isEmpty {
-                currentEntry.removeLast()
+    private func keypadDigitCell(_ digit: String) -> some View {
+        Text(digit)
+            .font(.system(size: 28, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(minWidth: keypadButtonSize, minHeight: keypadButtonSize)
+            .background(Color.white.opacity(0.18), in: Circle())
+            .contentShape(Circle())
+            .onTapGesture {
+                guard currentEntry.count < 6 else { return }
+                currentEntry.append(digit)
             }
-        } label: {
-            Image(systemName: "delete.left")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .frame(width: keypadButtonSize, height: keypadButtonSize)
-                .background(Color.white.opacity(0.12), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text("Dígito \(digit)"))
+    }
+
+    private var keypadDeleteCell: some View {
+        Image(systemName: "delete.left")
+            .font(.system(size: 22, weight: .medium))
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(minWidth: keypadButtonSize, minHeight: keypadButtonSize)
+            .background(Color.white.opacity(0.12), in: Circle())
+            .contentShape(Circle())
+            .onTapGesture {
+                if !currentEntry.isEmpty {
+                    currentEntry.removeLast()
+                }
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text("Borrar"))
     }
 }
 
