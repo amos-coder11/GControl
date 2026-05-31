@@ -24,6 +24,12 @@ struct LoginView: View {
     @State private var resetInfo: String?
     @State private var showHelpAlert = false
     @State private var showComingSoonAlert = false
+    @FocusState private var focusedField: AuthField?
+
+    private enum AuthField: Hashable {
+        case email
+        case password
+    }
 
     private var canSubmit: Bool {
         email.contains("@") && email.contains(".") && password.count >= 6
@@ -91,7 +97,7 @@ struct LoginView: View {
                 VStack(spacing: 14) {
                     Button {
                         phase = .signUp
-                        auth.lastErrorMessage = nil
+                        auth.clearAuthMessages()
                     } label: {
                         Text("Crear cuenta")
                             .font(.system(size: 17, weight: .semibold))
@@ -105,7 +111,7 @@ struct LoginView: View {
 
                     Button {
                         phase = .signIn
-                        auth.lastErrorMessage = nil
+                        auth.clearAuthMessages()
                     } label: {
                         Text("Iniciar sesión")
                             .font(.system(size: 17, weight: .semibold))
@@ -147,7 +153,7 @@ struct LoginView: View {
                 HStack {
                     circleNavButton(systemName: "chevron.left") {
                         phase = .welcome
-                        auth.lastErrorMessage = nil
+                        auth.clearAuthMessages()
                     }
                     Spacer()
                     circleNavButton(systemName: "questionmark") {
@@ -186,6 +192,9 @@ struct LoginView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .foregroundStyle(.white)
+                            .focused($focusedField, equals: .email)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .password }
                         }
 
                         authPillField {
@@ -196,14 +205,15 @@ struct LoginView: View {
                             )
                             .textContentType(phase == .signUp ? .newPassword : .password)
                             .foregroundStyle(.white)
+                            .focused($focusedField, equals: .password)
+                            .submitLabel(.go)
+                            .onSubmit {
+                                guard canSubmit, !isBusy else { return }
+                                Task { await submitAuth() }
+                            }
                         }
 
-                        if let msg = auth.lastErrorMessage {
-                            Text(msg)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.red.opacity(0.9))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        authFeedbackMessages
 
                         if phase == .signIn {
                             Button("¿Olvidaste la contraseña?") {
@@ -215,83 +225,102 @@ struct LoginView: View {
 
                             Button("¿No tienes cuenta? Crear cuenta") {
                                 phase = .signUp
-                                auth.lastErrorMessage = nil
+                                auth.clearAuthMessages()
                             }
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(authLinkBlue)
                         } else {
                             Button("¿Ya tienes cuenta? Iniciar sesión") {
                                 phase = .signIn
-                                auth.lastErrorMessage = nil
+                                auth.clearAuthMessages()
                             }
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(authLinkBlue)
+                        }
+
+                        continueButton
+                            .padding(.top, 4)
+
+                        authOrSeparator
+                            .padding(.top, 4)
+
+                        VStack(spacing: 12) {
+                            secondaryAuthRow(icon: "key.fill", title: "Continuar con passkey") {
+                                showComingSoonAlert = true
+                            }
+                            secondaryAuthRow(icon: "g.circle.fill", title: "Continuar con Google") {
+                                showComingSoonAlert = true
+                            }
+                            secondaryAuthRow(icon: "apple.logo", title: "Continuar con Apple") {
+                                showComingSoonAlert = true
+                            }
                         }
                     }
                     .frame(maxWidth: authColumnMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
                     .padding(.top, 20)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, horizontalSizeClass == .regular ? 48 : 28)
                 }
-
-                VStack(spacing: 14) {
-                    Button {
-                        Task {
-                            isBusy = true
-                            defer { isBusy = false }
-                            if phase == .signUp {
-                                await auth.signUp(email: email, password: password)
-                            } else {
-                                await auth.signIn(email: email, password: password)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isBusy {
-                                ProgressView()
-                                    .tint(canSubmit ? .black : .white.opacity(0.4))
-                            }
-                            Text("Continuar")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(canSubmit && !isBusy ? Color.white : Color.white.opacity(0.14))
-                        .foregroundStyle(canSubmit && !isBusy ? Color.black : Color.white.opacity(0.38))
-                        .clipShape(Capsule())
-                    }
-                    .disabled(!canSubmit || isBusy)
-                    .buttonStyle(.plain)
-
-                    authOrSeparator
-
-                    VStack(spacing: 12) {
-                        secondaryAuthRow(icon: "key.fill", title: "Continuar con passkey") {
-                            showComingSoonAlert = true
-                        }
-                        secondaryAuthRow(icon: "g.circle.fill", title: "Continuar con Google") {
-                            showComingSoonAlert = true
-                        }
-                        secondaryAuthRow(icon: "apple.logo", title: "Continuar con Apple") {
-                            showComingSoonAlert = true
-                        }
-                    }
-                }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0), Color.black.opacity(0.45)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea(edges: .bottom)
-                )
+                .scrollDismissesKeyboard(.interactively)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var authFeedbackMessages: some View {
+        if let msg = auth.lastErrorMessage {
+            Text(msg)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.red.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let msg = auth.lastInfoMessage {
+            Text(msg)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.55))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var continueButton: some View {
+        Button {
+            Task { await submitAuth() }
+        } label: {
+            HStack(spacing: 8) {
+                if isBusy {
+                    ProgressView()
+                        .tint(canSubmit ? .black : .white.opacity(0.4))
+                }
+                Text("Continuar")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(canSubmit && !isBusy ? Color.white : Color.white.opacity(0.14))
+            .foregroundStyle(canSubmit && !isBusy ? Color.black : Color.white.opacity(0.38))
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .disabled(!canSubmit || isBusy)
+        .buttonStyle(.plain)
+    }
+
+    private func submitAuth() async {
+        focusedField = nil
+        isBusy = true
+        defer { isBusy = false }
+        if phase == .signUp {
+            let outcome = await auth.signUp(email: email, password: password)
+            switch outcome {
+            case .signedIn:
+                break
+            case .emailConfirmationRequired, .existingAccount:
+                phase = .signIn
+            case .failed:
+                break
+            }
+        } else {
+            await auth.signIn(email: email, password: password)
         }
     }
 

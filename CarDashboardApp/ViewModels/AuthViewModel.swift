@@ -3,6 +3,14 @@ import Foundation
 import Supabase
 import UIKit
 
+/// Resultado de intentar crear cuenta (para que la UI reaccione sin confundir éxito con error).
+enum SignUpOutcome: Equatable {
+    case signedIn
+    case emailConfirmationRequired
+    case existingAccount
+    case failed
+}
+
 @MainActor
 final class AuthViewModel: ObservableObject {
     private let client: SupabaseClient
@@ -10,6 +18,8 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var session: Session?
     @Published private(set) var isRestoringSession = true
     @Published var lastErrorMessage: String?
+    /// Mensajes informativos (éxito parcial, cuenta existente, etc.) — no son errores.
+    @Published var lastInfoMessage: String?
     /// Foto de perfil del usuario con sesión iniciada (`profiles.avatar_url` o metadatos OAuth).
     @Published private(set) var profileAvatarImage: UIImage?
     /// Empresa del usuario autenticado (cargada desde `profiles.company_id` vía RPC).
@@ -184,7 +194,7 @@ final class AuthViewModel: ObservableObject {
     }
 
     func signIn(email: String, password: String) async {
-        lastErrorMessage = nil
+        clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !password.isEmpty else {
             lastErrorMessage = "Introduce correo y contraseña."
@@ -195,33 +205,84 @@ final class AuthViewModel: ObservableObject {
             session = s
             scheduleProfileAvatarLoad()
         } catch {
-            lastErrorMessage = error.localizedDescription
+            lastErrorMessage = Self.mapAuthError(error)
         }
     }
 
-    func signUp(email: String, password: String) async {
-        lastErrorMessage = nil
+    @discardableResult
+    func signUp(email: String, password: String) async -> SignUpOutcome {
+        clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !password.isEmpty else {
             lastErrorMessage = "Introduce correo y contraseña."
-            return
+            return .failed
         }
         do {
             let response = try await client.auth.signUp(email: trimmed, password: password)
             if let s = response.session {
                 session = s
                 scheduleProfileAvatarLoad()
-            } else {
-                lastErrorMessage =
-                    "Cuenta creada. Si el proyecto exige confirmar el correo, revisa tu bandeja de entrada."
+                scheduleCompanyIdLoad()
+                scheduleOrganizationIdLoad()
+                return .signedIn
             }
+            lastInfoMessage =
+                "Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión."
+            return .emailConfirmationRequired
         } catch {
-            lastErrorMessage = error.localizedDescription
+            let mapped = Self.mapAuthError(error)
+            if Self.isExistingAccountError(error) {
+                lastInfoMessage = mapped
+                return .existingAccount
+            }
+            lastErrorMessage = mapped
+            return .failed
         }
     }
 
-    func signOut() async {
+    func clearAuthMessages() {
         lastErrorMessage = nil
+        lastInfoMessage = nil
+    }
+
+    /// Traduce errores habituales de Supabase Auth a mensajes claros en español.
+    private static func mapAuthError(_ error: Error) -> String {
+        let msg = error.localizedDescription.lowercased()
+        if isExistingAccountError(error) {
+            return "Ya existe una cuenta con este correo. Inicia sesión con tu contraseña."
+        }
+        if msg.contains("invalid login") || msg.contains("invalid credentials") {
+            return "Correo o contraseña incorrectos."
+        }
+        if msg.contains("password") && (msg.contains("weak") || msg.contains("short") || msg.contains("least")) {
+            return "La contraseña es demasiado débil. Usa al menos 6 caracteres."
+        }
+        if msg.contains("rate limit") || msg.contains("too many") || msg.contains("429") {
+            return "Demasiados intentos. Espera un momento e inténtalo de nuevo."
+        }
+        if msg.contains("network") || msg.contains("internet") || msg.contains("offline")
+            || msg.contains("timed out") || msg.contains("could not connect")
+        {
+            return "Sin conexión. Comprueba tu internet e inténtalo de nuevo."
+        }
+        if msg.contains("signup") && (msg.contains("disabled") || msg.contains("not allowed")) {
+            return "El registro no está disponible en este momento."
+        }
+        if msg.contains("invalid email") || msg.contains("valid email") {
+            return "Introduce un correo electrónico válido."
+        }
+        return error.localizedDescription
+    }
+
+    private static func isExistingAccountError(_ error: Error) -> Bool {
+        let msg = error.localizedDescription.lowercased()
+        return msg.contains("already registered")
+            || msg.contains("user already")
+            || msg.contains("user_already_exists")
+    }
+
+    func signOut() async {
+        clearAuthMessages()
         do {
             try await client.auth.signOut()
             profileAvatarTask?.cancel()
@@ -232,12 +293,12 @@ final class AuthViewModel: ObservableObject {
             organizationId = nil
             session = nil
         } catch {
-            lastErrorMessage = error.localizedDescription
+            lastErrorMessage = Self.mapAuthError(error)
         }
     }
 
     func resetPassword(email: String) async -> String? {
-        lastErrorMessage = nil
+        clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             lastErrorMessage = "Introduce tu correo."
@@ -247,7 +308,7 @@ final class AuthViewModel: ObservableObject {
             try await client.auth.resetPasswordForEmail(trimmed)
             return "Si existe una cuenta con ese correo, recibirás un enlace para restablecer la contraseña."
         } catch {
-            lastErrorMessage = error.localizedDescription
+            lastErrorMessage = Self.mapAuthError(error)
             return nil
         }
     }
