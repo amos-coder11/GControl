@@ -281,6 +281,47 @@ final class AuthViewModel: ObservableObject {
             || msg.contains("user_already_exists")
     }
 
+    /// Elimina la cuenta autenticada en Supabase Auth (`DELETE /auth/v1/user`) y cierra sesión local.
+    func deleteCurrentAccount() async throws {
+        clearAuthMessages()
+        guard let s = session else {
+            throw NSError(
+                domain: "CarHub.Auth",
+                code: 401,
+                userInfo: [NSLocalizedDescriptionKey: "No hay una sesión activa para eliminar."]
+            )
+        }
+        var request = URLRequest(url: SupabaseClientProvider.supabaseURL.appending(path: "auth/v1/user"))
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(SupabaseClientProvider.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(s.accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "CarHub.Auth",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "Respuesta inesperada del servidor."]
+            )
+        }
+        guard (200 ... 299).contains(http.statusCode) else {
+            throw NSError(
+                domain: "CarHub.Auth",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo eliminar la cuenta. Inténtalo de nuevo."]
+            )
+        }
+        try? await client.auth.signOut()
+        profileAvatarTask?.cancel()
+        companyIdTask?.cancel()
+        organizationIdTask?.cancel()
+        profileAvatarImage = nil
+        companyId = nil
+        organizationId = nil
+        session = nil
+    }
+
     func signOut() async {
         clearAuthMessages()
         do {

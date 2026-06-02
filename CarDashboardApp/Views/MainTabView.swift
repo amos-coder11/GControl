@@ -1,8 +1,10 @@
 import AVFoundation
 import Combine
+import PhotosUI
 import Speech
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Enrutador de pestañas (mismo módulo que `CarsView` / `DashboardView`)
 
@@ -129,13 +131,25 @@ private final class TeamAIAssistantSession: ObservableObject {
         let id: UUID
         let isUser: Bool
         let text: String
+        /// Imagen adjunta por el usuario desde Cámara / Fotos / Archivos.
+        let attachedImageData: Data?
+        let attachedSourceLabel: String?
         /// Tarjetas visuales (equipo / coches) parseadas del bloque `<<<VIERA_CARDS>>>`.
         var cardPayload: VieraCardPayload?
 
-        init(id: UUID = UUID(), isUser: Bool, text: String, cardPayload: VieraCardPayload? = nil) {
+        init(
+            id: UUID = UUID(),
+            isUser: Bool,
+            text: String,
+            attachedImageData: Data? = nil,
+            attachedSourceLabel: String? = nil,
+            cardPayload: VieraCardPayload? = nil
+        ) {
             self.id = id
             self.isUser = isUser
             self.text = text
+            self.attachedImageData = attachedImageData
+            self.attachedSourceLabel = attachedSourceLabel
             self.cardPayload = cardPayload
         }
     }
@@ -412,6 +426,33 @@ private final class TeamAIAssistantSession: ObservableObject {
                 self.statusHint = error.localizedDescription
                 self.isSending = false
             }
+        }
+    }
+
+    func appendImageBubble(_ image: UIImage, sourceLabel: String) {
+        let resized = Self.resizeForChat(image)
+        guard let jpeg = resized.jpegData(compressionQuality: 0.82) else { return }
+        let line = "Imagen adjunta desde \(sourceLabel)."
+        bubbles.append(
+            Bubble(
+                isUser: true,
+                text: line,
+                attachedImageData: jpeg,
+                attachedSourceLabel: sourceLabel
+            )
+        )
+    }
+
+    private static func resizeForChat(_ image: UIImage) -> UIImage {
+        let maxSide: CGFloat = 1400
+        let size = image.size
+        let longest = max(size.width, size.height)
+        guard longest > maxSide, longest > 0 else { return image }
+        let scale = maxSide / longest
+        let target = CGSize(width: floor(size.width * scale), height: floor(size.height * scale))
+        let renderer = UIGraphicsImageRenderer(size: target)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
         }
     }
 
@@ -836,6 +877,10 @@ struct TeamAITabView: View {
 
     @State private var showTextDraftSheet = false
     @State private var showPlusMenuSheet = false
+    @State private var showCameraPicker = false
+    @State private var showPhotoLibraryPicker = false
+    @State private var showDocumentPicker = false
+    @State private var selectedAIGalleryItem: PhotosPickerItem?
 
     @State private var speechSynth = AVSpeechSynthesizer()
     /// 0 ninguno, 1 pulgar arriba, -1 pulgar abajo (por id de burbuja del asistente).
@@ -946,6 +991,18 @@ struct TeamAITabView: View {
         .sheet(isPresented: $showPlusMenuSheet) {
             TeamAIPlusMenuSheet(
                 onDismiss: { showPlusMenuSheet = false },
+                onTapCamera: {
+                    showPlusMenuSheet = false
+                    showCameraPicker = true
+                },
+                onTapPhotos: {
+                    showPlusMenuSheet = false
+                    showPhotoLibraryPicker = true
+                },
+                onTapArchives: {
+                    showPlusMenuSheet = false
+                    showDocumentPicker = true
+                },
                 onWriteMessage: {
                     showPlusMenuSheet = false
                     showTextDraftSheet = true
@@ -953,6 +1010,48 @@ struct TeamAITabView: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+        }
+        .photosPicker(
+            isPresented: $showPhotoLibraryPicker,
+            selection: $selectedAIGalleryItem,
+            matching: .images
+        )
+        .sheet(isPresented: $showCameraPicker) {
+            TeamAICameraImagePicker { image in
+                if let image {
+                    session.appendImageBubble(image, sourceLabel: "Cámara")
+                } else {
+                    session.statusHint = "No se capturó ninguna imagen."
+                }
+            }
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            TeamAIImageDocumentPicker { image in
+                if let image {
+                    session.appendImageBubble(image, sourceLabel: "Archivos")
+                } else {
+                    session.statusHint = "No se pudo abrir el archivo como imagen."
+                }
+            }
+        }
+        .onChange(of: selectedAIGalleryItem) { _, item in
+            Task {
+                guard let item else { return }
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data)
+                {
+                    await MainActor.run {
+                        session.appendImageBubble(image, sourceLabel: "Fotos")
+                    }
+                } else {
+                    await MainActor.run {
+                        session.statusHint = "No se pudo cargar la imagen seleccionada."
+                    }
+                }
+                await MainActor.run {
+                    selectedAIGalleryItem = nil
+                }
+            }
         }
         .sheet(isPresented: $showTextDraftSheet) {
             TeamAILongMessageDraftSheet(
@@ -1167,17 +1266,29 @@ struct TeamAITabView: View {
                     Spacer(minLength: 8)
                     let bubbleHPadding: CGFloat = 14
                     let textMax = max(0, chatBubbleMaxUserWidth - bubbleHPadding * 2)
-                    Text(bubble.text)
-                        .font(.system(size: 15, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: textMax, alignment: .trailing)
-                        .padding(.horizontal, bubbleHPadding)
-                        .padding(.vertical, 10)
-                        .background {
-                            TeamAIGlassRoundedCardBackground(cornerRadius: 18)
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if let data = bubble.attachedImageData,
+                           let ui = UIImage(data: data)
+                        {
+                            Image(uiImage: ui)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: min(220, textMax), height: 160)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .fixedSize(horizontal: true, vertical: false)
+                        Text(bubble.text)
+                            .font(.system(size: 15, weight: .regular, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.92))
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: textMax, alignment: .trailing)
+                    }
+                    .padding(.horizontal, bubbleHPadding)
+                    .padding(.vertical, 10)
+                    .background {
+                        TeamAIGlassRoundedCardBackground(cornerRadius: 18)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
@@ -1504,6 +1615,9 @@ private struct TeamAIGlassRoundedCardBackground: View {
 private struct TeamAIPlusMenuSheet: View {
     @Environment(\.dismiss) private var dismiss
     var onDismiss: () -> Void
+    var onTapCamera: () -> Void
+    var onTapPhotos: () -> Void
+    var onTapArchives: () -> Void
     var onWriteMessage: () -> Void
 
     var body: some View {
@@ -1511,9 +1625,9 @@ private struct TeamAIPlusMenuSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack(spacing: 14) {
-                        plusQuickButton(icon: "camera.fill", title: "Cámara")
-                        plusQuickButton(icon: "photo.on.rectangle", title: "Fotos")
-                        plusQuickButton(icon: "paperclip", title: "Archivos")
+                        plusQuickButton(icon: "camera.fill", title: "Cámara", action: onTapCamera)
+                        plusQuickButton(icon: "photo.on.rectangle", title: "Fotos", action: onTapPhotos)
+                        plusQuickButton(icon: "paperclip", title: "Archivos", action: onTapArchives)
                     }
                     .padding(.top, 4)
 
@@ -1562,9 +1676,9 @@ private struct TeamAIPlusMenuSheet: View {
         .preferredColorScheme(.dark)
     }
 
-    private func plusQuickButton(icon: String, title: String) -> some View {
+    private func plusQuickButton(icon: String, title: String, action: @escaping () -> Void) -> some View {
         Button {
-            onDismiss()
+            action()
             dismiss()
         } label: {
             VStack(spacing: 10) {
@@ -1654,6 +1768,89 @@ private enum MainTabBarAppearance {
         bar.unselectedItemTintColor = normal
         bar.barTintColor = nil
         bar.backgroundColor = .clear
+    }
+}
+
+private struct TeamAICameraImagePicker: UIViewControllerRepresentable {
+    var onPick: (UIImage?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.mediaTypes = ["public.image"]
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onPick: (UIImage?) -> Void
+
+        init(onPick: @escaping (UIImage?) -> Void) {
+            self.onPick = onPick
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            onPick(nil)
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            let image = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage)
+            onPick(image)
+        }
+    }
+}
+
+private struct TeamAIImageDocumentPicker: UIViewControllerRepresentable {
+    var onPick: (UIImage?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (UIImage?) -> Void
+
+        init(onPick: @escaping (UIImage?) -> Void) {
+            self.onPick = onPick
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onPick(nil)
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else {
+                onPick(nil)
+                return
+            }
+            let granted = url.startAccessingSecurityScopedResource()
+            defer {
+                if granted { url.stopAccessingSecurityScopedResource() }
+            }
+            guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else {
+                onPick(nil)
+                return
+            }
+            onPick(image)
+        }
     }
 }
 

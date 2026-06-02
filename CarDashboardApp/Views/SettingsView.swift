@@ -9,6 +9,9 @@ struct SettingsView: View {
 
     @State private var settingsSearchText = ""
     @FocusState private var settingsSearchFieldFocused: Bool
+    @State private var showDeleteAccountConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
 
     var body: some View {
         RevolutChromeContainer {
@@ -72,6 +75,34 @@ struct SettingsView: View {
                 client: SupabaseClientProvider.shared,
                 userId: uid
             )
+        }
+        .confirmationDialog(
+            "Eliminar cuenta",
+            isPresented: $showDeleteAccountConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar cuenta", role: .destructive) {
+                Task {
+                    isDeletingAccount = true
+                    defer { isDeletingAccount = false }
+                    do {
+                        try await auth.deleteCurrentAccount()
+                    } catch {
+                        deleteAccountError = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Esta acción elimina tu cuenta y no se puede deshacer.")
+        }
+        .alert("No se pudo eliminar la cuenta", isPresented: Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) { deleteAccountError = nil }
+        } message: {
+            Text(deleteAccountError ?? "")
         }
     }
 
@@ -196,6 +227,47 @@ struct SettingsView: View {
     private var accountSection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 4) {
             VStack(spacing: 0) {
+                Button {
+                    showDeleteAccountConfirm = true
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .environment(\.colorScheme, .dark)
+                                .frame(width: 32, height: 32)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                                }
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.red.opacity(0.95))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(isDeletingAccount ? "Eliminando cuenta..." : "Eliminar cuenta")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white)
+                            Text("Borra permanentemente tu cuenta de CarHub.")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        Spacer()
+                        if isDeletingAccount {
+                            ProgressView()
+                                .tint(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .disabled(isDeletingAccount)
+
+                Divider()
+                    .overlay(Color.white.opacity(0.08))
+                    .padding(.leading, 62)
+
                 Button {
                     Task { await auth.signOut() }
                 } label: {
