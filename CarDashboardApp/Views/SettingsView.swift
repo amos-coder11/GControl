@@ -4,6 +4,8 @@ import UIKit
 struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var auth: AuthViewModel
+    @EnvironmentObject var moderation: UserModerationStore
+    @EnvironmentObject var communityVM: DashboardCommunityViewModel
 
     @AppStorage(VehicleImageDiagnostics.userDefaultsKey) private var logVehicleImageDiagnostics = false
 
@@ -12,6 +14,7 @@ struct SettingsView: View {
     @State private var showDeleteAccountConfirm = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
+    @State private var showTermsSheet = false
 
     var body: some View {
         RevolutChromeContainer {
@@ -45,6 +48,7 @@ struct SettingsView: View {
                         profileSection
                         if auth.isAuthenticated {
                             notificationsSection
+                            communitySafetySection
                         }
                         developerSection
                         accountSection
@@ -103,6 +107,86 @@ struct SettingsView: View {
             Button("Aceptar", role: .cancel) { deleteAccountError = nil }
         } message: {
             Text(deleteAccountError ?? "")
+        }
+        .sheet(isPresented: $showTermsSheet) {
+            UGCTermsView()
+        }
+    }
+
+    // MARK: - Comunidad y seguridad
+
+    private var communitySafetySection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 4) {
+            VStack(spacing: 0) {
+                Button {
+                    showTermsSheet = true
+                } label: {
+                    settingsRow(
+                        icon: "doc.text.fill",
+                        iconColor: PremiumAccent.tabActive,
+                        title: "Términos de uso (EULA)"
+                    ) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if !moderation.blockedUserIds.isEmpty {
+                    Divider()
+                        .overlay(Color.white.opacity(0.08))
+                        .padding(.leading, 62)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Usuarios bloqueados")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 6)
+
+                        ForEach(Array(moderation.blockedUserIds).sorted { $0.uuidString < $1.uuidString }, id: \.self) { uid in
+                            let name = communityVM.directory.first(where: { $0.userId == uid })?.resolvedDisplayName ?? "Usuario"
+                            HStack {
+                                Text(name)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Button("Desbloquear") {
+                                    Task { await moderation.unblockUser(uid) }
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1.0))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                    }
+                }
+
+                Divider()
+                    .overlay(Color.white.opacity(0.08))
+                    .padding(.leading, 62)
+
+                settingsRow(
+                    icon: "shield.lefthalf.filled",
+                    iconColor: Color(red: 0.45, green: 0.88, blue: 0.62),
+                    title: "Moderación"
+                ) {
+                    EmptyView()
+                }
+                .overlay(alignment: .bottom) {
+                    Text("Denuncias revisadas en ≤24 h. Puedes denunciar o bloquear desde cualquier chat.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offset(y: 28)
+                }
+                .padding(.bottom, 28)
+            }
         }
     }
 
@@ -357,4 +441,6 @@ struct SettingsView: View {
     SettingsView()
         .environmentObject(SettingsViewModel())
         .environmentObject(AuthViewModel())
+        .environmentObject(UserModerationStore())
+        .environmentObject(DashboardCommunityViewModel())
 }

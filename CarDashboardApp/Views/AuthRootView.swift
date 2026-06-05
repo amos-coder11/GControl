@@ -6,6 +6,8 @@ struct AuthRootView: View {
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var appLock: AppLockManager
+    @EnvironmentObject var moderationStore: UserModerationStore
+    @State private var showPostAuthTerms = false
 
     var body: some View {
         Group {
@@ -16,7 +18,18 @@ struct AuthRootView: View {
                     ProgressView("Conectando…")
                 }
             } else if auth.isAuthenticated {
-                if !appLock.hasPINConfigured {
+                if !moderationStore.hasAcceptedCurrentTerms {
+                    UGCTermsAcceptanceSheet(isPresented: $showPostAuthTerms) {
+                        Task {
+                            if let uid = auth.session?.user.id {
+                                _ = await moderationStore.acceptTerms(userId: uid)
+                            } else {
+                                moderationStore.acceptTermsLocallyBeforeAuth()
+                            }
+                        }
+                    }
+                    .onAppear { showPostAuthTerms = true }
+                } else if !appLock.hasPINConfigured {
                     PINSetupView()
                 } else if !appLock.isUnlocked {
                     LockScreenView()

@@ -33,6 +33,7 @@ struct ChatView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
+    @EnvironmentObject private var moderation: UserModerationStore
     @State private var path = NavigationPath()
     @State private var listSegment: ChatInboxListSegment = .team
     @FocusState private var chatSearchFieldFocused: Bool
@@ -192,13 +193,20 @@ struct ChatView: View {
         .onChange(of: communityVM.directory) { _, _ in
             syncTeamThreadsFromDirectory()
         }
+        .onChange(of: moderation.blockedUserIds) { _, _ in
+            syncTeamThreadsFromDirectory()
+        }
         .onChange(of: chatNav.threadToOpen?.id) { _, _ in
             openPendingChatNavigation()
         }
     }
 
     private func syncTeamThreadsFromDirectory() {
-        inbox.syncTeamThreads(from: communityVM.directory, currentUserId: auth.session?.user.id)
+        inbox.syncTeamThreads(
+            from: communityVM.directory,
+            currentUserId: auth.session?.user.id,
+            blockedUserIds: moderation.blockedUserIds
+        )
     }
 
     private func openPendingChatNavigation() {

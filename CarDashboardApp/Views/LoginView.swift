@@ -13,6 +13,7 @@ private let authLinkBlue = Color(red: 0.35, green: 0.55, blue: 1.0)
 
 struct LoginView: View {
     @ObservedObject var auth: AuthViewModel
+    @EnvironmentObject private var moderation: UserModerationStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var phase: AuthPhase = .welcome
@@ -24,6 +25,8 @@ struct LoginView: View {
     @State private var resetInfo: String?
     @State private var showHelpAlert = false
     @State private var showComingSoonAlert = false
+    @State private var showTermsSheet = false
+    @State private var pendingAuthAfterTerms = false
     @FocusState private var focusedField: AuthField?
 
     private enum AuthField: Hashable {
@@ -64,6 +67,15 @@ struct LoginView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Esta opción estará disponible en una próxima actualización.")
+        }
+        .sheet(isPresented: $showTermsSheet) {
+            UGCTermsAcceptanceSheet(isPresented: $showTermsSheet) {
+                moderation.acceptTermsLocallyBeforeAuth()
+                if pendingAuthAfterTerms {
+                    pendingAuthAfterTerms = false
+                    Task { await submitAuth() }
+                }
+            }
         }
     }
 
@@ -223,12 +235,18 @@ struct LoginView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(authLinkBlue)
 
-                            Button("¿No tienes cuenta? Crear cuenta") {
-                                phase = .signUp
-                                auth.clearAuthMessages()
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
+                        Button("¿No tienes cuenta? Crear cuenta") {
+                            phase = .signUp
+                            auth.clearAuthMessages()
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(authLinkBlue)
+
+                        Button("Ver Términos de uso (EULA)") {
+                            showTermsSheet = true
+                        }
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(authLinkBlue.opacity(0.85))
                         } else {
                             Button("¿Ya tienes cuenta? Iniciar sesión") {
                                 phase = .signIn
@@ -240,6 +258,11 @@ struct LoginView: View {
 
                         continueButton
                             .padding(.top, 4)
+
+                        if phase == .signUp {
+                            termsAcceptanceRow
+                                .padding(.top, 2)
+                        }
 
                         authOrSeparator
                             .padding(.top, 4)
@@ -305,8 +328,30 @@ struct LoginView: View {
         .buttonStyle(.plain)
     }
 
+    private var termsAcceptanceRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: moderation.hasAcceptedCurrentTerms ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(moderation.hasAcceptedCurrentTerms ? Color.green : Color.white.opacity(0.45))
+                Text("Debes aceptar los Términos de uso antes de crear cuenta. No hay tolerancia para contenido objetable ni usuarios abusivos.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.72))
+            }
+            Button("Ver Términos de uso (EULA)") {
+                showTermsSheet = true
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(authLinkBlue)
+        }
+    }
+
     private func submitAuth() async {
         focusedField = nil
+        guard moderation.hasAcceptedCurrentTerms else {
+            pendingAuthAfterTerms = true
+            showTermsSheet = true
+            return
+        }
         isBusy = true
         defer { isBusy = false }
         if phase == .signUp {
@@ -423,4 +468,5 @@ struct LoginView: View {
 
 #Preview {
     LoginView(auth: AuthViewModel())
+        .environmentObject(UserModerationStore())
 }

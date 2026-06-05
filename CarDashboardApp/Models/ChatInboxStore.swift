@@ -92,6 +92,7 @@ final class ChatInboxStore: ObservableObject {
 
     private var lastTeamDirectorySnapshot: [CommunityProfilesService.DirectoryRow] = []
     private var lastTeamDirectoryUserId: UUID?
+    private var blockedUserIdsForSync: Set<UUID> = []
     @Published private(set) var pinOverride: [UUID: Bool] = [:]
     @Published private(set) var unreadOverride: [UUID: Int] = [:]
 
@@ -294,7 +295,11 @@ final class ChatInboxStore: ObservableObject {
     }
 
     /// Sincroniza hilos de equipo desde el directorio (grupo + un DM por compañero, excluyéndote).
-    func syncTeamThreads(from directory: [CommunityProfilesService.DirectoryRow], currentUserId: UUID?) {
+    func syncTeamThreads(
+        from directory: [CommunityProfilesService.DirectoryRow],
+        currentUserId: UUID?,
+        blockedUserIds: Set<UUID> = []
+    ) {
         lastTeamDirectorySnapshot = directory
         lastTeamDirectoryUserId = currentUserId
         if directory.isEmpty {
@@ -309,6 +314,7 @@ final class ChatInboxStore: ObservableObject {
         teamGroupChatThread = tg
         let peers = directory
             .filter { $0.userId != currentUserId }
+            .filter { !blockedUserIds.contains($0.userId) }
             .sorted { a, b in
                 let da = teamDirectLastActivityAt[a.userId] ?? .distantPast
                 let db = teamDirectLastActivityAt[b.userId] ?? .distantPast
@@ -359,9 +365,16 @@ final class ChatInboxStore: ObservableObject {
         refreshTeamThreadsFromSnapshot()
     }
 
-    private func refreshTeamThreadsFromSnapshot() {
+    func refreshTeamThreadsFromSnapshot(blockedUserIds: Set<UUID>? = nil) {
+        if let ids = blockedUserIds {
+            blockedUserIdsForSync = ids
+        }
         guard !lastTeamDirectorySnapshot.isEmpty else { return }
-        syncTeamThreads(from: lastTeamDirectorySnapshot, currentUserId: lastTeamDirectoryUserId)
+        syncTeamThreads(
+            from: lastTeamDirectorySnapshot,
+            currentUserId: lastTeamDirectoryUserId,
+            blockedUserIds: blockedUserIdsForSync
+        )
     }
 
     func applyTeamGroupOutgoing(body: String, date: Date) {

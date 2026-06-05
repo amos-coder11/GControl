@@ -41,6 +41,13 @@ enum TeamGroupMessagesService {
         guard !trimmed.isEmpty else {
             throw NSError(domain: "TeamGroupMessages", code: 0, userInfo: [NSLocalizedDescriptionKey: "Vacío"])
         }
+        if ContentModerationFilter.containsObjectionableContent(trimmed) {
+            throw NSError(
+                domain: "TeamGroupMessages",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "El mensaje incluye lenguaje no permitido."]
+            )
+        }
         let inserted: Row = try await client
             .from(tableName)
             .insert(NewRow(body: trimmed))

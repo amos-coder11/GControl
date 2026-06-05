@@ -42,6 +42,8 @@ private struct ChatMessage: Identifiable, Equatable {
     let sortKey: Date
     /// Solo salientes; `nil` en entrantes.
     let receipt: OutgoingReceipt?
+    /// Remitente del mensaje (para denuncias / bloqueo).
+    let senderUserId: UUID?
 
     init(
         id: UUID = UUID(),
@@ -50,7 +52,8 @@ private struct ChatMessage: Identifiable, Equatable {
         time: String,
         receipt: OutgoingReceipt? = nil,
         sortKey: Date = Date(),
-        voiceStoragePath: String? = nil
+        voiceStoragePath: String? = nil,
+        senderUserId: UUID? = nil
     ) {
         self.id = id
         self.text = text
@@ -60,6 +63,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.time = time
         self.sortKey = sortKey
         self.receipt = isOutgoing ? (receipt ?? .read) : nil
+        self.senderUserId = senderUserId
     }
 
     init(
@@ -69,7 +73,8 @@ private struct ChatMessage: Identifiable, Equatable {
         time: String,
         receipt: OutgoingReceipt? = nil,
         sortKey: Date = Date(),
-        voiceStoragePath: String? = nil
+        voiceStoragePath: String? = nil,
+        senderUserId: UUID? = nil
     ) {
         self.id = id
         self.text = nil
@@ -79,6 +84,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.time = time
         self.sortKey = sortKey
         self.receipt = isOutgoing ? (receipt ?? .read) : nil
+        self.senderUserId = senderUserId
     }
 
     init(
@@ -87,7 +93,8 @@ private struct ChatMessage: Identifiable, Equatable {
         isOutgoing: Bool,
         time: String,
         receipt: OutgoingReceipt?,
-        sortKey: Date
+        sortKey: Date,
+        senderUserId: UUID? = nil
     ) {
         self.id = id
         self.text = nil
@@ -97,6 +104,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.time = time
         self.sortKey = sortKey
         self.receipt = isOutgoing ? (receipt ?? .read) : nil
+        self.senderUserId = senderUserId
     }
 
     static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
@@ -132,6 +140,7 @@ struct ChatConversationView: View {
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var moderation: UserModerationStore
     @State private var liveMessages: [ChatMessage] = []
     @State private var draft = ""
     @State private var selectedPhoto: PhotosPickerItem?
@@ -153,6 +162,20 @@ struct ChatConversationView: View {
     @State private var teamVoiceRecorder: AVAudioRecorder?
     @State private var teamVoiceURL: URL?
     @State private var teamVoiceError: String?
+    @State private var reportTarget: ModerationTarget?
+    @State private var showBlockConfirm = false
+    @State private var moderationAlertMessage: String?
+    @State private var showModerationAlert = false
+    @State private var showObjectionableContentAlert = false
+
+    private struct ModerationTarget: Identifiable {
+        let id = UUID()
+        let userId: UUID
+        let userName: String
+        let contentType: UserModerationService.ContentType
+        let contentId: UUID?
+        let contentPreview: String?
+    }
 
     private var mockMsgs: [ChatMessage] {
         Self.mockMessages(for: thread)
@@ -174,14 +197,18 @@ struct ChatConversationView: View {
 
     private var teamDirectUIMessages: [ChatMessage] {
         guard let myId = auth.session?.user.id else { return [] }
-        return teamDirectRows.map { Self.chatMessage(from: $0, myUserId: myId) }
+        return teamDirectRows
+            .filter { !moderation.isBlocked($0.senderId) }
+            .map { Self.chatMessage(from: $0, myUserId: myId) }
     }
 
     private var teamGroupUIMessages: [ChatMessage] {
         guard let myId = auth.session?.user.id else { return [] }
-        return teamGroupRows.map {
-            Self.chatMessageGroup(from: $0, myUserId: myId, directory: communityVM.directory)
-        }
+        return teamGroupRows
+            .filter { !moderation.isBlocked($0.senderId) }
+            .map {
+                Self.chatMessageGroup(from: $0, myUserId: myId, directory: communityVM.directory)
+            }
     }
 
     /// Mensajes de texto e imágenes mezclados con tareas del coordinador por `created_at` / hora local.
@@ -356,7 +383,32 @@ struct ChatConversationView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                conversationAvatar
+                HStack(spacing: 8) {
+                    if usesTeamDirectServer || usesTeamGroupServer {
+                        Menu {
+                            if let target = primaryModerationTarget {
+                                Button {
+                                    reportTarget = target
+                                } label: {
+                                    Label("Denunciar contenido", systemImage: "exclamationmark.bubble")
+                                }
+                                Button(role: .destructive) {
+                                    if let target = primaryModerationTarget {
+                                        reportTarget = target
+                                        showBlockConfirm = true
+                                    }
+                                } label: {
+                                    Label("Bloquear usuario", systemImage: "hand.raised.fill")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    conversationAvatar
+                }
             }
         }
         .onChange(of: selectedPhoto) { _, newItem in
@@ -463,6 +515,38 @@ struct ChatConversationView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .sheet(item: $reportTarget) { target in
+            ContentReportSheet(
+                reportedUserName: target.userName,
+                reportedUserId: target.userId,
+                contentType: target.contentType,
+                contentId: target.contentId,
+                contentPreview: target.contentPreview
+            )
+            .environmentObject(moderation)
+        }
+        .confirmationDialog(
+            "Bloquear usuario",
+            isPresented: $showBlockConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Bloquear y ocultar contenido", role: .destructive) {
+                Task { await blockPrimaryTarget() }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Dejarás de ver los mensajes de esta persona y se enviará un informe al equipo de CarHub.")
+        }
+        .alert("Contenido no permitido", isPresented: $showObjectionableContentAlert) {
+            Button("Entendido", role: .cancel) {}
+        } message: {
+            Text("Tu mensaje incluye lenguaje no permitido. Modifícalo antes de enviar.")
+        }
+        .alert("Moderación", isPresented: $showModerationAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(moderationAlertMessage ?? "")
+        }
     }
 
     /// Mismos márgenes horizontales que el hilo de mensajes (atrás / avatar).
@@ -552,6 +636,31 @@ struct ChatConversationView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: msg.isOutgoing ? .trailing : .leading)
+        .contextMenu {
+            if let senderId = msg.senderUserId, !msg.isOutgoing, auth.session?.user.id != senderId {
+                Button {
+                    reportTarget = moderationTarget(
+                        userId: senderId,
+                        contentType: usesTeamGroupServer ? .teamGroupMessage : .teamDirectMessage,
+                        contentId: msg.id,
+                        contentPreview: msg.text
+                    )
+                } label: {
+                    Label("Denunciar contenido", systemImage: "exclamationmark.bubble")
+                }
+                Button(role: .destructive) {
+                    reportTarget = moderationTarget(
+                        userId: senderId,
+                        contentType: usesTeamGroupServer ? .teamGroupMessage : .teamDirectMessage,
+                        contentId: msg.id,
+                        contentPreview: msg.text
+                    )
+                    showBlockConfirm = true
+                } label: {
+                    Label("Bloquear usuario", systemImage: "hand.raised.fill")
+                }
+            }
+        }
     }
 
     private func teamDirectVoiceBubble(storagePath: String, msg: ChatMessage, maxBubbleWidth: CGFloat) -> some View {
@@ -565,13 +674,14 @@ struct ChatConversationView: View {
     }
 
     private func incomingTextBubble(text: String, time: String, maxBubbleWidth: CGFloat) -> some View {
+        let displayText = ContentModerationFilter.sanitizeForDisplay(text)
         let contentCap = max(40, maxBubbleWidth - 2 * bubblePadH - 4)
         let shape = RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
 
         return Group {
-            if chatTextFitsSingleLineWithMeta(text: text, time: time, maxBubbleWidth: maxBubbleWidth, outgoing: false, receipt: nil) {
+            if chatTextFitsSingleLineWithMeta(text: displayText, time: time, maxBubbleWidth: maxBubbleWidth, outgoing: false, receipt: nil) {
                 HStack(alignment: .bottom, spacing: 6) {
-                    Text(text)
+                    Text(displayText)
                         .font(.system(size: 16, weight: .regular))
                         .foregroundStyle(incomingBubbleTextColor)
                         .lineLimit(1)
@@ -583,7 +693,7 @@ struct ChatConversationView: View {
                 .padding(.vertical, bubblePadV)
                 .background { shape.fill(incomingBubbleFill) }
             } else {
-                incomingTextMultiline(text: text, time: time, contentCap: contentCap, shape: shape)
+                incomingTextMultiline(text: displayText, time: time, contentCap: contentCap, shape: shape)
             }
         }
         .frame(maxWidth: maxBubbleWidth, alignment: .leading)
@@ -1161,6 +1271,10 @@ struct ChatConversationView: View {
     private func sendMessage() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if ContentModerationFilter.containsObjectionableContent(text) {
+            showObjectionableContentAlert = true
+            return
+        }
         if usesTeamGroupServer {
             draft = ""
             Task {
@@ -1212,6 +1326,7 @@ struct ChatConversationView: View {
 
     @MainActor
     private func mergeTeamDirectInsert(_ row: TeamDirectMessagesService.Row) {
+        guard !moderation.isBlocked(row.senderId) else { return }
         guard !teamDirectRows.contains(where: { $0.id == row.id }) else { return }
         teamDirectRows.append(row)
         teamDirectRows.sort { $0.createdAt < $1.createdAt }
@@ -1225,6 +1340,7 @@ struct ChatConversationView: View {
 
     @MainActor
     private func mergeTeamGroupInsert(_ row: TeamGroupMessagesService.Row) {
+        guard !moderation.isBlocked(row.senderId) else { return }
         guard !teamGroupRows.contains(where: { $0.id == row.id }) else { return }
         teamGroupRows.append(row)
         teamGroupRows.sort { $0.createdAt < $1.createdAt }
@@ -1345,10 +1461,19 @@ struct ChatConversationView: View {
                 isOutgoing: outgoing,
                 time: time,
                 receipt: receipt,
-                sortKey: sortKey
+                sortKey: sortKey,
+                senderUserId: row.senderId
             )
         }
-        return ChatMessage(id: row.id, text: row.body, isOutgoing: outgoing, time: time, receipt: receipt, sortKey: sortKey)
+        return ChatMessage(
+            id: row.id,
+            text: row.body,
+            isOutgoing: outgoing,
+            time: time,
+            receipt: receipt,
+            sortKey: sortKey,
+            senderUserId: row.senderId
+        )
     }
 
     private static func chatMessageGroup(
@@ -1362,7 +1487,7 @@ struct ChatConversationView: View {
             displayText = row.body
         } else {
             let name = directory.first(where: { $0.userId == row.senderId })?.resolvedDisplayName ?? "Usuario"
-            displayText = "\(name): \(row.body)"
+            displayText = "\(name): \(ContentModerationFilter.sanitizeForDisplay(row.body))"
         }
         let time = formatChatTime(iso: row.createdAt)
         let sortKey = TeamGroupMessagesService.parseCreatedAt(row.createdAt) ?? Date()
@@ -1372,8 +1497,76 @@ struct ChatConversationView: View {
             isOutgoing: outgoing,
             time: time,
             receipt: outgoing ? .sent : nil,
-            sortKey: sortKey
+            sortKey: sortKey,
+            senderUserId: row.senderId
         )
+    }
+
+    private var primaryModerationTarget: ModerationTarget? {
+        if usesTeamDirectServer, let peer = thread.peerUserId {
+            let name = communityVM.directory.first(where: { $0.userId == peer })?.resolvedDisplayName ?? thread.title
+            return moderationTarget(
+                userId: peer,
+                contentType: .teamDirectMessage,
+                contentId: teamDirectRows.last?.id,
+                contentPreview: teamDirectRows.last?.body,
+                userName: name
+            )
+        }
+        if usesTeamGroupServer,
+           let last = teamGroupRows.last(where: { $0.senderId != auth.session?.user.id })
+        {
+            let name = communityVM.directory.first(where: { $0.userId == last.senderId })?.resolvedDisplayName ?? "Usuario"
+            return moderationTarget(
+                userId: last.senderId,
+                contentType: .teamGroupMessage,
+                contentId: last.id,
+                contentPreview: last.body,
+                userName: name
+            )
+        }
+        return nil
+    }
+
+    private func moderationTarget(
+        userId: UUID,
+        contentType: UserModerationService.ContentType,
+        contentId: UUID?,
+        contentPreview: String?,
+        userName: String? = nil
+    ) -> ModerationTarget {
+        let resolvedName = userName
+            ?? communityVM.directory.first(where: { $0.userId == userId })?.resolvedDisplayName
+            ?? thread.title
+        return ModerationTarget(
+            userId: userId,
+            userName: resolvedName,
+            contentType: contentType,
+            contentId: contentId,
+            contentPreview: contentPreview
+        )
+    }
+
+    @MainActor
+    private func blockPrimaryTarget() async {
+        guard let target = reportTarget ?? primaryModerationTarget else { return }
+        let ok = await moderation.blockUser(
+            target.userId,
+            autoReportReason: "Bloqueo de usuario desde conversación",
+            contentType: target.contentType,
+            contentId: target.contentId,
+            contentPreview: target.contentPreview
+        )
+        moderationAlertMessage = ok ? moderation.lastSuccessMessage : moderation.lastErrorMessage
+        showModerationAlert = moderationAlertMessage != nil
+        reportTarget = nil
+        if usesTeamDirectServer {
+            teamDirectRows.removeAll { moderation.isBlocked($0.senderId) }
+        }
+        if usesTeamGroupServer {
+            teamGroupRows.removeAll { moderation.isBlocked($0.senderId) }
+        }
+        chatInbox.refreshTeamThreadsFromSnapshot(blockedUserIds: moderation.blockedUserIds)
     }
 
     private static func formatChatTime(iso: String) -> String {

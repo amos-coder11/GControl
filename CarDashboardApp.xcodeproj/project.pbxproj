@@ -107,6 +107,11 @@
 		AA000104 /* VehiclesInsertColumnMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000104 /* VehiclesInsertColumnMap.swift */; };
 		AA000105 /* AddVehicleListingDetailsForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000105 /* AddVehicleListingDetailsForm.swift */; };
 		AA000106 /* VehicleAppListingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000106 /* VehicleAppListingPayload.swift */; };
+		AA000110 /* ContentModerationFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000110 /* ContentModerationFilter.swift */; };
+		AA000111 /* UserModerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000111 /* UserModerationService.swift */; };
+		AA000112 /* UserModerationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000112 /* UserModerationStore.swift */; };
+		AA000113 /* UGCTermsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000113 /* UGCTermsView.swift */; };
+		AA000114 /* ContentReportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ContentReportSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -214,6 +219,11 @@
 		AB000104 /* VehiclesInsertColumnMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesInsertColumnMap.swift; sourceTree = "<group>"; };
 		AB000105 /* AddVehicleListingDetailsForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddVehicleListingDetailsForm.swift; sourceTree = "<group>"; };
 		AB000106 /* VehicleAppListingPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleAppListingPayload.swift; sourceTree = "<group>"; };
+		AB000110 /* ContentModerationFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentModerationFilter.swift; sourceTree = "<group>"; };
+		AB000111 /* UserModerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserModerationService.swift; sourceTree = "<group>"; };
+		AB000112 /* UserModerationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserModerationStore.swift; sourceTree = "<group>"; };
+		AB000113 /* UGCTermsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UGCTermsView.swift; sourceTree = "<group>"; };
+		AB000114 /* ContentReportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentReportSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -287,6 +297,7 @@
 				AB000044 /* LeadsViewModel.swift */,
 				AB000075 /* DashboardCommunityViewModel.swift */,
 				AB000060 /* AppLockManager.swift */,
+				AB000112 /* UserModerationStore.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -321,6 +332,8 @@
 				AB000081 /* LiveSpeechTranscriber.swift */,
 				AB000093 /* AudioWaveformMonitor.swift */,
 				AB000098 /* CoordinatorTaskPushActionHandler.swift */,
+				AB000110 /* ContentModerationFilter.swift */,
+				AB000111 /* UserModerationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -350,6 +363,8 @@
 				AB000095 /* AudioWaveformView.swift */,
 				AB000096 /* WaveformDemoView.swift */,
 				AB000097 /* VieraChatRichContent.swift */,
+				AB000113 /* UGCTermsView.swift */,
+				AB000114 /* ContentReportSheet.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -591,6 +606,11 @@
 				AA000098 /* CoordinatorTaskPushActionHandler.swift in Sources */,
 				AA000086 /* GIFAnimatedView.swift in Sources */,
 				AA000087 /* LoopingMutedBundledVideoView.swift in Sources */,
+				AA000110 /* ContentModerationFilter.swift in Sources */,
+				AA000111 /* UserModerationService.swift in Sources */,
+				AA000112 /* UserModerationStore.swift in Sources */,
+				AA000113 /* UGCTermsView.swift in Sources */,
+				AA000114 /* ContentReportSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

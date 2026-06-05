@@ -63,6 +63,13 @@ enum TeamDirectMessagesService {
         guard !trimmed.isEmpty else {
             throw NSError(domain: "TeamDirectMessages", code: 0, userInfo: [NSLocalizedDescriptionKey: "Vacío"])
         }
+        if ContentModerationFilter.containsObjectionableContent(trimmed) {
+            throw NSError(
+                domain: "TeamDirectMessages",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "El mensaje incluye lenguaje no permitido."]
+            )
+        }
         let inserted: Row = try await client
             .from(tableName)
             .insert(NewRow(recipient_id: recipientId, body: trimmed))
