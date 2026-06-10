@@ -22,22 +22,35 @@ struct ChatSocialBadgeView: View {
                     .resizable()
                     .scaledToFit()
             case .instagram:
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.35, blue: 0.42),
-                                    Color(red: 0.79, green: 0.22, blue: 0.72),
-                                    Color(red: 0.39, green: 0.38, blue: 0.95)
-                                ],
-                                startPoint: .bottomLeading,
-                                endPoint: .topTrailing
+                // Logo clásico de Instagram: degradado + marco redondeado + lente + punto.
+                GeometryReader { geo in
+                    let s = min(geo.size.width, geo.size.height)
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.99, green: 0.79, blue: 0.21),
+                                        Color(red: 0.98, green: 0.35, blue: 0.42),
+                                        Color(red: 0.79, green: 0.22, blue: 0.72),
+                                        Color(red: 0.39, green: 0.38, blue: 0.95)
+                                    ],
+                                    startPoint: .bottomLeading,
+                                    endPoint: .topTrailing
+                                )
                             )
-                        )
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
+                        RoundedRectangle(cornerRadius: s * 0.18)
+                            .strokeBorder(Color.white, lineWidth: max(1, s * 0.08))
+                            .frame(width: s * 0.60, height: s * 0.60)
+                        Circle()
+                            .strokeBorder(Color.white, lineWidth: max(1, s * 0.08))
+                            .frame(width: s * 0.28, height: s * 0.28)
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: s * 0.08, height: s * 0.08)
+                            .offset(x: s * 0.165, y: -s * 0.165)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
             case .whatsApp:
                 ZStack {
@@ -79,11 +92,24 @@ struct ChatThreadAvatarView: View {
                 } else {
                     ZStack {
                         Circle()
-                            .fill(thread.avatarColor)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        thread.avatarColor.opacity(0.95),
+                                        thread.avatarColor.opacity(0.62),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay {
+                                Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                            }
                             .frame(width: diameter, height: diameter)
+                            .shadow(color: thread.avatarColor.opacity(0.45), radius: diameter * 0.10, x: 0, y: 1)
                         if let initial = thread.avatarInitial, let ch = initial.first {
                             Text(String(ch).uppercased())
-                                .font(.system(size: diameter * 0.38, weight: .semibold))
+                                .font(.system(size: diameter * 0.40, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white)
                         } else if let icon = thread.avatarIcon {
                             Image(systemName: icon)
@@ -94,7 +120,9 @@ struct ChatThreadAvatarView: View {
                 }
             }
 
-            if thread.avatarCarURL != nil, let platform = thread.socialSource {
+            // La insignia de la red (WhatsApp / Instagram…) se muestra SIEMPRE que el
+            // hilo tenga red de origen, haya foto o solo inicial.
+            if let platform = thread.socialSource {
                 ChatSocialBadgeView(platform: platform)
                     .frame(width: badgeSize - 4, height: badgeSize - 4)
                     .padding(2)

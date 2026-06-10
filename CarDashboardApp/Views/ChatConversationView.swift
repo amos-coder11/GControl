@@ -34,6 +34,8 @@ private struct ChatMessage: Identifiable, Equatable {
     let id: UUID
     let text: String?
     let image: UIImage?
+    /// Imagen alojada en una URL (la del cliente por WhatsApp/Instagram).
+    let remoteImageURL: URL?
     /// Ruta en bucket `team_direct_voice` (prefijo en fila `body`).
     let voiceStoragePath: String?
     let isOutgoing: Bool
@@ -58,6 +60,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.id = id
         self.text = text
         self.image = nil
+        self.remoteImageURL = nil
         self.voiceStoragePath = voiceStoragePath
         self.isOutgoing = isOutgoing
         self.time = time
@@ -79,7 +82,31 @@ private struct ChatMessage: Identifiable, Equatable {
         self.id = id
         self.text = nil
         self.image = image
+        self.remoteImageURL = nil
         self.voiceStoragePath = voiceStoragePath
+        self.isOutgoing = isOutgoing
+        self.time = time
+        self.sortKey = sortKey
+        self.receipt = isOutgoing ? (receipt ?? .read) : nil
+        self.senderUserId = senderUserId
+    }
+
+    /// Mensaje con imagen remota (URL) y, opcionalmente, un texto/caption debajo.
+    init(
+        id: UUID = UUID(),
+        remoteImageURL: URL,
+        caption: String? = nil,
+        isOutgoing: Bool,
+        time: String,
+        receipt: OutgoingReceipt? = nil,
+        sortKey: Date = Date(),
+        senderUserId: UUID? = nil
+    ) {
+        self.id = id
+        self.text = caption
+        self.image = nil
+        self.remoteImageURL = remoteImageURL
+        self.voiceStoragePath = nil
         self.isOutgoing = isOutgoing
         self.time = time
         self.sortKey = sortKey
@@ -99,6 +126,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.id = id
         self.text = nil
         self.image = nil
+        self.remoteImageURL = nil
         self.voiceStoragePath = voiceStoragePath
         self.isOutgoing = isOutgoing
         self.time = time
@@ -150,6 +178,8 @@ struct ChatConversationView: View {
     @State private var teamGroupRows: [TeamGroupMessagesService.Row] = []
     @State private var teamGroupChannel: RealtimeChannelV2?
     @State private var teamGroupLoadError: String?
+    /// Mensajes reales del CRM (WhatsApp/Instagram) para hilos de «Generales».
+    @State private var crmRows: [CrmChatService.Message] = []
     @State private var deadlineEditTask: CoordinatorOutboundTask?
     @State private var deadlineEditValue = Date()
 
@@ -189,10 +219,137 @@ struct ChatConversationView: View {
         thread.kind == .teamGroup && auth.session != nil
     }
 
+    /// Hilo «Generales» conectado al CRM real (WhatsApp/Instagram del concesionario).
+    private var usesCrmServer: Bool {
+        thread.kind == .lead
+            && chatInbox.crmConversationIdByThread[thread.id] != nil
+            && auth.session != nil
+    }
+
     private var stackedConversationMessages: [ChatMessage] {
         if usesTeamGroupServer { return teamGroupUIMessages + liveMessages }
         if usesTeamDirectServer { return teamDirectUIMessages + liveMessages }
+        if usesCrmServer { return crmUIMessages + liveMessages }
         return mockMsgs + liveMessages
+    }
+
+    /// ¿La IA está encendida para este chat? (por defecto sí).
+    private var crmAiActive: Bool {
+        chatInbox.crmAiActiveByThread[thread.id] ?? true
+    }
+
+    /// Botón de la cabecera para apagar/encender la IA y que entre un comercial.
+    @ViewBuilder
+    private var aiToggleButton: some View {
+        let active = crmAiActive
+        Button {
+            toggleCrmAi(to: !active)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: active ? "sparkles" : "person.fill")
+                    .font(.system(size: 12, weight: .bold))
+                Text(active ? "IA ON" : "IA OFF")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(active
+                        ? Color(red: 0.15, green: 0.62, blue: 0.40)
+                        : Color(red: 0.84, green: 0.32, blue: 0.30))
+            }
+        }
+    }
+
+    private func toggleCrmAi(to active: Bool) {
+        guard let convId = chatInbox.crmConversationIdByThread[thread.id],
+              let token = auth.session?.accessToken else { return }
+        chatInbox.setCrmAiActiveLocal(threadId: thread.id, active: active)
+        Task {
+            do {
+                try await CrmChatService.setAiActive(token: token, conversationId: convId, active: active)
+            } catch {
+                // Si falla, revertimos el estado local.
+                await MainActor.run { chatInbox.setCrmAiActiveLocal(threadId: thread.id, active: !active) }
+            }
+        }
+    }
+
+    /// Mensajes reales del CRM mapeados a burbujas (cliente = entrante; IA/equipo = saliente).
+    private var crmUIMessages: [ChatMessage] {
+        crmRows
+            .map { row -> ChatMessage in
+                let incoming = (row.senderType ?? "contact") == "contact"
+                let id = CrmChatService.stableUUID(for: "msg:\(row.id)")
+                let time = CrmChatService.clockTime(fromISO: row.createdAt)
+                let sortKey = CrmChatService.parseISO(row.createdAt) ?? Date()
+                let receipt: OutgoingReceipt? = incoming ? nil : .read
+                let rawText = (row.textContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // 1) ¿Es una IMAGEN? (por tipo, por extensión de la URL o por base64)
+                if let imageURL = Self.crmImageURL(for: row) {
+                    let caption = Self.looksLikePlaceholder(rawText) ? nil : rawText
+                    return ChatMessage(
+                        id: id,
+                        remoteImageURL: imageURL,
+                        caption: caption,
+                        isOutgoing: !incoming,
+                        time: time,
+                        receipt: receipt,
+                        sortKey: sortKey
+                    )
+                }
+
+                // 2) Texto (incluye enlaces de coche, que se ven como enlace tocable).
+                let text = rawText.isEmpty ? (row.mediaUrl != nil ? "📎 Archivo adjunto" : " ") : rawText
+                return ChatMessage(
+                    id: id,
+                    text: text,
+                    isOutgoing: !incoming,
+                    time: time,
+                    receipt: receipt,
+                    sortKey: sortKey
+                )
+            }
+            .sorted { $0.sortKey < $1.sortKey }
+    }
+
+    /// Devuelve una URL de imagen para el mensaje si es una foto (URL http o base64).
+    private static func crmImageURL(for row: CrmChatService.Message) -> URL? {
+        let type = (row.mediaType ?? row.messageType ?? "").lowercased()
+        let isImageType = type.contains("image") || type.hasPrefix("img")
+        // a) URL pública directa
+        if let urlStr = row.mediaUrl, let url = URL(string: urlStr) {
+            let lower = urlStr.lowercased()
+            let looksImage = isImageType
+                || lower.contains(".jpg") || lower.contains(".jpeg")
+                || lower.contains(".png") || lower.contains(".webp") || lower.contains(".heic")
+            if looksImage { return url }
+        }
+        // b) base64 incrustado (data URL) cuando es imagen
+        if isImageType, let b64 = row.mediaContent, !b64.isEmpty {
+            let clean = b64.contains(",") ? String(b64.split(separator: ",").last ?? "") : b64
+            let mime = type.contains("/") ? type : "image/jpeg"
+            if let url = URL(string: "data:\(mime);base64,\(clean)") { return url }
+        }
+        return nil
+    }
+
+    private static func looksLikePlaceholder(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty || t == "📷 Imagen" || t == "📎 Archivo adjunto" || t.count <= 1
+    }
+
+    /// Extrae el id de coche de un enlace de la web (accar.es/stock/<id> o /catalogo/<id>).
+    static func carVehicleId(from text: String) -> String? {
+        let pattern = "(?:catalogo|stock|vehiculos?|coches?)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range(at: 1), in: text)
+        else { return nil }
+        return String(text[r])
     }
 
     private var teamDirectUIMessages: [ChatMessage] {
@@ -384,6 +541,9 @@ struct ChatConversationView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 8) {
+                    if usesCrmServer {
+                        aiToggleButton
+                    }
                     if usesTeamDirectServer || usesTeamGroupServer {
                         Menu {
                             if let target = primaryModerationTarget {
@@ -456,7 +616,7 @@ struct ChatConversationView: View {
             case .teamDirect:
                 await runTeamDirectSessionIfNeeded()
             case .lead:
-                break
+                await runCrmSessionIfNeeded()
             }
         }
         .onChange(of: deadlineEditTask) { _, task in
@@ -582,8 +742,9 @@ struct ChatConversationView: View {
         )
         .overlay {
             Circle()
-                .strokeBorder(Color.white.opacity(0.92), lineWidth: 2)
+                .strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
         }
+        .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
     }
 
     // MARK: - Burbujas
@@ -621,7 +782,12 @@ struct ChatConversationView: View {
                     )
                 } else if let image = msg.image {
                     outgoingOrIncomingImageBubble(msg, image: image, maxBubbleWidth: maxBubbleWidth)
+                } else if let remote = msg.remoteImageURL {
+                    remoteImageBubble(url: remote, msg: msg, maxBubbleWidth: maxBubbleWidth)
                 } else if let text = msg.text {
+                    if let carId = Self.carVehicleId(from: text) {
+                        CarLinkCardView(vehicleId: carId, isOutgoing: msg.isOutgoing, maxWidth: min(maxBubbleWidth, 260))
+                    }
                     if msg.isOutgoing {
                         outgoingTextBubble(text: text, time: msg.time, receipt: msg.receipt ?? .sent, maxBubbleWidth: maxBubbleWidth)
                     } else {
@@ -659,6 +825,46 @@ struct ChatConversationView: View {
                 } label: {
                     Label("Bloquear usuario", systemImage: "hand.raised.fill")
                 }
+            }
+        }
+    }
+
+    /// Burbuja con la imagen que mandó el cliente (foto por WhatsApp/Instagram).
+    @ViewBuilder
+    private func remoteImageBubble(url: URL, msg: ChatMessage, maxBubbleWidth: CGFloat) -> some View {
+        let side = min(maxBubbleWidth, 240)
+        VStack(alignment: msg.isOutgoing ? .trailing : .leading, spacing: 4) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                case .failure:
+                    ZStack {
+                        Color.black.opacity(0.25)
+                        Image(systemName: "photo")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                default:
+                    ZStack {
+                        Color.black.opacity(0.2)
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous))
+
+            if let caption = msg.text, !caption.trimmingCharacters(in: .whitespaces).isEmpty {
+                if msg.isOutgoing {
+                    outgoingTextBubble(text: caption, time: msg.time, receipt: msg.receipt ?? .sent, maxBubbleWidth: maxBubbleWidth)
+                } else {
+                    incomingTextBubble(text: caption, time: msg.time, maxBubbleWidth: maxBubbleWidth)
+                }
+            } else {
+                Text(msg.time)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
             }
         }
     }
@@ -1294,6 +1500,28 @@ struct ChatConversationView: View {
             }
             return
         }
+        if usesCrmServer,
+           let convId = chatInbox.crmConversationIdByThread[thread.id],
+           let token = auth.session?.accessToken {
+            draft = ""
+            let now = Self.currentTimeString()
+            withAnimation {
+                liveMessages.append(ChatMessage(text: text, isOutgoing: true, time: now, receipt: .sent))
+            }
+            Task {
+                do {
+                    try await CrmChatService.send(token: token, conversationId: convId, text: text)
+                    await refreshCrmMessages(clearLocal: true)
+                } catch {
+                    // El backend rechazó el envío (p. ej. ventana de 24 h cerrada).
+                    await MainActor.run {
+                        liveMessages.removeAll { $0.text == text && $0.isOutgoing }
+                        draft = text
+                    }
+                }
+            }
+            return
+        }
         if usesTeamDirectServer, let peer = thread.peerUserId {
             draft = ""
             Task {
@@ -1322,6 +1550,28 @@ struct ChatConversationView: View {
             liveMessages.append(ChatMessage(text: text, isOutgoing: true, time: now, receipt: .sent))
         }
         draft = ""
+    }
+
+    // MARK: - Conversación real del CRM (WhatsApp/Instagram)
+
+    /// Carga los mensajes reales y los refresca cada 6 s mientras el chat está abierto.
+    private func runCrmSessionIfNeeded() async {
+        guard thread.kind == .lead else { return }
+        while !Task.isCancelled {
+            await refreshCrmMessages(clearLocal: false)
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+        }
+    }
+
+    @MainActor
+    private func refreshCrmMessages(clearLocal: Bool) async {
+        guard let convId = chatInbox.crmConversationIdByThread[thread.id],
+              let token = auth.session?.accessToken
+        else { return }
+        guard let rows = try? await CrmChatService.messages(token: token, conversationId: convId, limit: 100)
+        else { return }
+        crmRows = rows
+        if clearLocal { liveMessages.removeAll() }
     }
 
     @MainActor
@@ -2334,5 +2584,124 @@ private struct ConversationBackdrop: View {
             .environmentObject(ChatInboxStore())
             .environmentObject(DashboardCommunityViewModel())
             .environmentObject(AuthViewModel())
+    }
+}
+
+// MARK: - Tarjeta de coche para enlaces compartidos en el chat (accar.es/stock/<id>)
+
+/// Muestra foto + nombre + precio del coche cuando alguien comparte su enlace.
+/// Consulta la ficha pública del backend (vehicle-og). Tocarla abre la web.
+private struct CarLinkCardView: View {
+    let vehicleId: String
+    let isOutgoing: Bool
+    var maxWidth: CGFloat = 260
+
+    @State private var info: VehicleOG?
+    @State private var failed = false
+
+    struct VehicleOG: Decodable {
+        let make: String?
+        let model: String?
+        let version: String?
+        let year: Int?
+        let kilometers: Int?
+        let price: Double?
+        let image: String?
+    }
+
+    private var title: String {
+        let parts = [info?.make, info?.model, info?.version].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? "Ver ficha del coche" : parts.joined(separator: " ")
+    }
+
+    private var subtitle: String {
+        var bits: [String] = []
+        if let y = info?.year { bits.append(String(y)) }
+        if let km = info?.kilometers, km > 0 {
+            bits.append("\(km.formatted(.number.grouping(.automatic))) km")
+        }
+        if let p = info?.price, p > 0 {
+            bits.append("\(Int(p).formatted(.number.grouping(.automatic))) €")
+        }
+        return bits.joined(separator: " · ")
+    }
+
+    private var webURL: URL? {
+        URL(string: "https://www.accar.es/catalogo/\(vehicleId)")
+    }
+
+    var body: some View {
+        Group {
+            if let url = webURL {
+                Link(destination: url) { card }
+            } else {
+                card
+            }
+        }
+        .task(id: vehicleId) { await load() }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack {
+                Rectangle().fill(Color.black.opacity(0.25))
+                if let img = info?.image, let u = URL(string: img) {
+                    AsyncImage(url: u) { phase in
+                        if let i = phase.image { i.resizable().scaledToFill() }
+                        else { Image(systemName: "car.fill").font(.system(size: 30)).foregroundStyle(.white.opacity(0.6)) }
+                    }
+                } else {
+                    Image(systemName: "car.fill").font(.system(size: 30)).foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .frame(width: maxWidth, height: maxWidth * 0.56)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Color(red: 0.55, green: 0.78, blue: 1.0))
+                }
+                Text("accar.es")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(width: maxWidth, alignment: .leading)
+        }
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private func load() async {
+        guard info == nil else { return }
+        let urlStr = "https://carhubackend.onrender.com/api/public/vehicle-og/\(vehicleId)"
+        guard let url = URL(string: urlStr) else { failed = true; return }
+        // Reintenta varias veces: si Render está despertando, la 1ª puede fallar.
+        for intento in 0 ..< 4 {
+            if Task.isCancelled { return }
+            do {
+                let (data, res) = try await URLSession.shared.data(from: url)
+                if let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) {
+                    let decoded = try JSONDecoder().decode(VehicleOG.self, from: data)
+                    await MainActor.run { info = decoded }
+                    return
+                }
+            } catch {
+                // reintentamos
+            }
+            try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * (intento + 1)))
+        }
+        await MainActor.run { failed = true }
     }
 }

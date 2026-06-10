@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftUI
 import Supabase
@@ -95,6 +96,85 @@ final class ChatInboxStore: ObservableObject {
     private var blockedUserIdsForSync: Set<UUID> = []
     @Published private(set) var pinOverride: [UUID: Bool] = [:]
     @Published private(set) var unreadOverride: [UUID: Int] = [:]
+
+    // MARK: - Chats reales del CRM (WhatsApp / Instagram del concesionario)
+
+    /// Id de conversación del backend (CRM) por hilo mostrado en «Generales».
+    @Published private(set) var crmConversationIdByThread: [UUID: String] = [:]
+    /// Estado de la IA (encendida/apagada) por hilo del CRM.
+    @Published private(set) var crmAiActiveByThread: [UUID: Bool] = [:]
+    /// Ya se cargaron conversaciones reales del CRM al menos una vez.
+    @Published private(set) var crmLoadedOnce = false
+
+    /// Marca localmente el estado de la IA de un hilo (respuesta inmediata al pulsar).
+    @MainActor
+    func setCrmAiActiveLocal(threadId: UUID, active: Bool) {
+        crmAiActiveByThread[threadId] = active
+    }
+
+    /// ¿Hay al menos un chat con la IA encendida? (para el botón global).
+    var anyCrmAiActive: Bool {
+        crmAiActiveByThread.values.contains(true)
+    }
+
+    /// Marca TODOS los chats del CRM como encendidos/apagados (respuesta inmediata).
+    @MainActor
+    func setAllCrmAiActiveLocal(_ active: Bool) {
+        for key in crmAiActiveByThread.keys {
+            crmAiActiveByThread[key] = active
+        }
+    }
+
+    /// Descarga las conversaciones reales del CRM (mismas que la web carhub365.es)
+    /// y sustituye los chats de muestra de la pestaña «Generales».
+    @MainActor
+    func refreshCrmConversations(accessToken: String) async {
+        do {
+            let rows = try await CrmChatService.conversations(token: accessToken, limit: 100)
+            var map: [UUID: String] = [:]
+            var aiMap: [UUID: Bool] = [:]
+            let threads: [ChatThread] = rows.map { row in
+                let uuid = CrmChatService.stableUUID(for: "conv:\(row.id)")
+                map[uuid] = row.id
+                aiMap[uuid] = row.aiActive ?? true
+                return Self.thread(fromCrm: row, uuid: uuid)
+            }
+            crmConversationIdByThread = map
+            crmAiActiveByThread = aiMap
+            liveThreads = threads
+            crmLoadedOnce = true
+        } catch {
+            // Sin red o sin sesión: si nunca cargamos, se quedan las muestras.
+        }
+    }
+
+    private static func thread(fromCrm row: CrmChatService.Conversation, uuid: UUID) -> ChatThread {
+        let isInstagram =
+            (row.source ?? "").lowercased().contains("instagram")
+            || (row.waUserId ?? "").hasPrefix("ig:")
+        let fallbackName = (row.waUserId ?? "Contacto").replacingOccurrences(of: "ig:", with: "@")
+        let name = (row.contactName?.isEmpty == false) ? row.contactName! : fallbackName
+        return ChatThread(
+            id: uuid,
+            title: name,
+            preview: row.lastMessage ?? "",
+            time: CrmChatService.listTime(fromISO: row.updatedAt),
+            unread: (row.unreadCount ?? 0) > 0 ? row.unreadCount : nil,
+            avatarInitial: String(name.prefix(1)).uppercased(),
+            avatarIcon: nil,
+            avatarR: isInstagram ? 0.69 : 0.16,
+            avatarG: isInstagram ? 0.32 : 0.68,
+            avatarB: isInstagram ? 0.87 : 0.38,
+            avatarCarURL: (row.contactPhotoUrl?.isEmpty == false) ? URL(string: row.contactPhotoUrl!) : nil,
+            socialSource: isInstagram ? .instagram : .whatsApp,
+            isVerified: false,
+            isPinned: row.pinned ?? false,
+            kind: .lead,
+            peerUserId: nil,
+            readReceipt: .none,
+            showOpenButton: false
+        )
+    }
 
     private func bumpCoordinatorTimeline() {
         coordinatorTimelineTick += 1
@@ -686,5 +766,212 @@ enum TeamCoordinatorTasksService {
             .single()
             .execute()
             .value
+    }
+}
+
+// MARK: - Cliente del backend del CRM (carhubackend) — chats reales de WhatsApp/Instagram
+//
+// Usa los MISMOS endpoints que la web carhub365.es, autenticados con el token
+// de la sesión de Supabase del usuario (mismo proyecto Supabase que el CRM).
+
+enum CrmChatService {
+    static let baseURL = URL(string: "https://carhubackend.onrender.com")!
+
+    enum ServiceError: Error {
+        case badResponse
+    }
+
+    // MARK: Modelos (decodificación tolerante: los ids pueden venir como número o texto)
+
+    struct Conversation: Identifiable {
+        let id: String
+        let contactName: String?
+        let contactPhotoUrl: String?
+        let lastMessage: String?
+        let unreadCount: Int?
+        let updatedAt: String?
+        let waUserId: String?
+        let source: String?
+        let pinned: Bool?
+        let aiActive: Bool?
+    }
+
+    struct Message: Identifiable {
+        let id: String
+        let textContent: String?
+        let senderType: String?
+        let createdAt: String?
+        let messageType: String?
+        let mediaUrl: String?
+        let mediaType: String?
+        let mediaContent: String?
+        let mediaFilename: String?
+    }
+
+    // MARK: Peticiones
+
+    static func conversations(token: String, limit: Int = 100) async throws -> [Conversation] {
+        let json = try await getJSON(
+            path: "/api/whatsapp/get_conversations?limit=\(limit)&offset=0",
+            token: token
+        )
+        let rows = (json["data"] as? [[String: Any]]) ?? (json["conversations"] as? [[String: Any]]) ?? []
+        return rows.map { r in
+            Conversation(
+                id: flexString(r["id"]) ?? UUID().uuidString,
+                contactName: r["contact_name"] as? String,
+                contactPhotoUrl: r["contact_photo_url"] as? String,
+                lastMessage: r["last_message"] as? String,
+                unreadCount: flexInt(r["unread_count"]),
+                updatedAt: r["updated_at"] as? String,
+                waUserId: r["wa_user_id"] as? String,
+                source: r["source"] as? String,
+                pinned: (r["pinned"] as? Bool) ?? (r["is_pinned"] as? Bool),
+                aiActive: r["ai_active"] as? Bool
+            )
+        }
+    }
+
+    static func messages(token: String, conversationId: String, limit: Int = 100) async throws -> [Message] {
+        let encoded = conversationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? conversationId
+        let json = try await getJSON(
+            path: "/api/whatsapp/get_messages?conversationId=\(encoded)&limit=\(limit)",
+            token: token
+        )
+        let rows = (json["data"] as? [[String: Any]]) ?? []
+        return rows.map { r in
+            Message(
+                id: flexString(r["id"]) ?? UUID().uuidString,
+                textContent: (r["text_content"] as? String) ?? (r["body"] as? String),
+                senderType: r["sender_type"] as? String,
+                createdAt: r["created_at"] as? String,
+                messageType: r["message_type"] as? String,
+                mediaUrl: r["media_url"] as? String,
+                mediaType: r["media_type"] as? String,
+                mediaContent: r["media_content"] as? String,
+                mediaFilename: r["media_filename"] as? String
+            )
+        }
+    }
+
+    /// Apaga o enciende la IA para esa conversación (para que entre un comercial).
+    static func setAiActive(token: String, conversationId: String, active: Bool) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/whatsapp/ai_toggle"))
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "conversationId": conversationId,
+            "active": active,
+        ])
+        let (_, res) = try await URLSession.shared.data(for: req)
+        guard let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
+            throw ServiceError.badResponse
+        }
+    }
+
+    /// Apaga/enciende la IA en TODOS los chats (WhatsApp + Instagram) de golpe.
+    static func setAiActiveAll(token: String, active: Bool) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/whatsapp/ai_toggle_all"))
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["active": active])
+        let (_, res) = try await URLSession.shared.data(for: req)
+        guard let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
+            throw ServiceError.badResponse
+        }
+    }
+
+    /// Envía un mensaje de texto al cliente (WhatsApp o Instagram, según la conversación).
+    static func send(token: String, conversationId: String, text: String) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/whatsapp/send_message"))
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "conversationId": conversationId,
+            "textContent": text,
+        ])
+        let (_, res) = try await URLSession.shared.data(for: req)
+        guard let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
+            throw ServiceError.badResponse
+        }
+    }
+
+    private static func getJSON(path: String, token: String) async throws -> [String: Any] {
+        guard let url = URL(string: baseURL.absoluteString + path) else { throw ServiceError.badResponse }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, res) = try await URLSession.shared.data(for: req)
+        guard let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw ServiceError.badResponse }
+        return json
+    }
+
+    // MARK: Utilidades
+
+    private static func flexString(_ value: Any?) -> String? {
+        if let s = value as? String { return s }
+        if let n = value as? NSNumber { return n.stringValue }
+        return nil
+    }
+
+    private static func flexInt(_ value: Any?) -> Int? {
+        if let n = value as? NSNumber { return n.intValue }
+        if let s = value as? String { return Int(s) }
+        return nil
+    }
+
+    /// UUID determinista a partir del id del backend (mismo chat → mismo UUID al refrescar).
+    static func stableUUID(for backendId: String) -> UUID {
+        let digest = SHA256.hash(data: Data(backendId.utf8))
+        let bytes = Array(digest.prefix(16))
+        let uuid: uuid_t = (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        )
+        return UUID(uuid: uuid)
+    }
+
+    static func parseISO(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = withFraction.date(from: s) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let d = plain.date(from: s) { return d }
+        // Postgres a veces devuelve "2026-06-07 18:30:00.123+00" (espacio en vez de T)
+        return withFraction.date(from: s.replacingOccurrences(of: " ", with: "T"))
+    }
+
+    /// Hora corta para la fila de la lista: "9:42", "Ayer", "sáb", "18/03".
+    static func listTime(fromISO s: String?) -> String {
+        guard let date = parseISO(s) else { return "" }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return clockString(date) }
+        if cal.isDateInYesterday(date) { return "Ayer" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: Date())).day ?? 99
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "es_ES")
+        fmt.dateFormat = days < 7 ? "EEE" : "dd/MM"
+        return fmt.string(from: date)
+    }
+
+    /// Hora "22:15" para la burbuja del mensaje.
+    static func clockTime(fromISO s: String?) -> String {
+        guard let date = parseISO(s) else { return "" }
+        return clockString(date)
+    }
+
+    private static func clockString(_ date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "es_ES")
+        fmt.dateFormat = "H:mm"
+        return fmt.string(from: date)
     }
 }

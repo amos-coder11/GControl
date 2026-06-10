@@ -123,6 +123,12 @@ struct ChatView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 6)
 
+                    if listSegment == .general {
+                        globalAiToggleBar
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 8)
+                    }
+
                     List {
                         if listSegment == .team {
                             if filteredTeamSectionThreads.isEmpty {
@@ -184,6 +190,7 @@ struct ChatView: View {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await subscribeTeamDirectInboxIfNeeded() }
                 group.addTask { await subscribeTeamGroupInboxIfNeeded() }
+                group.addTask { await pollCrmConversations() }
             }
         }
         .onAppear {
@@ -198,6 +205,67 @@ struct ChatView: View {
         }
         .onChange(of: chatNav.threadToOpen?.id) { _, _ in
             openPendingChatNavigation()
+        }
+    }
+
+    /// Barra con el interruptor GLOBAL de la IA (apaga/enciende WhatsApp + Instagram).
+    @ViewBuilder
+    private var globalAiToggleBar: some View {
+        let active = inbox.anyCrmAiActive
+        Button {
+            toggleAllCrmAi(to: !active)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: active ? "sparkles" : "person.2.fill")
+                    .font(.system(size: 14, weight: .bold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(active ? "IA general activada" : "IA general apagada")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(active ? "Toca para que atiendan los comerciales" : "Toca para reactivar la IA en todos")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                Spacer()
+                Text(active ? "Apagar" : "Encender")
+                    .font(.system(size: 13, weight: .bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(.white.opacity(0.18)))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(active
+                        ? LinearGradient(colors: [Color(red: 0.10, green: 0.55, blue: 0.36), Color(red: 0.13, green: 0.66, blue: 0.42)], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [Color(red: 0.72, green: 0.26, blue: 0.24), Color(red: 0.84, green: 0.32, blue: 0.30)], startPoint: .leading, endPoint: .trailing))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleAllCrmAi(to active: Bool) {
+        guard let token = auth.session?.accessToken else { return }
+        inbox.setAllCrmAiActiveLocal(active)
+        Task {
+            do {
+                try await CrmChatService.setAiActiveAll(token: token, active: active)
+                await inbox.refreshCrmConversations(accessToken: token)
+            } catch {
+                await MainActor.run { inbox.setAllCrmAiActiveLocal(!active) }
+            }
+        }
+    }
+
+    /// Trae los chats reales del CRM (WhatsApp/Instagram) y refresca cada 15 s.
+    private func pollCrmConversations() async {
+        while !Task.isCancelled {
+            if let token = auth.session?.accessToken {
+                await inbox.refreshCrmConversations(accessToken: token)
+            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
     }
 
