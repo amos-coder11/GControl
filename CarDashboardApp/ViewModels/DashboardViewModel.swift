@@ -24,7 +24,7 @@ final class DashboardViewModel: ObservableObject {
     func startUpdating() {
         timer?.invalidate()
         isLive = true
-        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateMetrics()
             }

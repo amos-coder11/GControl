@@ -133,11 +133,18 @@ struct DashboardView: View {
         .onDisappear {
             locationHub.stopUpdates()
         }
-        .task(id: carsVM.cars.count) {
-            vm.refreshFromInventory(cars: carsVM.cars)
-        }
+        // Recalcula el resumen de inventario solo cuando cambian los coches
+        // (antes se hacía por duplicado con .task y .onChange a la vez).
         .onChange(of: carsVM.cars) { _, newCars in
             vm.refreshFromInventory(cars: newCars)
+        }
+        .onAppear { vm.refreshFromInventory(cars: carsVM.cars) }
+        // Métricas REALES del CRM (leads, ventas, importe del equipo). Se recargan
+        // al entrar y al cambiar de usuario.
+        .task(id: auth.session?.accessToken) {
+            if let token = auth.session?.accessToken {
+                await vm.refreshFromBackend(token: token)
+            }
         }
     }
 }

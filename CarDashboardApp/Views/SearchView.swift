@@ -69,7 +69,9 @@ struct SearchView: View {
                                     .padding(.vertical, 24)
                                     .padding(.horizontal, 16)
                                 } else {
-                                    VStack(spacing: 20) {
+                                    // Lista perezosa: solo renderiza las tarjetas visibles (scroll fluido
+                                    // aunque haya cientos de coches).
+                                    LazyVStack(spacing: 20) {
                                         ForEach(displayedCars) { car in
                                             CarListingCard(
                                                 car: car,

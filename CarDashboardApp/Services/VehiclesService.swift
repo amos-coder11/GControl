@@ -307,14 +307,19 @@ enum VehiclesService {
         onPartial: (([VehicleRow]) async -> Void)? = nil
     ) async throws -> [VehicleRow] {
         var allRows: [VehicleRow] = []
-        let pageSize = 50
+        // Primera página PEQUEÑA: así los primeros coches aparecen casi al instante.
+        // Luego seguimos cargando el resto en páginas grandes, por detrás.
+        let firstPageSize = 16
+        let pageSize = 60
         var offset = 0
+        var isFirst = true
 
         while true {
             try Task.checkCancellation()
+            let limit = isFirst ? firstPageSize : pageSize
             let page = try await fetchPage(
                 offset: offset,
-                limit: pageSize,
+                limit: limit,
                 companyId: companyId,
                 organizationId: organizationId,
                 ownerUserId: ownerUserId,
@@ -324,8 +329,9 @@ enum VehiclesService {
             if let onPartial {
                 await onPartial(dedupeVehicleRowsForMarketplace(allRows))
             }
-            if page.count < pageSize { break }
-            offset += pageSize
+            if page.count < limit { break }
+            offset += limit
+            isFirst = false
         }
 
         return allRows

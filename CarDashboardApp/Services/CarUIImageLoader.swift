@@ -36,7 +36,8 @@ enum CarUIImageLoader {
     /// Evita decenas de handshakes QUIC/TLS a la vez (`quic_crypto_queue_append max 5 reached`): pocas descargas HTTP reales en paralelo.
     private actor HTTPImageDownloadGate {
         static let shared = HTTPImageDownloadGate()
-        private let limit = 2
+        // Más descargas en paralelo = las listas con muchas fotos cargan antes.
+        private let limit = 5
         private var active = 0
         private var waiters: [CheckedContinuation<Void, Never>] = []
 
