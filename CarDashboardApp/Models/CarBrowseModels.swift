@@ -1,5 +1,23 @@
 import Foundation
 
+// MARK: - Segmento inventario (Todos / Vendidos / Reservados)
+
+enum CarsInventorySegment: String, CaseIterable, Identifiable {
+    case all
+    case sold
+    case reserved
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Todos"
+        case .sold: return "Vendidos"
+        case .reserved: return "Reservados"
+        }
+    }
+}
+
 // MARK: - Ordenación
 
 enum CarSortOption: String, CaseIterable, Identifiable {

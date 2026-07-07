@@ -26,9 +26,17 @@ struct DashboardFinancialSummaryCard: View {
                         .foregroundStyle(.white.opacity(0.38))
                 }
 
-                Text(stats.totalStockValue)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                AnimatedEURAmountText(
+                    amount: stats.totalStockValueAmount,
+                    font: .system(size: 34, weight: .bold, design: .rounded)
+                )
+                .animation(.easeOut(duration: 1.15), value: stats.totalStockValueAmount)
+                .opacity(stats.isStockValueReady ? 1 : 0)
+                .overlay {
+                    if !stats.isStockValueReady {
+                        DashboardSkeletonAmountPlaceholder(height: 38, maxWidth: 200)
+                    }
+                }
 
                 Text("Valor stock · \(stats.periodDisplayLabel)")
                     .font(.system(size: 13, weight: .medium))
@@ -94,9 +102,11 @@ struct DashboardFinancialDetailSheet: View {
                         Text("Resumen del periodo")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.5))
-                        Text(stats.totalStockValue)
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                        AnimatedEURAmountText(
+                            amount: stats.totalStockValueAmount,
+                            font: .system(size: 40, weight: .bold, design: .rounded)
+                        )
+                        .animation(.easeOut(duration: 1.15), value: stats.totalStockValueAmount)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(18)
@@ -352,11 +362,6 @@ struct DashboardConnectedUsersStrip: View {
                     }
                 }
 
-                if !members.isEmpty {
-                    Text("Toca para abrir el chat del equipo (grupo y mensajes privados).")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.38))
-                }
             }
             .padding(16)
             .background {

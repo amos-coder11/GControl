@@ -153,6 +153,8 @@ struct VehicleRow: Decodable, Sendable {
     var exteriorColorDecoded: String?
     var onlineListingDecoded: Bool?
     var reservableDecoded: Bool?
+    var soldDecoded: Bool?
+    var stockStatusDecoded: String?
 
     private static let palette = ["cyan", "orange", "mint"]
 
@@ -523,7 +525,12 @@ struct VehicleRow: Decodable, Sendable {
         onlineListingDecoded = Self.optBool(c, [
             "online_listing", "online_only", "servicio_online", "web_listing", "onlineListing",
         ])
-        reservableDecoded = Self.optBool(c, ["reservable", "is_reservable", "can_reserve"])
+        reservableDecoded = Self.optBool(c, ["reservable", "is_reservable", "can_reserve", "is_reserved", "reserved"])
+        soldDecoded = Self.optBool(c, ["is_sold", "sold", "isSold", "sold_out", "soldOut"])
+        stockStatusDecoded = Self.optString(c, [
+            "status", "vehicle_status", "stock_status", "listing_status", "estado", "inventory_status", "state",
+            "sale_status", "sales_status", "estado_venta", "estado_vehiculo", "vehicle_state",
+        ])
     }
 
     private static func normalizeSellerKind(_ raw: String?) -> String? {
@@ -655,6 +662,8 @@ struct VehicleRow: Decodable, Sendable {
         }
 
         let brandResolved = firstNonEmptyString([brand, make])
+        let statusRaw = trimmedNonEmpty(stockStatusDecoded)
+        let resolvedSold = soldDecoded == true || Car.matchesExplicitSoldStatus(statusRaw)
 
         let car = Car(
             id: id,
@@ -687,7 +696,9 @@ struct VehicleRow: Decodable, Sendable {
             equipmentSummary: trimmedNonEmpty(equipmentDecoded),
             exteriorColorLabel: trimmedNonEmpty(exteriorColorDecoded),
             onlineListing: onlineListingDecoded,
-            isReservable: reservableDecoded
+            isReservable: reservableDecoded,
+            isSold: resolvedSold ? true : (soldDecoded == false ? false : nil),
+            stockStatus: statusRaw
         )
         return car
     }

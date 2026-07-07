@@ -5,14 +5,30 @@ import Foundation
 enum VoiceMessageWaveformExtractor {
     /// Duración en segundos; útil sin decodificar todo el archivo cuando solo hace falta el tiempo.
     static func durationSeconds(ofM4AData data: Data) -> TimeInterval? {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("wf-dur-\(UUID().uuidString).m4a")
+        durationSeconds(ofAudioData: data, fileExtension: "m4a")
+    }
+
+    /// Duración de cualquier audio en memoria (m4a, ogg, mp3…).
+    static func durationSeconds(ofAudioData data: Data, fileExtension: String) -> TimeInterval? {
+        if fileExtension == "m4a" || fileExtension == "mp4" {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("wf-dur-\(UUID().uuidString).m4a")
+            defer { try? FileManager.default.removeItem(at: url) }
+            do {
+                try data.write(to: url)
+                let file = try AVAudioFile(forReading: url)
+                let rate = file.fileFormat.sampleRate
+                guard rate > 0 else { return nil }
+                return TimeInterval(file.length) / rate
+            } catch {}
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("wf-dur-\(UUID().uuidString).\(fileExtension)")
         defer { try? FileManager.default.removeItem(at: url) }
         do {
             try data.write(to: url)
-            let file = try AVAudioFile(forReading: url)
-            let rate = file.fileFormat.sampleRate
-            guard rate > 0 else { return nil }
-            return TimeInterval(file.length) / rate
+            let asset = AVURLAsset(url: url)
+            let seconds = CMTimeGetSeconds(asset.duration)
+            guard seconds.isFinite, seconds > 0 else { return nil }
+            return seconds
         } catch {
             return nil
         }

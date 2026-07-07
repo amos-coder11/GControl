@@ -19,6 +19,10 @@
 	<string>Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -102,9 +102,11 @@ struct CommercialRankingSheet: View {
     }
 }
 
-// MARK: - Facturas y documentos
+// MARK: - Contratos (hoja desde Inicio)
 
-struct InvoiceAndContractsHubSheet: View {
+struct ContractsHubView: View {
+    var showsDismissButton = false
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var invoiceHistory: InvoiceHistoryStore
 
@@ -126,10 +128,10 @@ struct InvoiceAndContractsHubSheet: View {
                                     .frame(width: 48, height: 48)
                                     .background(Circle().fill(Color.white.opacity(0.12)))
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Nuevo documento")
+                                    Text("Nuevo contrato")
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundStyle(.white)
-                                    Text("Contratos con IA y exportación PDF")
+                                    Text("Generación con IA y exportación PDF")
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(.white.opacity(0.45))
                                 }
@@ -149,14 +151,14 @@ struct InvoiceAndContractsHubSheet: View {
                             .foregroundStyle(.white)
 
                         if invoiceHistory.entries.isEmpty {
-                            Text("Aún no hay documentos guardados. Al generar un contrato con la IA, se añadirá aquí automáticamente.")
+                            Text("Aún no hay contratos guardados. Al generar uno con la IA, se añadirá aquí automáticamente.")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.45))
                                 .padding(.vertical, 8)
                         } else {
                             VStack(spacing: 0) {
                                 ForEach(Array(invoiceHistory.entries.enumerated()), id: \.element.id) { index, entry in
-                                    invoiceRow(entry)
+                                    contractsHistoryRow(entry)
                                     if index < invoiceHistory.entries.count - 1 {
                                         Divider().background(Color.white.opacity(0.1))
                                     }
@@ -170,18 +172,20 @@ struct InvoiceAndContractsHubSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Facturas y contratos")
+            .navigationTitle("Contratos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
+                if showsDismissButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
             }
@@ -193,7 +197,7 @@ struct InvoiceAndContractsHubSheet: View {
         .preferredColorScheme(.dark)
     }
 
-    private func invoiceRow(_ entry: InvoiceHistoryStore.Entry) -> some View {
+    private func contractsHistoryRow(_ entry: InvoiceHistoryStore.Entry) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.title)
@@ -220,6 +224,12 @@ struct InvoiceAndContractsHubSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+}
+
+struct InvoiceAndContractsHubSheet: View {
+    var body: some View {
+        ContractsHubView(showsDismissButton: true)
     }
 }
 

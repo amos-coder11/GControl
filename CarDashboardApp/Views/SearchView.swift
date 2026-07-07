@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// Pestaña Buscador: mismo criterio que Coches (`browseSearchText`, filtros y orden).
+/// Pestaña Buscador: mismo criterio que Coches (`browseSearchText` y orden).
 struct SearchView: View {
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
-    @EnvironmentObject private var tabRouter: MainTabRouter
 
     @State private var showSortSheet = false
-    @State private var showFilterSheet = false
     @FocusState private var browseSearchFieldFocused: Bool
 
     private var displayedCars: [Car] {
@@ -20,12 +18,12 @@ struct SearchView: View {
 
     private var searchEmptyFootnote: String {
         let qEmpty = carsVM.browseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if qEmpty, !carsVM.browseFilters.hasActiveFilters, carsVM.lastFetchHadZeroRowsFromBackend {
-            return "Si esperabas anuncios aquí también, el listado llega vacío desde Supabase (tabla «vehicles» / RLS). Escribe para buscar o revisa filtros."
+        if qEmpty, carsVM.lastFetchHadZeroRowsFromBackend {
+            return "Si esperabas anuncios aquí también, el listado llega vacío desde Supabase (tabla «vehicles» / RLS). Escribe para buscar."
         }
         return carsVM.browseSearchText.isEmpty
-            ? "Escribe en el buscador o ajusta filtros."
-            : "Prueba con otro término o limpia filtros."
+            ? "Escribe en el buscador."
+            : "Prueba con otro término."
     }
 
     var body: some View {
@@ -33,12 +31,6 @@ struct SearchView: View {
             RevolutChromeContainer {
                 VStack(spacing: 0) {
                     stickyBrowseChrome
-
-                    if auth.canAccessIASection {
-                        iaShortcutRow
-                            .padding(.horizontal, 16)
-                            .padding(.top, 10)
-                    }
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 18) {
@@ -106,67 +98,8 @@ struct SearchView: View {
                     CarsSortSheet(sort: $carsVM.browseSort)
                         .presentationDetents([.medium, .large])
                 }
-                .sheet(isPresented: $showFilterSheet) {
-                    CarsFilterSheet(
-                        filters: $carsVM.browseFilters,
-                        sourceCars: carsVM.cars,
-                        resultCount: carsVM.displayedBrowseCars().count,
-                        onClear: {}
-                    )
-                }
             }
         }
-    }
-
-    private var iaShortcutRow: some View {
-        Button {
-            tabRouter.selected = .ai
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.45, green: 0.35, blue: 0.95),
-                                    Color(red: 0.2, green: 0.55, blue: 0.98),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 46, height: 46)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("IA — Coordinador de equipo")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("Voz en vivo, tareas y mensajes por nombre")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.48))
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.38))
-            }
-            .padding(16)
-            .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
-                    }
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private var stickyBrowseChrome: some View {
@@ -174,10 +107,8 @@ struct SearchView: View {
             initials: auth.userInitials,
             profileImage: auth.profileAvatarImage,
             searchText: $carsVM.browseSearchText,
-            hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
             searchFieldFocused: $browseSearchFieldFocused,
-            onSort: { showSortSheet = true },
-            onFilter: { showFilterSheet = true }
+            onSort: { showSortSheet = true }
         )
         .appChromeHeaderOuterPadding()
         .frame(maxWidth: .infinity, alignment: .leading)

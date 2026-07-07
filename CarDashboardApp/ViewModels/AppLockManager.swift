@@ -18,18 +18,18 @@ final class AppLockManager: ObservableObject {
         hasPINConfigured = false
     }
 
-    /// Llama al iniciar o cambiar sesión: no borra PINs en Keychain.
+    /// Llama al iniciar o cambiar sesión.
     func setActiveUser(_ userId: UUID?) {
         authError = nil
-        guard let uid = userId else {
+        guard userId != nil else {
             activeUserId = nil
             hasPINConfigured = false
             isUnlocked = false
             return
         }
-        activeUserId = uid
-        hasPINConfigured = AppPINKeychain.loadHash(forUserId: uid) != nil
-        isUnlocked = false
+        activeUserId = userId
+        hasPINConfigured = true
+        isUnlocked = true
     }
 
     func refreshPINState() {
@@ -129,9 +129,7 @@ final class AppLockManager: ObservableObject {
         authError = nil
     }
 
-    func lock() {
-        isUnlocked = false
-    }
+    func lock() {}
 
     /// Solo cuando el usuario indica que olvidó el PIN: borra el PIN **de esa cuenta** y debe volver a crearlo al entrar.
     func clearPINForUser(_ userId: UUID) {

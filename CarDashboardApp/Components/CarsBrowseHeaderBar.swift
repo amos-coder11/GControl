@@ -1,15 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Coches / Buscador: misma fila que Inicio (avatar + pastilla + 2 círculos). Ordenar + filtros sustituyen a gráfico/campana con el **mismo** ancho útil para el buscador.
+/// Coches / Buscador: misma fila que Inicio (avatar + pastilla + ordenar).
 struct CarsBrowseHeaderBar: View {
     let initials: String
     var profileImage: UIImage? = nil
     @Binding var searchText: String
-    var hasActiveFilters: Bool
     @FocusState.Binding var searchFieldFocused: Bool
     var onSort: () -> Void
-    var onFilter: () -> Void
 
     var body: some View {
         AppChromeHeaderRow(
@@ -21,27 +19,11 @@ struct CarsBrowseHeaderBar: View {
             showsSearchClearButton: true,
             searchFieldFocused: $searchFieldFocused
         ) {
-            HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                AppChromeHeaderCircleIconButton(
-                    systemName: "arrow.up.arrow.down",
-                    accessibilityLabel: "Ordenar",
-                    action: onSort
-                )
-
-                ZStack(alignment: .topTrailing) {
-                    AppChromeHeaderCircleIconButton(
-                        systemName: "slider.horizontal.3",
-                        accessibilityLabel: "Filtros",
-                        action: onFilter
-                    )
-                    if hasActiveFilters {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 7, height: 7)
-                            .offset(x: 3, y: -3)
-                    }
-                }
-            }
+            AppChromeHeaderCircleIconButton(
+                systemName: "arrow.up.arrow.down",
+                accessibilityLabel: "Ordenar",
+                action: onSort
+            )
         }
     }
 }
@@ -52,10 +34,8 @@ private struct CarsBrowseHeaderBarPreviewHost: View {
         CarsBrowseHeaderBar(
             initials: "J",
             searchText: .constant(""),
-            hasActiveFilters: true,
             searchFieldFocused: $focused,
-            onSort: {},
-            onFilter: {}
+            onSort: {}
         )
         .padding()
         .background(Color.black)

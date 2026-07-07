@@ -21,14 +21,14 @@ struct CarDashboardAppApp: App {
     }
 }
 
-/// Encapsula `scenePhase` y sincroniza el bloqueo local con la sesión Supabase.
+/// Encapsula ciclo de vida de la app y sincroniza sesión Supabase.
 private struct AppShellRoot: View {
     @ObservedObject var authVM: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var appLock: AppLockManager
     @EnvironmentObject var moderationStore: UserModerationStore
-    @Environment(\.scenePhase) private var scenePhase
+    @State private var phoneCallAlertMessage: String?
 
     var body: some View {
         AuthRootView(auth: authVM)
@@ -39,6 +39,25 @@ private struct AppShellRoot: View {
             .onAppear {
                 syncAppLockWithSession()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .phoneCallDidFail)) { note in
+                let number = note.userInfo?["number"] as? String ?? ""
+                let reason = note.userInfo?["reason"] as? String ?? "unavailable"
+                if reason == "simulator" {
+                    phoneCallAlertMessage =
+                        "Las llamadas no funcionan en el simulador. Número copiado al portapapeles:\n\(number)"
+                } else {
+                    phoneCallAlertMessage =
+                        "No se pudo abrir el teléfono. Número copiado al portapapeles:\n\(number)"
+                }
+            }
+            .alert("Llamada", isPresented: Binding(
+                get: { phoneCallAlertMessage != nil },
+                set: { if !$0 { phoneCallAlertMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { phoneCallAlertMessage = nil }
+            } message: {
+                Text(phoneCallAlertMessage ?? "")
+            }
             .onChange(of: authVM.isAuthenticated) { _, _ in
                 syncAppLockWithSession()
                 syncModerationWithSession()
@@ -46,14 +65,8 @@ private struct AppShellRoot: View {
             .task(id: authVM.session?.user.id) {
                 await syncModerationWithSessionAsync()
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .background {
-                    appLock.lock()
-                }
-            }
-            // Evita el diálogo de notificaciones (y posibles conflictos de ventana) durante «Crea tu PIN» o la pantalla de bloqueo.
-            .task(id: "\(authVM.isAuthenticated)-\(appLock.hasPINConfigured)-\(appLock.isUnlocked)") {
-                guard authVM.isAuthenticated, appLock.hasPINConfigured, appLock.isUnlocked else { return }
+            .task(id: authVM.isAuthenticated) {
+                guard authVM.isAuthenticated else { return }
                 await RemotePushRegistration.requestAuthorizationAndRegister()
                 await RemotePushRegistration.syncPendingTokenToSupabase()
             }
@@ -63,7 +76,6 @@ private struct AppShellRoot: View {
         if authVM.isAuthenticated, let uid = authVM.session?.user.id {
             appLock.setActiveUser(uid)
         } else {
-            // Cerrar sesión no borra el PIN en el llavero: cada usuario conserva su código en este dispositivo.
             appLock.setActiveUser(nil)
         }
     }

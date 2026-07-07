@@ -19,6 +19,7 @@ enum RemotePushRegistration {
                 #endif
                 return
             }
+            await WorkdayNotificationService.rescheduleAll()
             UIApplication.shared.registerForRemoteNotifications()
         } catch {
             #if DEBUG

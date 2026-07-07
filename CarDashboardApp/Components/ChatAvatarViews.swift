@@ -78,6 +78,7 @@ struct ChatSocialBadgeView: View {
 
 struct ChatThreadAvatarView: View {
     let thread: ChatThread
+    var accessToken: String?
     var diameter: CGFloat = 56
 
     private var badgeSize: CGFloat { max(18, diameter * 0.38) }
@@ -86,9 +87,19 @@ struct ChatThreadAvatarView: View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let url = thread.avatarCarURL {
-                    ChatAsyncCarThumbnail(url: url)
-                        .frame(width: diameter, height: diameter)
-                        .clipShape(Circle())
+                    if thread.kind == .lead {
+                        ChatAsyncContactPhoto(
+                            url: url,
+                            accessToken: accessToken,
+                            fallbackInitial: thread.avatarInitial,
+                            fallbackColor: thread.avatarColor,
+                            diameter: diameter
+                        )
+                    } else {
+                        ChatAsyncCarThumbnail(url: url)
+                            .frame(width: diameter, height: diameter)
+                            .clipShape(Circle())
+                    }
                 } else {
                     ZStack {
                         Circle()
@@ -303,12 +314,88 @@ struct ChatInboxListAvatarView: View {
                 diameter: diameter
             )
         case .lead:
-            ChatThreadAvatarView(thread: thread, diameter: diameter)
+            ChatThreadAvatarView(thread: thread, accessToken: accessToken, diameter: diameter)
         }
     }
 }
 
 // MARK: - Miniatura remota (misma idea que el showroom del dashboard)
+
+// MARK: - Miniatura remota (coche en muestras / leads sin foto de contacto)
+
+/// Foto de perfil de contacto WhatsApp/Instagram (con auth al CRM si hace falta).
+struct ChatAsyncContactPhoto: View {
+    let url: URL
+    var accessToken: String?
+    var fallbackInitial: String?
+    var fallbackColor: Color
+    var diameter: CGFloat
+
+    @State private var uiImage: UIImage?
+    @State private var loadFailed = false
+
+    var body: some View {
+        Group {
+            if let uiImage {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else if loadFailed {
+                fallbackCircle
+            } else {
+                Color(white: 0.94)
+                    .overlay { ProgressView() }
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .clipShape(Circle())
+        .task(id: taskKey) {
+            await load()
+        }
+    }
+
+    private var taskKey: String {
+        "\(url.absoluteString)|\(accessToken ?? "")"
+    }
+
+    private var fallbackCircle: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        fallbackColor.opacity(0.95),
+                        fallbackColor.opacity(0.62),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                if let initial = fallbackInitial?.first {
+                    Text(String(initial).uppercased())
+                        .font(.system(size: diameter * 0.40, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: diameter * 0.38, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+            }
+    }
+
+    private func load() async {
+        loadFailed = false
+        uiImage = nil
+        let img = await CrmContactPhotoLoader.load(url: url, accessToken: accessToken)
+        await MainActor.run {
+            if let img {
+                uiImage = img
+            } else {
+                loadFailed = true
+            }
+        }
+    }
+}
 
 private struct ChatAsyncCarThumbnail: View {
     let url: URL

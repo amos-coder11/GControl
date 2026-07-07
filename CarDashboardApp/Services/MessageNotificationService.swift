@@ -1,0 +1,188 @@
+import Foundation
+import UIKit
+import UserNotifications
+
+extension Notification.Name {
+    /// Abrir un hilo de chat tras pulsar una notificación (payload en `userInfo`).
+    static let openChatFromPush = Notification.Name("CarHub.openChatFromPush")
+}
+
+/// Avisos locales de nuevos mensajes CRM y enrutamiento al pulsar push remota/local.
+enum MessageNotificationService {
+    static let leadCategoryId = "CARHUB_LEAD_MESSAGE"
+
+    static func registerCategories() {
+        let accept = UNNotificationAction(
+            identifier: CarHubNotificationCategories.coordinatorTaskAcceptAction,
+            title: "Aceptar",
+            options: [.foreground]
+        )
+        let coordinatorCategory = UNNotificationCategory(
+            identifier: CarHubNotificationCategories.coordinatorTask,
+            actions: [accept],
+            intentIdentifiers: [],
+            options: []
+        )
+        let leadCategory = UNNotificationCategory(
+            identifier: leadCategoryId,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([
+            coordinatorCategory,
+            leadCategory,
+        ])
+    }
+
+    /// Compara conversaciones CRM antes/después del refresh y avisa si hay mensaje nuevo.
+    @MainActor
+    static func notifyNewCrmMessages(
+        previous: [UUID: CrmLeadSnapshot],
+        current: [ChatThread],
+        activeThreadId: UUID?
+    ) {
+        Task {
+            guard await notificationsAuthorized() else { return }
+
+            for thread in current where thread.kind == .lead {
+                if thread.id == activeThreadId { continue }
+
+                let snap = previous[thread.id]
+                let preview = thread.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+                let unread = thread.unread ?? 0
+
+                let isNew: Bool
+                if let snap {
+                    isNew = preview != snap.preview || unread > snap.unread
+                } else {
+                    isNew = unread > 0 && !preview.isEmpty
+                }
+
+                guard isNew, !preview.isEmpty else { continue }
+                await scheduleLeadNotification(thread: thread, body: preview)
+            }
+        }
+    }
+
+    @MainActor
+    private static func scheduleLeadNotification(thread: ChatThread, body: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = leadNotificationTitle(for: thread)
+        content.body = truncate(body, max: 180)
+        content.sound = .default
+        content.categoryIdentifier = leadCategoryId
+        content.userInfo = [
+            "carhub": [
+                "kind": "crm_lead",
+                "thread_id": thread.id.uuidString,
+            ],
+        ]
+
+        let id = "crm-\(thread.id.uuidString)-\(Int(Date().timeIntervalSince1970))"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    private static func leadNotificationTitle(for thread: ChatThread) -> String {
+        switch thread.socialSource {
+        case .whatsApp:
+            return "WhatsApp · \(thread.title)"
+        case .instagram:
+            return "Instagram · \(thread.title)"
+        default:
+            return thread.title
+        }
+    }
+
+    private static func truncate(_ text: String, max: Int) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count > max else { return t }
+        return String(t.prefix(max - 1)) + "…"
+    }
+
+    private static func notificationsAuthorized() async -> Bool {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus == .authorized
+            || settings.authorizationStatus == .provisional
+    }
+
+    /// Pulsa en notificación (local o APNs): publica ruta para abrir el chat.
+    static func postOpenChatRouting(from response: UNNotificationResponse) {
+        guard let routing = parseRouting(from: response.notification.request.content.userInfo) else { return }
+        NotificationCenter.default.post(
+            name: .openChatFromPush,
+            object: nil,
+            userInfo: routing
+        )
+    }
+
+    /// Aplica la ruta en la UI principal (MainTabView).
+    @MainActor
+    static func applyOpenChatRouting(
+        _ userInfo: [AnyHashable: Any],
+        chatInbox: ChatInboxStore,
+        tabRouter: MainTabRouter,
+        chatNav: ChatNavigationCoordinator
+    ) {
+        guard let kind = userInfo["kind"] as? String else { return }
+
+        switch kind {
+        case "crm_lead":
+            guard let idStr = userInfo["thread_id"] as? String,
+                  let threadId = UUID(uuidString: idStr),
+                  let thread = chatInbox.liveThreads.first(where: { $0.id == threadId })
+            else { return }
+            tabRouter.selected = .chat
+            chatNav.threadToOpen = thread
+
+        case "dm":
+            guard let senderStr = userInfo["sender_id"] as? String,
+                  let senderId = UUID(uuidString: senderStr),
+                  let thread = chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == senderId })
+            else { return }
+            tabRouter.selected = .chat
+            chatNav.threadToOpen = thread
+
+        case "group":
+            guard let group = chatInbox.teamGroupChatThread else { return }
+            tabRouter.selected = .chat
+            chatNav.threadToOpen = group
+
+        default:
+            break
+        }
+    }
+
+    private static func parseRouting(from userInfo: [AnyHashable: Any]) -> [String: String]? {
+        guard let carhub = userInfo["carhub"] as? [String: Any],
+              let kind = stringValue(carhub["kind"])
+        else { return nil }
+
+        switch kind {
+        case "crm_lead":
+            guard let threadId = stringValue(carhub["thread_id"]) else { return nil }
+            return ["kind": kind, "thread_id": threadId]
+        case "dm":
+            guard let senderId = stringValue(carhub["sender_id"]) else { return nil }
+            return ["kind": kind, "sender_id": senderId]
+        case "group":
+            return ["kind": kind]
+        default:
+            return nil
+        }
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        if let s = value as? String { return s }
+        if let s = value as? NSString { return s as String }
+        if let n = value as? NSNumber { return n.stringValue }
+        return nil
+    }
+}
+
+/// Snapshot ligero para detectar mensajes CRM nuevos entre refrescos.
+struct CrmLeadSnapshot: Equatable {
+    let preview: String
+    let unread: Int
+}

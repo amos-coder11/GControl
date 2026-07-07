@@ -9,8 +9,6 @@ struct SettingsView: View {
 
     @AppStorage(VehicleImageDiagnostics.userDefaultsKey) private var logVehicleImageDiagnostics = false
 
-    @State private var settingsSearchText = ""
-    @FocusState private var settingsSearchFieldFocused: Bool
     @State private var showDeleteAccountConfirm = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
@@ -18,61 +16,36 @@ struct SettingsView: View {
 
     var body: some View {
         RevolutChromeContainer {
-            VStack(spacing: 0) {
-                AppChromeHeaderRow(
-                    initials: auth.userInitials,
-                    profileImage: auth.profileAvatarImage,
-                    searchText: $settingsSearchText,
-                    prompt: Text("Buscar")
-                        .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
-                    showsSearchClearButton: true,
-                    searchFieldFocused: $settingsSearchFieldFocused
-                ) {
-                    HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                        AppChromeHeaderCircleIconButton(
-                            systemName: "chart.bar.fill",
-                            accessibilityLabel: "Estadísticas",
-                            action: {}
-                        )
-                        AppChromeHeaderCircleIconButton(
-                            systemName: "bell.fill",
-                            accessibilityLabel: "Notificaciones",
-                            action: {}
-                        )
-                    }
-                }
-                .appChromeHeaderOuterPadding()
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 12) {
+                    Text("Ajustes")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 8)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 12) {
-                        profileSection
-                        if auth.isAuthenticated {
-                            notificationsSection
-                            communitySafetySection
-                        }
-                        developerSection
-                        accountSection
-                        aboutSection
+                    profileSection
+                    if auth.isAuthenticated {
+                        notificationsSection
+                        communitySafetySection
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
-                    .frame(minWidth: 0, maxWidth: .infinity)
+                    developerSection
+                    accountSection
+                    aboutSection
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(minWidth: 0, maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity)
         }
+        .toolbar(.visible, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                LiquidGlassKeyboardAccessoryBar {
-                    settingsSearchFieldFocused = false
-                }
-            }
-        }
         .task(id: auth.session?.user.id) {
             guard let uid = auth.session?.user.id else { return }
             await settingsVM.loadNotifyTeamPush(

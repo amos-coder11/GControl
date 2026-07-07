@@ -36,6 +36,8 @@ private struct ChatMessage: Identifiable, Equatable {
     let image: UIImage?
     /// Imagen alojada en una URL (la del cliente por WhatsApp/Instagram).
     let remoteImageURL: URL?
+    /// Nota de voz remota (WhatsApp/Instagram) o archivo local mientras se envía.
+    let remoteAudioURL: URL?
     /// Ruta en bucket `team_direct_voice` (prefijo en fila `body`).
     let voiceStoragePath: String?
     let isOutgoing: Bool
@@ -61,6 +63,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.text = text
         self.image = nil
         self.remoteImageURL = nil
+        self.remoteAudioURL = nil
         self.voiceStoragePath = voiceStoragePath
         self.isOutgoing = isOutgoing
         self.time = time
@@ -83,6 +86,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.text = nil
         self.image = image
         self.remoteImageURL = nil
+        self.remoteAudioURL = nil
         self.voiceStoragePath = voiceStoragePath
         self.isOutgoing = isOutgoing
         self.time = time
@@ -106,6 +110,7 @@ private struct ChatMessage: Identifiable, Equatable {
         self.text = caption
         self.image = nil
         self.remoteImageURL = remoteImageURL
+        self.remoteAudioURL = nil
         self.voiceStoragePath = nil
         self.isOutgoing = isOutgoing
         self.time = time
@@ -127,7 +132,30 @@ private struct ChatMessage: Identifiable, Equatable {
         self.text = nil
         self.image = nil
         self.remoteImageURL = nil
+        self.remoteAudioURL = nil
         self.voiceStoragePath = voiceStoragePath
+        self.isOutgoing = isOutgoing
+        self.time = time
+        self.sortKey = sortKey
+        self.receipt = isOutgoing ? (receipt ?? .read) : nil
+        self.senderUserId = senderUserId
+    }
+
+    init(
+        id: UUID = UUID(),
+        remoteAudioURL: URL,
+        isOutgoing: Bool,
+        time: String,
+        receipt: OutgoingReceipt? = nil,
+        sortKey: Date = Date(),
+        senderUserId: UUID? = nil
+    ) {
+        self.id = id
+        self.text = nil
+        self.image = nil
+        self.remoteImageURL = nil
+        self.remoteAudioURL = remoteAudioURL
+        self.voiceStoragePath = nil
         self.isOutgoing = isOutgoing
         self.time = time
         self.sortKey = sortKey
@@ -140,22 +168,19 @@ private struct ChatMessage: Identifiable, Equatable {
     }
 }
 
-/// DM equipo: un solo hilo temporal (mensajes + tarjetas de tarea Viera).
+/// DM equipo: mensajes en orden cronológico.
 private enum TeamDirectTimelineItem: Identifiable {
     case message(ChatMessage)
-    case coordinatorTask(CoordinatorOutboundTask)
 
     var id: UUID {
         switch self {
         case .message(let m): return m.id
-        case .coordinatorTask(let t): return t.id
         }
     }
 
     var sortKey: Date {
         switch self {
         case .message(let m): return m.sortKey
-        case .coordinatorTask(let t): return t.createdAt ?? .distantPast
         }
     }
 }
@@ -165,6 +190,7 @@ private enum TeamDirectTimelineItem: Identifiable {
 struct ChatConversationView: View {
     let thread: ChatThread
 
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var auth: AuthViewModel
@@ -180,8 +206,6 @@ struct ChatConversationView: View {
     @State private var teamGroupLoadError: String?
     /// Mensajes reales del CRM (WhatsApp/Instagram) para hilos de «Generales».
     @State private var crmRows: [CrmChatService.Message] = []
-    @State private var deadlineEditTask: CoordinatorOutboundTask?
-    @State private var deadlineEditValue = Date()
 
     /// Mismos márgenes que el scroll (sincroniza la barra inferior al salir del GeometryReader).
     @State private var inputBarHorizontalPadding = ChatHorizontalPadding(leading: 20, trailing: 20)
@@ -189,6 +213,7 @@ struct ChatConversationView: View {
     @StateObject private var chatDictationTranscriber = LiveSpeechTranscriber()
     @State private var isChatDictating = false
     @State private var isRecordingTeamVoice = false
+    @State private var isSendingVoiceNote = false
     @State private var teamVoiceRecorder: AVAudioRecorder?
     @State private var teamVoiceURL: URL?
     @State private var teamVoiceError: String?
@@ -238,31 +263,6 @@ struct ChatConversationView: View {
         chatInbox.crmAiActiveByThread[thread.id] ?? true
     }
 
-    /// Botón de la cabecera para apagar/encender la IA y que entre un comercial.
-    @ViewBuilder
-    private var aiToggleButton: some View {
-        let active = crmAiActive
-        Button {
-            toggleCrmAi(to: !active)
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: active ? "sparkles" : "person.fill")
-                    .font(.system(size: 12, weight: .bold))
-                Text(active ? "IA ON" : "IA OFF")
-                    .font(.system(size: 12, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(active
-                        ? Color(red: 0.15, green: 0.62, blue: 0.40)
-                        : Color(red: 0.84, green: 0.32, blue: 0.30))
-            }
-        }
-    }
-
     private func toggleCrmAi(to active: Bool) {
         guard let convId = chatInbox.crmConversationIdByThread[thread.id],
               let token = auth.session?.accessToken else { return }
@@ -288,7 +288,19 @@ struct ChatConversationView: View {
                 let receipt: OutgoingReceipt? = incoming ? nil : .read
                 let rawText = (row.textContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
-                // 1) ¿Es una IMAGEN? (por tipo, por extensión de la URL o por base64)
+                // 1) ¿Es AUDIO / nota de voz?
+                if CrmChatService.isAudioMessage(row), let audioURL = CrmChatService.audioURL(for: row) {
+                    return ChatMessage(
+                        id: id,
+                        remoteAudioURL: audioURL,
+                        isOutgoing: !incoming,
+                        time: time,
+                        receipt: receipt,
+                        sortKey: sortKey
+                    )
+                }
+
+                // 2) ¿Es una IMAGEN? (por tipo, por extensión de la URL o por base64)
                 if let imageURL = Self.crmImageURL(for: row) {
                     let caption = Self.looksLikePlaceholder(rawText) ? nil : rawText
                     return ChatMessage(
@@ -302,7 +314,7 @@ struct ChatConversationView: View {
                     )
                 }
 
-                // 2) Texto (incluye enlaces de coche, que se ven como enlace tocable).
+                // 3) Texto (incluye enlaces de coche, que se ven como enlace tocable).
                 let text = rawText.isEmpty ? (row.mediaUrl != nil ? "📎 Archivo adjunto" : " ") : rawText
                 return ChatMessage(
                     id: id,
@@ -318,6 +330,7 @@ struct ChatConversationView: View {
 
     /// Devuelve una URL de imagen para el mensaje si es una foto (URL http o base64).
     private static func crmImageURL(for row: CrmChatService.Message) -> URL? {
+        if CrmChatService.isAudioMessage(row) { return nil }
         let type = (row.mediaType ?? row.messageType ?? "").lowercased()
         let isImageType = type.contains("image") || type.hasPrefix("img")
         // a) URL pública directa
@@ -368,23 +381,16 @@ struct ChatConversationView: View {
             }
     }
 
-    /// Mensajes de texto e imágenes mezclados con tareas del coordinador por `created_at` / hora local.
+    /// Mensajes de texto e imágenes del DM de equipo.
     private var teamDirectTimelineItems: [TeamDirectTimelineItem] {
-        guard usesTeamDirectServer,
-              let myId = auth.session?.user.id,
-              let otherId = thread.peerUserId
-        else { return [] }
+        guard usesTeamDirectServer else { return [] }
         let msgs = teamDirectUIMessages + liveMessages
-        let tasks = chatInbox.coordinatorTasksInTeamDirectThread(myUserId: myId, otherUserId: otherId)
-        var items: [TeamDirectTimelineItem] = msgs.map { .message($0) }
-            + tasks.map { .coordinatorTask($0) }
-        items.sort {
-            if $0.sortKey != $1.sortKey {
-                return $0.sortKey < $1.sortKey
+        return msgs
+            .sorted {
+                if $0.sortKey != $1.sortKey { return $0.sortKey < $1.sortKey }
+                return $0.id.uuidString < $1.id.uuidString
             }
-            return $0.id.uuidString < $1.id.uuidString
-        }
-        return items
+            .map { .message($0) }
     }
 
     private var draftIsEmpty: Bool {
@@ -398,13 +404,20 @@ struct ChatConversationView: View {
         case .teamDirect:
             return "Mensaje privado · equipo"
         case .lead:
+            if chatInbox.canCallLead(thread),
+               let phone = chatInbox.contactPhoneDisplay(for: thread) {
+                return phone
+            }
             return "últ. vez recientemente"
         }
     }
 
-    /// Cabecera conversación: título blanco y estado en gris más marcado.
+    /// Cabecera conversación estilo WhatsApp.
     private let chatToolbarNameColor = Color.white
     private let chatToolbarStatusColor = Color(red: 0.62, green: 0.66, blue: 0.72)
+    private let whatsAppFieldFill = Color(red: 0.11, green: 0.11, blue: 0.11)
+    private let whatsAppSendGreen = Color(red: 0.0, green: 0.72, blue: 0.45)
+    private let whatsAppComposerInset: CGFloat = 8
     /// Entrantes: fondo pizarra azulada; texto blanco; hora en gris claro visible.
     private let incomingBubbleTextColor = Color.white
     private let incomingBubbleMetaColor = Color(red: 0.72, green: 0.76, blue: 0.82)
@@ -421,7 +434,7 @@ struct ChatConversationView: View {
         } else {
             count = stackedConversationMessages.count
         }
-        return "chat-bottom-\(thread.id.uuidString)-\(count)-\(chatInbox.coordinatorTimelineTick)"
+        return "chat-bottom-\(thread.id.uuidString)-\(count)"
     }
 
     var body: some View {
@@ -441,19 +454,12 @@ struct ChatConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 8) {
-                            if usesTeamDirectServer,
-                               let myId = auth.session?.user.id,
-                               thread.peerUserId != nil
-                            {
+                            if usesTeamDirectServer, thread.peerUserId != nil {
                                 ForEach(teamDirectTimelineItems) { item in
-                                    switch item {
-                                    case .message(let msg):
+                                    if case .message(let msg) = item {
                                         messageBubble(msg, maxBubbleWidth: maxBubble)
                                             .frame(maxWidth: innerW)
                                             .id(msg.id)
-                                    case .coordinatorTask(let task):
-                                        coordinatorTaskCard(task, myUserId: myId, maxBubbleWidth: maxBubble, innerW: innerW)
-                                            .id(task.id)
                                     }
                                 }
                             } else {
@@ -486,9 +492,6 @@ struct ChatConversationView: View {
                     .onChange(of: teamDirectTimelineItems.count) { _, _ in
                         if usesTeamDirectServer { scrollChatToBottom(proxy: proxy) }
                     }
-                    .onChange(of: chatInbox.coordinatorTimelineTick) { _, _ in
-                        scrollChatToBottom(proxy: proxy)
-                    }
                     .onAppear {
                         scrollChatToBottom(proxy: proxy, animated: false)
                     }
@@ -514,62 +517,10 @@ struct ChatConversationView: View {
             )
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(thread.title)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(chatToolbarNameColor)
-                        .lineLimit(1)
-                    Text(conversationStatusLine)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(chatToolbarStatusColor)
-                }
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 7)
-                .background {
-                    Capsule(style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                        .overlay {
-                            Capsule(style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.65)
-                        }
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
-                    if usesCrmServer {
-                        aiToggleButton
-                    }
-                    if usesTeamDirectServer || usesTeamGroupServer {
-                        Menu {
-                            if let target = primaryModerationTarget {
-                                Button {
-                                    reportTarget = target
-                                } label: {
-                                    Label("Denunciar contenido", systemImage: "exclamationmark.bubble")
-                                }
-                                Button(role: .destructive) {
-                                    if let target = primaryModerationTarget {
-                                        reportTarget = target
-                                        showBlockConfirm = true
-                                    }
-                                } label: {
-                                    Label("Bloquear usuario", systemImage: "hand.raised.fill")
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    conversationAvatar
-                }
-            }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            whatsAppConversationHeader
         }
         .onChange(of: selectedPhoto) { _, newItem in
             Task {
@@ -585,6 +536,9 @@ struct ChatConversationView: View {
             }
         }
         .onAppear {
+            if thread.kind == .lead {
+                chatInbox.activeLeadThreadId = thread.id
+            }
             if usesTeamDirectServer, let peer = thread.peerUserId {
                 chatInbox.activeTeamDirectPeerId = peer
             }
@@ -596,6 +550,9 @@ struct ChatConversationView: View {
         .onDisappear {
             stopChatDictationIfNeeded()
             cancelTeamVoiceNoteRecording()
+            if thread.kind == .lead {
+                chatInbox.activeLeadThreadId = nil
+            }
             chatInbox.activeTeamDirectPeerId = nil
             chatInbox.activeTeamGroupChatOpen = false
             Task {
@@ -619,11 +576,6 @@ struct ChatConversationView: View {
                 await runCrmSessionIfNeeded()
             }
         }
-        .onChange(of: deadlineEditTask) { _, task in
-            if let task {
-                deadlineEditValue = task.deadline
-            }
-        }
         .alert("Nota de voz", isPresented: Binding(
             get: { teamVoiceError != nil },
             set: { if !$0 { teamVoiceError = nil } }
@@ -631,49 +583,6 @@ struct ChatConversationView: View {
             Button("Aceptar", role: .cancel) { teamVoiceError = nil }
         } message: {
             Text(teamVoiceError ?? "")
-        }
-        .sheet(item: $deadlineEditTask) { task in
-            NavigationStack {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Nuevo plazo")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    DatePicker(
-                        "Límite",
-                        selection: $deadlineEditValue,
-                        in: Date()...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                    Button {
-                        guard let uid = auth.session?.user.id else { return }
-                        let tid = task.id
-                        let picked = deadlineEditValue
-                        Task {
-                            try? await chatInbox.updateCoordinatorTaskDeadline(
-                                taskId: tid,
-                                newDeadline: picked,
-                                currentUserId: uid
-                            )
-                            await MainActor.run { deadlineEditTask = nil }
-                        }
-                    } label: {
-                        Text("Guardar")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(20)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cerrar") { deadlineEditTask = nil }
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
         }
         .sheet(item: $reportTarget) { target in
             ContentReportSheet(
@@ -709,28 +618,137 @@ struct ChatConversationView: View {
         }
     }
 
-    /// Mismos márgenes horizontales que el hilo de mensajes (atrás / avatar).
+    /// Barra inferior estilo WhatsApp (fondo negro, márgenes fijos).
     private func inputBarChrome(leadingPad: CGFloat, trailingPad: CGFloat) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             if isRecordingTeamVoice {
-                Text("Suelta para enviar la nota de voz")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.cyan.opacity(0.88))
+                Text("Toca el micrófono otra vez para enviar el audio")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
             }
             messageInputBar
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 8)
+        .padding(.horizontal, whatsAppComposerInset)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .padding(.leading, leadingPad)
-        .padding(.trailing, trailingPad)
-        .padding(.top, 6)
-        .padding(.bottom, 6)
+        .background(Color.black)
+        .ignoresSafeArea(edges: .bottom)
     }
 
-    // MARK: - Avatar (derecha toolbar)
+    // MARK: - Cabecera WhatsApp
 
-    private var conversationAvatar: some View {
+    private var whatsAppConversationHeader: some View {
+        HStack(spacing: 10) {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                    if let unread = thread.unread, unread > 0 {
+                        Text("\(min(unread, 99))")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(.white.opacity(0.95))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.14), in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            conversationHeaderAvatar
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(thread.title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(chatToolbarNameColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Text(conversationStatusLine)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(chatToolbarStatusColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+
+            if usesCrmServer {
+                whatsAppCrmActionsPill
+            } else if usesTeamDirectServer || usesTeamGroupServer {
+                teamConversationActionsMenu
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
+    }
+
+    private var whatsAppCrmActionsPill: some View {
+        HStack(spacing: 18) {
+            Button {
+                toggleCrmAi(to: !crmAiActive)
+            } label: {
+                Image(systemName: crmAiActive ? "cpu.fill" : "cpu")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(
+                        crmAiActive
+                            ? Color(red: 0.15, green: 0.78, blue: 0.45)
+                            : .white.opacity(0.92)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(crmAiActive ? "Desactivar IA" : "Activar IA")
+
+            if chatInbox.canCallLead(thread),
+               let phone = chatInbox.contactPhone(for: thread) {
+                Button {
+                    PhoneCallLauncher.call(phone)
+                } label: {
+                    Image(systemName: "phone")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Llamar")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background {
+            Capsule(style: .continuous)
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.75)
+        }
+    }
+
+    private var teamConversationActionsMenu: some View {
+        Menu {
+            if let target = primaryModerationTarget {
+                Button {
+                    reportTarget = target
+                } label: {
+                    Label("Denunciar contenido", systemImage: "exclamationmark.bubble")
+                }
+                Button(role: .destructive) {
+                    if let target = primaryModerationTarget {
+                        reportTarget = target
+                        showBlockConfirm = true
+                    }
+                } label: {
+                    Label("Bloquear usuario", systemImage: "hand.raised.fill")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+                .frame(width: 32, height: 32)
+        }
+    }
+
+    private var conversationHeaderAvatar: some View {
         ChatInboxListAvatarView(
             thread: thread,
             directory: communityVM.directory,
@@ -738,13 +756,8 @@ struct ChatConversationView: View {
             currentUserId: auth.session?.user.id,
             localProfileImage: auth.profileAvatarImage,
             localInitials: auth.userInitials,
-            diameter: 38
+            diameter: 36
         )
-        .overlay {
-            Circle()
-                .strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
-        }
-        .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
     }
 
     // MARK: - Burbujas
@@ -775,8 +788,14 @@ struct ChatConversationView: View {
 
             VStack(alignment: msg.isOutgoing ? .trailing : .leading, spacing: 4) {
                 if let voicePath = msg.voiceStoragePath {
-                    teamDirectVoiceBubble(
-                        storagePath: voicePath,
+                    voiceNoteBubble(
+                        source: .supabase(path: voicePath),
+                        msg: msg,
+                        maxBubbleWidth: maxBubbleWidth
+                    )
+                } else if let audioURL = msg.remoteAudioURL {
+                    voiceNoteBubble(
+                        source: .remote(url: audioURL, accessToken: usesCrmServer ? auth.session?.accessToken : nil),
                         msg: msg,
                         maxBubbleWidth: maxBubbleWidth
                     )
@@ -869,9 +888,13 @@ struct ChatConversationView: View {
         }
     }
 
-    private func teamDirectVoiceBubble(storagePath: String, msg: ChatMessage, maxBubbleWidth: CGFloat) -> some View {
-        TeamDirectVoiceBubbleView(
-            storagePath: storagePath,
+    private func voiceNoteBubble(
+        source: VoiceAudioSource,
+        msg: ChatMessage,
+        maxBubbleWidth: CGFloat
+    ) -> some View {
+        VoiceNoteBubbleView(
+            source: source,
             isOutgoing: msg.isOutgoing,
             time: msg.time,
             receipt: msg.receipt,
@@ -1064,132 +1087,10 @@ struct ChatConversationView: View {
         }
     }
 
-    // MARK: - Tareas del coordinador IA (DM equipo)
+    // MARK: - Barra de entrada (estilo WhatsApp)
 
-    private func coordinatorTaskCard(_ task: CoordinatorOutboundTask, myUserId: UUID, maxBubbleWidth: CGFloat, innerW: CGFloat) -> some View {
-        let recipientKey = task.peerUserId
-        let isAssignee = myUserId == task.peerUserId
-        let isSender = myUserId == task.senderUserId
-        let deadlineText = Self.coordinatorTaskDeadlineFormatter.string(from: task.deadline)
-        let overdue = task.deadline < Date() && !task.isComplete
-        /// Alineado al borde izquierdo del hilo (como burbujas entrantes), no centrado entre dos Spacer.
-        return HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.cyan.opacity(0.95))
-                    Text("Coordinador IA · Tarea")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.cyan.opacity(0.9))
-                }
-                Text(task.title)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(incomingBubbleTextColor)
-                HStack(spacing: 6) {
-                    Image(systemName: overdue ? "exclamationmark.circle.fill" : "clock")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Límite: \(deadlineText)")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(overdue ? Color.orange.opacity(0.95) : incomingBubbleMetaColor)
-                if isSender {
-                    Button {
-                        deadlineEditTask = task
-                    } label: {
-                        Text("Cambiar plazo")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.cyan.opacity(0.95))
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let ref = task.referenceImageData, let ui = UIImage(data: ref) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Vehículo de referencia")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(incomingBubbleMetaColor)
-                        Image(uiImage: ui)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 168)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                            }
-                    }
-                }
-                Text(task.body)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(incomingBubbleTextColor)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if task.acceptedAt == nil, isAssignee {
-                    Button {
-                        chatInbox.acceptCoordinatorTask(recipientUserId: recipientKey, taskId: task.id)
-                    } label: {
-                        Text("Aceptar tarea")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color.cyan.opacity(0.42))
-                            }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Text("Pruebas a entregar")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(incomingBubbleMetaColor)
-                    ForEach(task.steps) { step in
-                        CoordinatorTaskStepProofRow(
-                            recipientUserId: recipientKey,
-                            taskId: task.id,
-                            step: step,
-                            canAttachProof: isAssignee,
-                            canVerifyProof: isSender
-                        )
-                    }
-                    if task.isComplete {
-                        Label("Tarea completada — todas las pruebas validadas", systemImage: "checkmark.seal.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.green.opacity(0.95))
-                            .padding(.top, 2)
-                    }
-                }
-
-                Text(Self.currentTimeString())
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(incomingBubbleMetaColor)
-            }
-            .frame(maxWidth: maxBubbleWidth, alignment: .leading)
-            .padding(14)
-            .background {
-                RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-                    .fill(incomingBubbleFill)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-                            .strokeBorder(Color.cyan.opacity(0.38), lineWidth: 1)
-                    }
-            }
-            Spacer(minLength: bubbleEdgeMargin)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(maxWidth: innerW, alignment: .leading)
-    }
-
-    // MARK: - Barra de entrada unificada
-
-    private let composerFontSize: CGFloat = 17
-    /// Radio fijo: con texto multilínea no parece “cápsula” vertical; mismo lenguaje que tarjetas cromadas.
-    private let composerChromeCorner: CGFloat = 22
-    private let composerSendBlue = Color(red: 0.0, green: 0.48, blue: 1.0)
-    private let composerVerticalPadding: CGFloat = 5
-    /// Insets simétricos: la línea queda centrada en el UITextView; el marco exterior centra en los 44 pt.
+    private let composerFontSize: CGFloat = 16
+    private let composerVerticalPadding: CGFloat = 6
     private let composerTextTopInset: CGFloat = 2
     private let composerTextBottomInset: CGFloat = 2
 
@@ -1200,21 +1101,19 @@ struct ChatConversationView: View {
     }
 
     private var messageInputBar: some View {
-        HStack(alignment: .bottom, spacing: AppChromeHeaderMetrics.hStackSpacing) {
+        HStack(alignment: .bottom, spacing: 10) {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                ZStack {
-                    DashboardChromeHeaderCircleBackground(size: AppChromeHeaderMetrics.circleButtonSize)
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.95))
-                }
-                .contentShape(Circle())
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .frame(width: 28, height: 36)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(ChromeCirclePressButtonStyle())
-            .disabled(isChatDictating || isRecordingTeamVoice)
+            .buttonStyle(.plain)
+            .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
 
-            HStack(alignment: .bottom, spacing: 6) {
-                ZStack(alignment: .topLeading) {
+            HStack(alignment: .bottom, spacing: 8) {
+                ZStack(alignment: .leading) {
                     ComposerTextView(
                         text: $draft,
                         maxHeight: composerTextScrollMaxHeight,
@@ -1224,21 +1123,26 @@ struct ChatConversationView: View {
                     )
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
-                    .opacity((isChatDictating || isRecordingTeamVoice) ? 0.2 : 1)
+                    .opacity((isChatDictating || isRecordingTeamVoice || isSendingVoiceNote) ? 0.2 : 1)
 
-                    if isRecordingTeamVoice {
-                        Text("Grabando audio…")
+                    if isSendingVoiceNote {
+                        Text("Enviando audio…")
                             .font(.system(size: composerFontSize))
                             .foregroundStyle(.white.opacity(0.55))
                             .padding(.top, composerTextTopInset)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .allowsHitTesting(false)
+                    } else if isRecordingTeamVoice {
+                        Text("Grabando… Toca el micrófono para enviar")
+                            .font(.system(size: composerFontSize))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .padding(.top, composerTextTopInset)
                             .allowsHitTesting(false)
                     } else if isChatDictating {
                         Group {
                             if chatDictationTranscriber.partialText.isEmpty {
                                 Text("Escuchando…")
                                     .font(.system(size: composerFontSize))
-                                    .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
+                                    .foregroundStyle(.white.opacity(0.45))
                             } else {
                                 Text(chatDictationTranscriber.partialText)
                                     .font(.system(size: composerFontSize))
@@ -1246,82 +1150,72 @@ struct ChatConversationView: View {
                             }
                         }
                         .padding(.top, composerTextTopInset)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .allowsHitTesting(false)
                     } else if draftIsEmpty && !isRecordingTeamVoice {
                         Text("Mensaje")
                             .font(.system(size: composerFontSize))
-                            .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
+                            .foregroundStyle(.white.opacity(0.45))
                             .padding(.top, composerTextTopInset)
                             .allowsHitTesting(false)
                     }
                 }
 
-                if !draft.isEmpty {
-                    Button {
-                        draft = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 17))
-                            .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity))
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(ChromeSmallCirclePressButtonStyle(diameter: 28))
-                    .accessibilityLabel("Limpiar mensaje")
+                if draftIsEmpty && !isRecordingTeamVoice && !isSendingVoiceNote && !isChatDictating {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(width: 24, height: 28)
+                        .accessibilityHidden(true)
                 }
-
-                Button { sendMessage() } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background {
-                            Circle()
-                                .fill(draftIsEmpty ? Color.white.opacity(0.14) : composerSendBlue)
-                        }
-                }
-                .buttonStyle(ChromeSmallCirclePressButtonStyle(diameter: 28))
-                .disabled(draftIsEmpty || isChatDictating || isRecordingTeamVoice)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, composerVerticalPadding)
-            .frame(maxWidth: .infinity, minHeight: AppChromeHeaderMetrics.circleButtonSize, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .center)
             .background {
-                DashboardChromeCardBackground(cornerRadius: composerChromeCorner)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(whatsAppFieldFill)
             }
 
-            Group {
-                if usesTeamDirectServer {
-                    TeamDirectMicGestureControl(
-                        isDictating: isChatDictating,
-                        isRecordingVoice: isRecordingTeamVoice,
-                        onStopDictation: { stopChatDictationIfNeeded() },
-                        onShortTap: { toggleChatDictation() },
-                        onHoldBegan: {
-                            Task { @MainActor in
-                                await startTeamVoiceNoteRecording()
-                            }
-                        },
-                        onHoldEnded: {
-                            Task { @MainActor in
-                                await finishTeamVoiceNoteRecordingAndSend()
-                            }
-                        }
-                    )
+            if !draftIsEmpty {
+                Button { sendMessage() } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(whatsAppSendGreen, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
+                .accessibilityLabel("Enviar mensaje")
+            } else {
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Image(systemName: "camera")
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .frame(width: 28, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
+
+                if usesTeamDirectServer || usesCrmServer {
+                    VoiceNoteMicTapControl(
+                        isRecording: isRecordingTeamVoice,
+                        isBusy: isSendingVoiceNote
+                    ) {
+                        toggleVoiceNoteRecording()
+                    }
                 } else {
                     Button {
                         toggleChatDictation()
                     } label: {
-                        ZStack {
-                            DashboardChromeHeaderCircleBackground(size: AppChromeHeaderMetrics.circleButtonSize)
-                            Image(systemName: isChatDictating ? "stop.fill" : "mic.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.95))
-                        }
-                        .contentShape(Circle())
+                        Image(systemName: isChatDictating ? "stop.fill" : "mic")
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(isChatDictating ? Color.red.opacity(0.9) : .white.opacity(0.92))
+                            .frame(width: 28, height: 36)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(ChromeCirclePressButtonStyle())
+                    .buttonStyle(.plain)
                     .accessibilityLabel(isChatDictating ? "Detener dictado" : "Dictar mensaje")
                 }
             }
@@ -1330,6 +1224,31 @@ struct ChatConversationView: View {
         .animation(.easeInOut(duration: 0.2), value: draft.count)
         .animation(.easeInOut(duration: 0.2), value: isChatDictating)
         .animation(.easeInOut(duration: 0.2), value: isRecordingTeamVoice)
+        .animation(.easeInOut(duration: 0.2), value: isSendingVoiceNote)
+    }
+
+    private func voiceNoteFileByteCount(at url: URL) -> UInt64? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? UInt64 else { return nil }
+        return size
+    }
+
+    @MainActor
+    private func awaitVoiceNoteFileReady(at url: URL, minimumBytes: UInt64 = 400) async -> UInt64? {
+        for _ in 0 ..< 12 {
+            if let size = voiceNoteFileByteCount(at: url), size >= minimumBytes {
+                return size
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        return voiceNoteFileByteCount(at: url)
+    }
+
+    @MainActor
+    private func cleanupVoiceNoteFile(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func requestMicPermissionForChat() async -> Bool {
@@ -1395,9 +1314,27 @@ struct ChatConversationView: View {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    private func toggleVoiceNoteRecording() {
+        guard !isSendingVoiceNote else { return }
+        if isRecordingTeamVoice {
+            Task { @MainActor in
+                await finishTeamVoiceNoteRecordingAndSend()
+            }
+        } else {
+            dismissComposerKeyboard()
+            if isChatDictating { stopChatDictationIfNeeded() }
+            Task { @MainActor in
+                await startTeamVoiceNoteRecording()
+            }
+        }
+    }
+
     @MainActor
     private func startTeamVoiceNoteRecording() async {
-        guard usesTeamDirectServer, thread.peerUserId != nil, auth.session != nil else { return }
+        guard usesTeamDirectServer || usesCrmServer else { return }
+        guard auth.session != nil else { return }
+        if usesTeamDirectServer, thread.peerUserId == nil { return }
+        if usesCrmServer, chatInbox.crmConversationIdByThread[thread.id] == nil { return }
         guard !isRecordingTeamVoice else { return }
         if isChatDictating { stopChatDictationIfNeeded() }
         let mic = await requestMicPermissionForChat()
@@ -1409,7 +1346,11 @@ struct ChatConversationView: View {
         teamVoiceURL = url
         do {
             let av = AVAudioSession.sharedInstance()
-            try av.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .defaultToSpeaker])
+            try av.setCategory(
+                .playAndRecord,
+                mode: .spokenAudio,
+                options: [.duckOthers, .defaultToSpeaker, .allowBluetoothHFP]
+            )
             try av.setActive(true)
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -1435,41 +1376,81 @@ struct ChatConversationView: View {
 
     @MainActor
     private func finishTeamVoiceNoteRecordingAndSend() async {
-        guard isRecordingTeamVoice else { return }
-        teamVoiceRecorder?.stop()
+        guard isRecordingTeamVoice, !isSendingVoiceNote else { return }
+
+        let recorder = teamVoiceRecorder
+        let recordedSeconds = recorder?.currentTime ?? 0
+        recorder?.stop()
         teamVoiceRecorder = nil
         isRecordingTeamVoice = false
-        guard let url = teamVoiceURL, let peer = thread.peerUserId, let myId = auth.session?.user.id else {
-            if let u = teamVoiceURL { try? FileManager.default.removeItem(at: u) }
-            teamVoiceURL = nil
+
+        guard let url = teamVoiceURL else {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             return
         }
         teamVoiceURL = nil
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        }
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let nbytes = attrs[.size] as? UInt64,
-              nbytes > 400 else {
+
+        let nbytes = await awaitVoiceNoteFileReady(at: url) ?? 0
+        guard recordedSeconds >= 0.35, nbytes > 400 else {
+            cleanupVoiceNoteFile(at: url)
+            if nbytes == 0 {
+                teamVoiceError = "No se capturó audio. Revisa permisos del micrófono o prueba en un iPhone físico (el simulador a veces falla)."
+            } else {
+                teamVoiceError = "La grabación es demasiado corta. Graba un poco más antes de enviar."
+            }
             return
         }
-        let path = TeamDirectVoiceStorage.makeObjectPath(senderId: myId, recipientId: peer)
-        do {
-            try await TeamDirectVoiceStorage.upload(fileURL: url, path: path, client: SupabaseClientProvider.shared)
-            let body = TeamDirectVoiceStorage.messageBody(forStoragePath: path)
-            let row = try await TeamDirectMessagesService.send(
-                recipientId: peer,
-                body: body,
-                client: SupabaseClientProvider.shared
-            )
-            let date = TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
-            mergeTeamDirectInsert(row)
-            chatInbox.applyTeamDirectOutgoing(toPeer: peer, body: row.body, date: date)
-        } catch {
-            teamVoiceError = error.localizedDescription
+
+        isSendingVoiceNote = true
+        defer {
+            isSendingVoiceNote = false
+            cleanupVoiceNoteFile(at: url)
         }
+
+        if usesCrmServer,
+           let convId = chatInbox.crmConversationIdByThread[thread.id],
+           let token = auth.session?.accessToken {
+            let now = Self.currentTimeString()
+            withAnimation {
+                liveMessages.append(
+                    ChatMessage(remoteAudioURL: url, isOutgoing: true, time: now, receipt: .sent)
+                )
+            }
+            do {
+                try await CrmChatService.sendAudio(token: token, conversationId: convId, fileURL: url)
+                await refreshCrmMessages(clearLocal: true)
+                NotificationCenter.default.post(name: .messageDidRespond, object: nil)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } catch {
+                liveMessages.removeAll { $0.remoteAudioURL == url && $0.isOutgoing }
+                teamVoiceError = "No se pudo enviar la nota de voz. \(error.localizedDescription)"
+            }
+            return
+        }
+
+        if usesTeamDirectServer,
+           let peer = thread.peerUserId,
+           let myId = auth.session?.user.id {
+            let path = TeamDirectVoiceStorage.makeObjectPath(senderId: myId, recipientId: peer)
+            do {
+                try await TeamDirectVoiceStorage.upload(fileURL: url, path: path, client: SupabaseClientProvider.shared)
+                let body = TeamDirectVoiceStorage.messageBody(forStoragePath: path)
+                let row = try await TeamDirectMessagesService.send(
+                    recipientId: peer,
+                    body: body,
+                    client: SupabaseClientProvider.shared
+                )
+                let date = TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+                mergeTeamDirectInsert(row)
+                chatInbox.applyTeamDirectOutgoing(toPeer: peer, body: row.body, date: date)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } catch {
+                teamVoiceError = error.localizedDescription
+            }
+            return
+        }
+
+        teamVoiceError = "No se pudo enviar el audio en este chat."
     }
 
     // MARK: - Envío texto
@@ -1493,6 +1474,7 @@ struct ChatConversationView: View {
                     await MainActor.run {
                         mergeTeamGroupInsert(row)
                         chatInbox.applyTeamGroupOutgoing(body: row.body, date: d)
+                        NotificationCenter.default.post(name: .messageDidRespond, object: nil)
                     }
                 } catch {
                     await MainActor.run { draft = text }
@@ -1512,6 +1494,9 @@ struct ChatConversationView: View {
                 do {
                     try await CrmChatService.send(token: token, conversationId: convId, text: text)
                     await refreshCrmMessages(clearLocal: true)
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .messageDidRespond, object: nil)
+                    }
                 } catch {
                     // El backend rechazó el envío (p. ej. ventana de 24 h cerrada).
                     await MainActor.run {
@@ -1538,6 +1523,7 @@ struct ChatConversationView: View {
                             body: row.body,
                             date: TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
                         )
+                        NotificationCenter.default.post(name: .messageDidRespond, object: nil)
                     }
                 } catch {
                     await MainActor.run { draft = text }
@@ -1633,7 +1619,6 @@ struct ChatConversationView: View {
 
     private func runTeamDirectSessionIfNeeded() async {
         guard usesTeamDirectServer, let peer = thread.peerUserId, let myId = auth.session?.user.id else { return }
-        await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: myId)
         teamDirectLoadError = nil
         if let existing = teamDirectChannel {
             await SupabaseClientProvider.shared.removeChannel(existing)
@@ -1869,14 +1854,6 @@ struct ChatConversationView: View {
         return f.string(from: Date())
     }
 
-    private static let coordinatorTaskDeadlineFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "es_ES")
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f
-    }()
-
     // MARK: - Mock
 
     private static func mockMessages(for thread: ChatThread) -> [ChatMessage] {
@@ -1953,7 +1930,38 @@ struct ChatConversationView: View {
     }
 }
 
-// MARK: - Mic DM equipo (toca = dictado, mantén = nota de voz)
+// MARK: - Mic nota de voz (toca = grabar / toca otra vez = enviar)
+
+private struct VoiceNoteMicTapControl: View {
+    var isRecording: Bool
+    var isBusy: Bool = false
+    var onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Group {
+                if isBusy {
+                    ProgressView()
+                        .tint(.white.opacity(0.9))
+                        .scaleEffect(0.75)
+                } else {
+                    Image(systemName: isRecording ? "stop.fill" : "mic")
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(isRecording ? Color.red.opacity(0.92) : .white.opacity(0.92))
+                }
+            }
+            .frame(width: 28, height: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.65 : 1)
+        .accessibilityLabel(isBusy ? "Enviando audio" : (isRecording ? "Detener y enviar audio" : "Grabar audio"))
+        .accessibilityHint(isBusy ? "Espera a que termine el envío" : (isRecording ? "Toca para detener y enviar el audio" : "Toca para empezar a grabar"))
+    }
+}
+
+// MARK: - Mic DM equipo (legacy: mantén pulsado)
 
 private struct TeamDirectMicGestureControl: View {
     var isDictating: Bool
@@ -2023,10 +2031,37 @@ private struct TeamDirectMicGestureControl: View {
     }
 }
 
-// MARK: - Burbuja nota de voz (Storage)
+// MARK: - Burbuja nota de voz (Storage + CRM remoto)
 
-private struct TeamDirectVoiceBubbleView: View {
-    let storagePath: String
+private enum VoiceAudioSource: Equatable {
+    case supabase(path: String)
+    case remote(url: URL, accessToken: String?)
+
+    var taskID: String {
+        switch self {
+        case .supabase(let path): return "sb:\(path)"
+        case .remote(let url, let token): return "rm:\(url.absoluteString)|\(token ?? "")"
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .supabase: return "m4a"
+        case .remote(let url, _):
+            let ext = url.pathExtension.lowercased()
+            if !ext.isEmpty { return ext }
+            if url.scheme?.lowercased() == "data" {
+                let raw = url.absoluteString.lowercased()
+                if raw.contains("ogg") { return "ogg" }
+                if raw.contains("mpeg") || raw.contains("mp3") { return "mp3" }
+            }
+            return "ogg"
+        }
+    }
+}
+
+private struct VoiceNoteBubbleView: View {
+    let source: VoiceAudioSource
     let isOutgoing: Bool
     let time: String
     let receipt: OutgoingReceipt?
@@ -2040,8 +2075,10 @@ private struct TeamDirectVoiceBubbleView: View {
     @State private var waveformBars: [CGFloat] = []
     @State private var audioDuration: TimeInterval = 0
     @State private var player: AVAudioPlayer?
+    @State private var streamPlayer: AVPlayer?
     @State private var playbackToken = UUID()
     @State private var playFileURL: URL?
+    @State private var streamEndObserver: NSObjectProtocol?
 
     private let outgoingBubbleGradient = LinearGradient(
         colors: [
@@ -2106,7 +2143,7 @@ private struct TeamDirectVoiceBubbleView: View {
                 shape.fill(incomingBubbleFill)
             }
         }
-        .task(id: storagePath) {
+        .task(id: source.taskID) {
             await prefetchWaveform()
         }
         .onDisappear {
@@ -2239,17 +2276,15 @@ private struct TeamDirectVoiceBubbleView: View {
             cachedAudioData = nil
             audioDuration = 0
         }
-        let path = storagePath
+        let src = source
+        let ext = src.fileExtension
         do {
-            let data = try await TeamDirectVoiceStorage.download(
-                path: path,
-                client: SupabaseClientProvider.shared
-            )
+            let data = try await loadAudioData(from: src)
             let barN = waveformBarCount
             let bars = await Task.detached(priority: .userInitiated) {
                 VoiceMessageWaveformExtractor.waveformBars(fromM4AData: data, barCount: barN)
             }.value
-            let dur = VoiceMessageWaveformExtractor.durationSeconds(ofM4AData: data) ?? 0
+            let dur = VoiceMessageWaveformExtractor.durationSeconds(ofAudioData: data, fileExtension: ext) ?? 0
             await MainActor.run {
                 cachedAudioData = data
                 waveformBars = bars
@@ -2264,6 +2299,18 @@ private struct TeamDirectVoiceBubbleView: View {
         }
     }
 
+    private func loadAudioData(from source: VoiceAudioSource) async throws -> Data {
+        switch source {
+        case .supabase(let path):
+            return try await TeamDirectVoiceStorage.download(
+                path: path,
+                client: SupabaseClientProvider.shared
+            )
+        case .remote(let url, let token):
+            return try await CrmAudioLoader.download(url: url, accessToken: token)
+        }
+    }
+
     private func togglePlayback() {
         if isPlaying {
             stopPlaybackCleanup()
@@ -2275,7 +2322,7 @@ private struct TeamDirectVoiceBubbleView: View {
             Task { @MainActor in
                 defer { isPlayLoading = false }
                 do {
-                    try playData(data)
+                    try playData(data, fileExtension: source.fileExtension)
                 } catch {
                     loadFailed = true
                 }
@@ -2283,20 +2330,20 @@ private struct TeamDirectVoiceBubbleView: View {
             return
         }
         isPlayLoading = true
-        let path = storagePath
+        let src = source
         Task {
             do {
-                let data = try await TeamDirectVoiceStorage.download(
-                    path: path,
-                    client: SupabaseClientProvider.shared
-                )
+                let data = try await loadAudioData(from: src)
                 await MainActor.run {
                     cachedAudioData = data
                     waveformBars = VoiceMessageWaveformExtractor.waveformBars(fromM4AData: data, barCount: waveformBarCount)
-                    audioDuration = VoiceMessageWaveformExtractor.durationSeconds(ofM4AData: data) ?? 0
+                    audioDuration = VoiceMessageWaveformExtractor.durationSeconds(
+                        ofAudioData: data,
+                        fileExtension: src.fileExtension
+                    ) ?? 0
                     isPlayLoading = false
                     do {
-                        try playData(data)
+                        try playData(data, fileExtension: src.fileExtension)
                     } catch {
                         loadFailed = true
                     }
@@ -2314,6 +2361,12 @@ private struct TeamDirectVoiceBubbleView: View {
     private func stopPlaybackCleanup() {
         player?.stop()
         player = nil
+        streamPlayer?.pause()
+        streamPlayer = nil
+        if let obs = streamEndObserver {
+            NotificationCenter.default.removeObserver(obs)
+            streamEndObserver = nil
+        }
         isPlaying = false
         playbackToken = UUID()
         if let url = playFileURL {
@@ -2323,133 +2376,56 @@ private struct TeamDirectVoiceBubbleView: View {
     }
 
     @MainActor
-    private func playData(_ data: Data) throws {
+    private func playData(_ data: Data, fileExtension: String) throws {
         try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try AVAudioSession.sharedInstance().setActive(true)
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("dm-play-\(UUID().uuidString).m4a")
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("voice-play-\(UUID().uuidString).\(fileExtension)")
         try data.write(to: temp)
         playFileURL = temp
-        let p = try AVAudioPlayer(contentsOf: temp)
-        p.prepareToPlay()
-        guard p.play() else {
-            throw NSError(domain: "CarHub", code: 3, userInfo: [NSLocalizedDescriptionKey: "Reproducción no disponible."])
+
+        if fileExtension == "m4a" || fileExtension == "mp4" || fileExtension == "mp3" || fileExtension == "aac" {
+            do {
+                let p = try AVAudioPlayer(contentsOf: temp)
+                p.prepareToPlay()
+                guard p.play() else { throw NSError(domain: "CarHub", code: 3) }
+                player = p
+                isPlaying = true
+                let token = UUID()
+                playbackToken = token
+                let duration = max(p.duration, 0.35)
+                if audioDuration < 0.5 { audioDuration = duration }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64((duration + 0.15) * 1_000_000_000))
+                    guard playbackToken == token else { return }
+                    stopPlaybackCleanup()
+                }
+                return
+            } catch {}
         }
-        player = p
+
+        let item = AVPlayerItem(url: temp)
+        let av = AVPlayer(playerItem: item)
+        streamPlayer = av
         isPlaying = true
         let token = UUID()
         playbackToken = token
-        let duration = max(p.duration, 0.35)
-        if audioDuration < 0.5 {
-            audioDuration = duration
+        streamEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                guard playbackToken == token else { return }
+                stopPlaybackCleanup()
+            }
         }
+        av.play()
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64((duration + 0.15) * 1_000_000_000))
-            guard playbackToken == token else { return }
-            stopPlaybackCleanup()
-        }
-    }
-}
-
-// MARK: - Prueba de tarea (coordinador IA)
-
-private struct CoordinatorTaskStepProofRow: View {
-    @EnvironmentObject private var chatInbox: ChatInboxStore
-    let recipientUserId: UUID
-    let taskId: UUID
-    let step: CoordinatorTaskStep
-    var canAttachProof: Bool = true
-    var canVerifyProof: Bool = true
-    @State private var pickerItem: PhotosPickerItem?
-
-    private let instructionColor = Color.white
-    private let rowStroke = Color.white.opacity(0.12)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(step.instruction)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(instructionColor)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if step.verified {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(Color.green.opacity(0.95))
-                        .accessibilityLabel("Prueba validada")
-                }
+            let asset = AVURLAsset(url: temp)
+            let seconds = CMTimeGetSeconds(asset.duration)
+            if seconds.isFinite, seconds > 0, audioDuration < 0.5 {
+                audioDuration = seconds
             }
-
-            if let data = step.proofImageData, let ui = UIImage(data: data) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-
-            if canAttachProof {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    Label(step.proofImageData == nil ? "Adjuntar prueba (foto)" : "Cambiar foto", systemImage: "camera.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.95))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.white.opacity(0.14))
-                        }
-                }
-                .disabled(step.verified)
-                .onChange(of: pickerItem) { _, newItem in
-                    Task {
-                        guard let newItem else { return }
-                        guard let data = try? await newItem.loadTransferable(type: Data.self),
-                              let ui = UIImage(data: data),
-                              let jpeg = ui.jpegData(compressionQuality: 0.82) else { return }
-                        await MainActor.run {
-                            chatInbox.setCoordinatorStepProof(
-                                recipientUserId: recipientUserId,
-                                taskId: taskId,
-                                stepId: step.id,
-                                imageData: jpeg
-                            )
-                            pickerItem = nil
-                        }
-                    }
-                }
-            }
-
-            if canVerifyProof {
-                Button {
-                    chatInbox.verifyCoordinatorStep(recipientUserId: recipientUserId, taskId: taskId, stepId: step.id)
-                } label: {
-                    Text("Validar prueba con IA")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    (step.proofImageData == nil || step.verified)
-                                        ? Color.white.opacity(0.1)
-                                        : Color.green.opacity(0.45)
-                                )
-                        }
-                }
-                .buttonStyle(.plain)
-                .disabled(step.proofImageData == nil || step.verified)
-            }
-        }
-        .padding(11)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(rowStroke, lineWidth: 0.8)
-                }
         }
     }
 }

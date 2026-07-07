@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        CoordinatorTaskNotificationRegistration.registerCategories()
+        MessageNotificationService.registerCategories()
         return true
     }
 
@@ -36,15 +36,25 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        completionHandler(.noData)
+        NotificationCenter.default.post(
+            name: Notification.Name("CarHub.refreshInboxFromPush"),
+            object: nil,
+            userInfo: userInfo
+        )
+        completionHandler(.newData)
     }
 
-    /// Acciones de notificación (p. ej. «Aceptar» en tarea Viera).
+    /// Acciones de notificación (Aceptar tarea Viera) o abrir chat al pulsar el aviso.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        CoordinatorTaskPushActionHandler.handleAcceptIfNeeded(response: response, completion: completionHandler)
+        if response.actionIdentifier == CarHubNotificationCategories.coordinatorTaskAcceptAction {
+            CoordinatorTaskPushActionHandler.handleAcceptIfNeeded(response: response, completion: completionHandler)
+            return
+        }
+        MessageNotificationService.postOpenChatRouting(from: response)
+        completionHandler()
     }
 }

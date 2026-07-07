@@ -56,6 +56,30 @@ struct ChatThread: Identifiable, Hashable {
         Color(red: avatarR, green: avatarG, blue: avatarB)
     }
 
+    /// Actualiza la foto del avatar (p. ej. foto de perfil de WhatsApp del CRM).
+    func withAvatarCarURL(_ url: URL?) -> ChatThread {
+        ChatThread(
+            id: id,
+            title: title,
+            preview: preview,
+            time: time,
+            unread: unread,
+            avatarInitial: avatarInitial,
+            avatarIcon: avatarIcon,
+            avatarR: avatarR,
+            avatarG: avatarG,
+            avatarB: avatarB,
+            avatarCarURL: url,
+            socialSource: socialSource,
+            isVerified: isVerified,
+            isPinned: isPinned,
+            kind: kind,
+            peerUserId: peerUserId,
+            readReceipt: readReceipt,
+            showOpenButton: showOpenButton
+        )
+    }
+
     /// Vista previa y hora cuando hay mensajes reales en el DM de equipo.
     func withDirectMessagePreview(_ preview: String, time: String) -> ChatThread {
         ChatThread(

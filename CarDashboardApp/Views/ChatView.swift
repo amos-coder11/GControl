@@ -5,13 +5,13 @@ import UIKit
 // MARK: - Lista de chat (fondo Revolut / liquid glass como Inicio)
 
 private enum ChatInboxListSegment: Int, CaseIterable {
-    case team
     case general
+    case team
 
     var title: String {
         switch self {
-        case .team: return "Equipo"
         case .general: return "Generales"
+        case .team: return "Equipo"
         }
     }
 }
@@ -35,7 +35,7 @@ struct ChatView: View {
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @EnvironmentObject private var moderation: UserModerationStore
     @State private var path = NavigationPath()
-    @State private var listSegment: ChatInboxListSegment = .team
+    @State private var listSegment: ChatInboxListSegment = .general
     @FocusState private var chatSearchFieldFocused: Bool
     @State private var teamDirectInboxChannel: RealtimeChannelV2?
     @State private var teamGroupInboxChannel: RealtimeChannelV2?
@@ -97,31 +97,17 @@ struct ChatView: View {
         RevolutChromeContainer {
             NavigationStack(path: $path) {
                 VStack(spacing: 0) {
-                    AppChromeHeaderRow(
-                        initials: auth.userInitials,
-                        searchText: $searchText,
+                    AppChromeSearchCapsuleField(
+                        text: $searchText,
                         prompt: searchPrompt,
-                        showsSearchClearButton: true,
-                        searchFieldFocused: $chatSearchFieldFocused
-                    ) {
-                        HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                            AppChromeHeaderCircleIconButton(
-                                systemName: "chart.bar.fill",
-                                accessibilityLabel: "Estadísticas",
-                                action: {}
-                            )
-                            AppChromeHeaderCircleIconButton(
-                                systemName: "bell.fill",
-                                accessibilityLabel: "Notificaciones",
-                                action: {}
-                            )
-                        }
-                    }
+                        showsClearButton: true,
+                        isSearchFocused: $chatSearchFieldFocused
+                    )
                     .appChromeHeaderOuterPadding()
 
                     chatInboxSegmentBar
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
 
                     if listSegment == .general {
                         globalAiToggleBar
@@ -190,7 +176,6 @@ struct ChatView: View {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await subscribeTeamDirectInboxIfNeeded() }
                 group.addTask { await subscribeTeamGroupInboxIfNeeded() }
-                group.addTask { await pollCrmConversations() }
             }
         }
         .onAppear {
@@ -256,16 +241,6 @@ struct ChatView: View {
             } catch {
                 await MainActor.run { inbox.setAllCrmAiActiveLocal(!active) }
             }
-        }
-    }
-
-    /// Trae los chats reales del CRM (WhatsApp/Instagram) y refresca cada 15 s.
-    private func pollCrmConversations() async {
-        while !Task.isCancelled {
-            if let token = auth.session?.accessToken {
-                await inbox.refreshCrmConversations(accessToken: token)
-            }
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
     }
 
@@ -366,36 +341,40 @@ struct ChatView: View {
     }
 
     private var chatInboxSegmentBar: some View {
-        HStack(spacing: 0) {
-            ForEach(ChatInboxListSegment.allCases, id: \.rawValue) { segment in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        listSegment = segment
-                    }
-                } label: {
-                    Text(segment.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(listSegment == segment ? .white : .white.opacity(0.42))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background {
-                            if listSegment == segment {
-                                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                    .fill(Color.white.opacity(0.14))
-                            }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ChatInboxListSegment.allCases, id: \.rawValue) { segment in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            listSegment = segment
                         }
+                    } label: {
+                        Text(segment.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(
+                                listSegment == segment ? Color.white : Color.white.opacity(0.55)
+                            )
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background {
+                                Capsule(style: .continuous)
+                                    .fill(
+                                        listSegment == segment
+                                            ? Color.white.opacity(0.22)
+                                            : Color.white.opacity(0.06)
+                                    )
+                                    .overlay {
+                                        if listSegment != segment {
+                                            Capsule(style: .continuous)
+                                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
+                                        }
+                                    }
+                            }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-        }
-        .padding(3)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.75)
-                }
+            .padding(.horizontal, 16)
         }
     }
 
@@ -501,6 +480,16 @@ struct ChatView: View {
     private func chatListRow(_ thread: ChatThread) -> some View {
         let pinned = effectivePinned(thread)
         let unread = effectiveUnread(thread)
+        let waPhone = inbox.contactPhone(for: thread)
+        let waPhoneLabel = inbox.contactPhoneDisplay(for: thread)
+        let canCall = inbox.canCallLead(thread)
+        let callTint: Color = {
+            switch thread.socialSource {
+            case .instagram: return Color(red: 0.79, green: 0.38, blue: 0.92)
+            case .whatsApp: return Color(red: 0.12, green: 0.72, blue: 0.38)
+            default: return .cyan
+            }
+        }()
 
         return HStack(alignment: .top, spacing: 12) {
             avatar(for: thread)
@@ -543,6 +532,21 @@ struct ChatView: View {
                     Spacer(minLength: 4)
 
                     trailingStatus(thread, unread: unread)
+                }
+
+                if canCall, let waPhoneLabel, let waPhone {
+                    Button {
+                        PhoneCallLauncher.call(waPhone)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(waPhoneLabel)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(callTint)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

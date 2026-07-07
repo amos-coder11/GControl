@@ -7,15 +7,19 @@ import UIKit
 struct CarsView: View {
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
-    @EnvironmentObject private var tabRouter: MainTabRouter
+    @EnvironmentObject private var chatInbox: ChatInboxStore
 
     @State private var showSortSheet = false
-    @State private var showFilterSheet = false
-    @State private var showAddVehicleSheet = false
     @State private var editingCar: Car?
-    /// Baja el FAB con la tab bar al hacer scroll hacia abajo (`tabBarMinimizeBehavior(.onScrollDown)`).
-    @State private var fabSunkToMatchHiddenTabBar = false
+    @State private var detailCar: Car?
+    @StateObject private var browseStats = DealershipStatsViewModel()
+    @StateObject private var leadIndex = CarInventoryLeadIndex()
     @FocusState private var browseSearchFieldFocused: Bool
+
+    private let inventoryGridColumns = [
+        GridItem(.flexible(), spacing: CarsBrowseMetrics.gridSpacing),
+        GridItem(.flexible(), spacing: CarsBrowseMetrics.gridSpacing),
+    ]
 
     private var displayedCars: [Car] {
         carsVM.displayedBrowseCars()
@@ -27,14 +31,13 @@ struct CarsView: View {
 
     private var browseContextEmpty: Bool {
         carsVM.browseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !carsVM.browseFilters.hasActiveFilters
     }
 
     private var carsEmptyFootnote: String {
         if carsVM.lastFetchHadZeroRowsFromBackend, browseContextEmpty {
-            return "Prueba a limpiar filtros o cambiar la búsqueda.\n\nEl servidor devolvió 0 filas: en Supabase revisa RLS de «vehicles». Para el mismo catálogo en todas las cuentas, permite SELECT a «anon» y «authenticated». Ejemplo en el repo: supabase/migrations/20260330130000_vehicles_marketplace_read_all.sql"
+            return "Prueba a cambiar la búsqueda.\n\nEl servidor devolvió 0 filas: en Supabase revisa RLS de «vehicles». Para el mismo catálogo en todas las cuentas, permite SELECT a «anon» y «authenticated». Ejemplo en el repo: supabase/migrations/20260330130000_vehicles_marketplace_read_all.sql"
         }
-        return "Prueba a limpiar filtros o cambiar la búsqueda."
+        return "Prueba a cambiar la búsqueda."
     }
 
     var body: some View {
@@ -43,14 +46,19 @@ struct CarsView: View {
                 stickyBrowseChrome
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 18) {
-                        Text("\(resultCountText) resultados")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 6)
+                    VStack(spacing: CarsBrowseMetrics.sectionSpacing) {
+                        HStack {
+                            Text("\(resultCountText) resultados")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal, CarsBrowseMetrics.horizontalInset)
+                        .padding(.top, 6)
+
+                        CarsInventorySegmentBar(carsVM: carsVM)
+
+                        CarsInventoryKPIStrip(stats: browseStats, leadIndex: leadIndex)
 
                         if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
                             ProgressView()
@@ -77,23 +85,20 @@ struct CarsView: View {
                                 .symbolRenderingMode(.hierarchical)
                                 .tint(.white.opacity(0.85))
                                 .padding(.vertical, 24)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, CarsBrowseMetrics.horizontalInset)
                             } else {
-                                LazyVStack(spacing: 14) {
-                                    ForEach(Array(displayedCars.enumerated()), id: \.element.id) { idx, car in
+                                LazyVGrid(columns: inventoryGridColumns, spacing: CarsBrowseMetrics.gridSpacing) {
+                                    ForEach(displayedCars) { car in
                                         CarListingCard(
                                             car: car,
                                             isSelected: carsVM.isSelected(car)
                                         ) {
                                             carsVM.selectCar(car)
-                                            editingCar = car
+                                            detailCar = car
                                         }
-                                        .frame(maxWidth: .infinity)
-                                        // Sin prefetch de vecinos: con CDN lento compite por las mismas ranuras HTTP
-                                        // que las filas visibles (`HTTPImageDownloadGate`) y deja todo en spinner.
                                     }
                                 }
-                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, CarsBrowseMetrics.horizontalInset)
                             }
 
                             if carsVM.isLoadingMoreVehicles {
@@ -111,40 +116,12 @@ struct CarsView: View {
                     .padding(.bottom, 28)
                     .frame(minWidth: 0, maxWidth: .infinity)
                 }
-                .onScrollGeometryChange(for: Int.self) { geo in
-                    let y = geo.contentOffset.y
-                    if y < 40 { return 0 }
-                    if y > 72 { return 2 }
-                    return 1
-                } action: { _, zone in
-                    switch zone {
-                    case 0:
-                        if fabSunkToMatchHiddenTabBar {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                fabSunkToMatchHiddenTabBar = false
-                            }
-                        }
-                    case 2:
-                        if !fabSunkToMatchHiddenTabBar {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                fabSunkToMatchHiddenTabBar = true
-                            }
-                        }
-                    default:
-                        break
-                    }
-                }
                 .refreshable {
                     await carsVM.loadVehicles(companyId: auth.companyId)
+                    await leadIndex.refresh()
                 }
             }
             .frame(maxWidth: .infinity)
-            .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
-                addVehicleFAB
-                    .padding(.trailing, AppChromeHeaderMetrics.horizontalPadding)
-                    .padding(.bottom, 6)
-                    .offset(y: fabSunkToMatchHiddenTabBar ? fabOffsetWhenTabBarMinimized : 0)
-            }
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -157,28 +134,28 @@ struct CarsView: View {
                 CarsSortSheet(sort: $carsVM.browseSort)
                     .presentationDetents([.medium, .large])
             }
-            .sheet(isPresented: $showFilterSheet) {
-                CarsFilterSheet(
-                    filters: $carsVM.browseFilters,
-                    sourceCars: carsVM.cars,
-                    resultCount: carsVM.displayedBrowseCars().count,
-                    onClear: {}
-                )
-            }
-            .sheet(isPresented: $showAddVehicleSheet) {
-                AddVehicleSheet()
-                    .environmentObject(tabRouter)
-                    .environmentObject(auth)
-                    .environmentObject(carsVM)
-            }
             .sheet(item: $editingCar) { car in
                 EditVehicleDictationSheet(car: car) {
                     Task { await carsVM.loadVehicles(companyId: auth.companyId) }
                 }
             }
+            .navigationDestination(item: $detailCar) { car in
+                CarDetailView(car: car, leadIndex: leadIndex) {
+                    editingCar = car
+                }
+            }
             .task {
                 if carsVM.cars.isEmpty && !carsVM.isLoadingVehicles {
                     await carsVM.loadVehicles(companyId: auth.companyId)
+                }
+                if leadIndex.allLeads.isEmpty && !leadIndex.isLoading {
+                    await leadIndex.refresh()
+                }
+            }
+            .task(id: auth.session?.accessToken) {
+                if let token = auth.session?.accessToken {
+                    await browseStats.refreshFromBackend(token: token)
+                    await chatInbox.refreshCrmConversations(accessToken: token)
                 }
             }
             .onChange(of: auth.companyId) { oldCompanyId, newCompanyId in
@@ -197,26 +174,11 @@ struct CarsView: View {
             initials: auth.userInitials,
             profileImage: auth.profileAvatarImage,
             searchText: $carsVM.browseSearchText,
-            hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
             searchFieldFocused: $browseSearchFieldFocused,
-            onSort: { showSortSheet = true },
-            onFilter: { showFilterSheet = true }
+            onSort: { showSortSheet = true }
         )
-        .appChromeHeaderOuterPadding()
+        .padding(.horizontal, CarsBrowseMetrics.horizontalInset)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Desplazamiento hacia abajo cuando la tab bar se minimiza (ajusta si no calza con tu simulador).
-    private let fabOffsetWhenTabBarMinimized: CGFloat = 52
-
-    /// Mismo cromado y tamaño que Ordenar / Filtros (`AppChromeHeaderCircleIconButton`).
-    private var addVehicleFAB: some View {
-        AppChromeHeaderCircleIconButton(
-            systemName: "plus",
-            accessibilityLabel: "Añadir vehículo",
-            action: { showAddVehicleSheet = true }
-        )
-        .accessibilityHint("Formulario para dar de alta un vehículo en tu inventario")
     }
 }
 
@@ -1938,6 +1900,7 @@ private enum VehicleDictationParser {
         CarsView()
             .environmentObject(CarsViewModel())
             .environmentObject(AuthViewModel())
+            .environmentObject(ChatInboxStore())
             .environmentObject(MainTabRouter())
     }
 }

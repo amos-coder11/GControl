@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import SwiftUI
 import Supabase
+import UIKit
 
 // MARK: - Tarea enviada por el coordinador IA (el compañero acepta y sube pruebas paso a paso)
 
@@ -80,8 +81,12 @@ final class ChatInboxStore: ObservableObject {
 
     /// `userId` del compañero si la vista de conversación DM equipo está visible.
     @Published var activeTeamDirectPeerId: UUID?
+    /// El chat de lead CRM (WhatsApp/Instagram) está abierto en primer plano.
+    @Published var activeLeadThreadId: UUID?
     /// El chat grupal «Mi equipo» está en primer plano.
     @Published var activeTeamGroupChatOpen: Bool = false
+    /// Vista previa CRM anterior por hilo (detectar mensajes nuevos → notificación).
+    private var crmLeadSnapshot: [UUID: CrmLeadSnapshot] = [:]
     /// Vista previa / hora por `peerUserId` para hilos `teamDirect` (mensajería real).
     @Published private(set) var teamDirectPreviewBody: [UUID: String] = [:]
     @Published private(set) var teamDirectPreviewTime: [UUID: String] = [:]
@@ -101,10 +106,77 @@ final class ChatInboxStore: ObservableObject {
 
     /// Id de conversación del backend (CRM) por hilo mostrado en «Generales».
     @Published private(set) var crmConversationIdByThread: [UUID: String] = [:]
+    /// Teléfono / contact_phone / wa_user_id del CRM por hilo.
+    @Published private(set) var crmWaUserIdByThread: [UUID: String] = [:]
     /// Estado de la IA (encendida/apagada) por hilo del CRM.
     @Published private(set) var crmAiActiveByThread: [UUID: Bool] = [:]
+    /// Ids de vehículo detectados por conversación (API + último mensaje + escaneo de historial).
+    @Published private(set) var linkedVehicleIdsByThread: [UUID: Set<String>] = [:]
+    @Published private(set) var messageScannedThreadIds: Set<UUID> = []
+    @Published private(set) var phoneScannedThreadIds: Set<UUID> = []
     /// Ya se cargaron conversaciones reales del CRM al menos una vez.
     @Published private(set) var crmLoadedOnce = false
+
+    /// Hilos de Chat → Generales vinculados a un vehículo concreto.
+    func leadThreads(for car: Car) -> [ChatThread] {
+        liveThreads.filter { thread in
+            guard thread.kind == .lead else { return false }
+            return CarVehicleConversationMatcher.matches(
+                car: car,
+                linkedIds: linkedVehicleIdsByThread[thread.id] ?? [],
+                preview: thread.preview,
+                title: thread.title
+            )
+        }
+    }
+
+    /// Refresca conversaciones CRM y escanea mensajes para detectar enlaces al coche.
+    @MainActor
+    func refreshLeadThreadsForVehicle(_ car: Car, accessToken: String) async {
+        await refreshCrmConversations(accessToken: accessToken)
+        await enrichLeadThreadVehicleLinks(accessToken: accessToken, priorityCar: car)
+    }
+
+    @MainActor
+    private func enrichLeadThreadVehicleLinks(accessToken: String, priorityCar: Car?) async {
+        let leadThreads = liveThreads.filter { $0.kind == .lead }
+        let sorted = leadThreads.sorted { lhs, rhs in
+            guard let car = priorityCar else { return lhs.title < rhs.title }
+            let lMatch = CarVehicleConversationMatcher.matches(
+                car: car,
+                linkedIds: linkedVehicleIdsByThread[lhs.id] ?? [],
+                preview: lhs.preview,
+                title: lhs.title
+            )
+            let rMatch = CarVehicleConversationMatcher.matches(
+                car: car,
+                linkedIds: linkedVehicleIdsByThread[rhs.id] ?? [],
+                preview: rhs.preview,
+                title: rhs.title
+            )
+            if lMatch != rMatch { return lMatch && !rMatch }
+            return lhs.title < rhs.title
+        }
+
+        for thread in sorted where !messageScannedThreadIds.contains(thread.id) {
+            guard let backendId = crmConversationIdByThread[thread.id] else { continue }
+            let texts: [String]
+            do {
+                let rows = try await CrmChatService.messages(token: accessToken, conversationId: backendId, limit: 80)
+                texts = rows.compactMap(\.textContent)
+            } catch {
+                continue
+            }
+            var ids = linkedVehicleIdsByThread[thread.id] ?? []
+            ids.formUnion(CarVehicleConversationMatcher.linkedVehicleIds(fromMessageTexts: texts))
+            linkedVehicleIdsByThread[thread.id] = ids
+            if crmWaUserIdByThread[thread.id] == nil,
+               let phone = PhoneCallLauncher.firstPhone(in: texts) {
+                crmWaUserIdByThread[thread.id] = phone
+            }
+            messageScannedThreadIds.insert(thread.id)
+        }
+    }
 
     /// Marca localmente el estado de la IA de un hilo (respuesta inmediata al pulsar).
     @MainActor
@@ -125,26 +197,156 @@ final class ChatInboxStore: ObservableObject {
         }
     }
 
+    /// Teléfono marcable del lead (WhatsApp wa_user_id, Instagram contact_phone o número en mensajes).
+    func contactPhone(for thread: ChatThread) -> String? {
+        guard thread.kind == .lead else { return nil }
+
+        switch thread.socialSource {
+        case .whatsApp:
+            if let raw = crmWaUserIdByThread[thread.id],
+               let phone = PhoneCallLauncher.whatsAppPhone(from: raw) {
+                return phone
+            }
+            if let fromTitle = PhoneCallLauncher.whatsAppPhone(from: thread.title) {
+                return fromTitle
+            }
+            return PhoneCallLauncher.extractPhone(from: thread.preview)
+
+        case .instagram:
+            if let raw = crmWaUserIdByThread[thread.id],
+               let phone = PhoneCallLauncher.sanitizedDialString(from: raw) {
+                return phone
+            }
+            return PhoneCallLauncher.extractPhone(from: thread.preview)
+                ?? PhoneCallLauncher.extractPhone(from: thread.title)
+
+        default:
+            if let raw = crmWaUserIdByThread[thread.id],
+               let phone = PhoneCallLauncher.sanitizedDialString(from: raw) {
+                return phone
+            }
+            return PhoneCallLauncher.extractPhone(from: thread.preview)
+                ?? PhoneCallLauncher.extractPhone(from: thread.title)
+        }
+    }
+
+    /// ¿Este lead tiene número para llamar?
+    func canCallLead(_ thread: ChatThread) -> Bool {
+        contactPhone(for: thread) != nil
+    }
+
+    /// Número formateado para mostrar en UI (+34 637 360 011).
+    func contactPhoneDisplay(for thread: ChatThread) -> String? {
+        contactPhone(for: thread).map { PhoneCallLauncher.displayFormat($0) }
+    }
+
+    /// Hilos con teléfono extraído (WhatsApp, Instagram u otro origen).
+    var leadThreadsWithPhone: [(thread: ChatThread, phone: String)] {
+        liveThreads.compactMap { thread in
+            guard thread.kind == .lead, let phone = contactPhone(for: thread) else { return nil }
+            return (thread, phone)
+        }
+    }
+
     /// Descarga las conversaciones reales del CRM (mismas que la web carhub365.es)
     /// y sustituye los chats de muestra de la pestaña «Generales».
     @MainActor
     func refreshCrmConversations(accessToken: String) async {
         do {
+            let wasLoaded = crmLoadedOnce
+            let previousSnapshot = crmLeadSnapshot
+
             let rows = try await CrmChatService.conversations(token: accessToken, limit: 100)
             var map: [UUID: String] = [:]
+            var waMap: [UUID: String] = [:]
             var aiMap: [UUID: Bool] = [:]
+            var vehicleMap: [UUID: Set<String>] = [:]
             let threads: [ChatThread] = rows.map { row in
                 let uuid = CrmChatService.stableUUID(for: "conv:\(row.id)")
                 map[uuid] = row.id
+                let isInstagram =
+                    (row.source ?? "").lowercased().contains("instagram")
+                    || (row.waUserId ?? "").hasPrefix("ig:")
+                if isInstagram {
+                    if let phoneRaw = row.contactPhone, !phoneRaw.isEmpty {
+                        waMap[uuid] = phoneRaw
+                    }
+                } else if let phoneRaw = row.contactPhone ?? row.waUserId, !phoneRaw.isEmpty {
+                    waMap[uuid] = phoneRaw
+                }
                 aiMap[uuid] = row.aiActive ?? true
+                vehicleMap[uuid] = CarVehicleConversationMatcher.linkedVehicleIds(conversation: row)
                 return Self.thread(fromCrm: row, uuid: uuid)
             }
             crmConversationIdByThread = map
+            crmWaUserIdByThread = waMap
             crmAiActiveByThread = aiMap
+            linkedVehicleIdsByThread = vehicleMap
+            messageScannedThreadIds = []
+            phoneScannedThreadIds = []
             liveThreads = threads
+            crmLeadSnapshot = Dictionary(
+                uniqueKeysWithValues: threads
+                    .filter { $0.kind == .lead }
+                    .map { ($0.id, CrmLeadSnapshot(preview: $0.preview, unread: $0.unread ?? 0)) }
+            )
             crmLoadedOnce = true
+
+            if wasLoaded {
+                MessageNotificationService.notifyNewCrmMessages(
+                    previous: previousSnapshot,
+                    current: threads.filter { $0.kind == .lead },
+                    activeThreadId: activeLeadThreadId
+                )
+            }
+
+            await refreshLeadPhonesFromMessages(accessToken: accessToken)
+            await enrichMissingContactPhotos(accessToken: accessToken)
         } catch {
             // Sin red o sin sesión: si nunca cargamos, se quedan las muestras.
+        }
+    }
+
+    /// Si el listado no trae foto, intenta obtenerla con endpoints dedicados del CRM.
+    @MainActor
+    private func enrichMissingContactPhotos(accessToken: String) async {
+        let targets = liveThreads.filter { $0.kind == .lead && $0.avatarCarURL == nil }
+        for thread in targets.prefix(40) {
+            guard let convId = crmConversationIdByThread[thread.id] else { continue }
+            let wa = crmWaUserIdByThread[thread.id]
+            guard let url = try? await CrmChatService.fetchContactProfilePhotoURL(
+                token: accessToken,
+                conversationId: convId,
+                waUserId: wa
+            ) else { continue }
+            guard let idx = liveThreads.firstIndex(where: { $0.id == thread.id }) else { continue }
+            liveThreads[idx] = liveThreads[idx].withAvatarCarURL(url)
+        }
+    }
+
+    /// Busca teléfonos en el historial (Instagram suele darlo en un mensaje).
+    @MainActor
+    func refreshLeadPhonesFromMessages(accessToken: String) async {
+        let targets = liveThreads.filter { thread in
+            thread.kind == .lead && contactPhone(for: thread) == nil
+        }
+        for thread in targets.prefix(25) where !phoneScannedThreadIds.contains(thread.id) {
+            guard let backendId = crmConversationIdByThread[thread.id] else { continue }
+            do {
+                let rows = try await CrmChatService.messages(
+                    token: accessToken,
+                    conversationId: backendId,
+                    limit: 50
+                )
+                let texts = rows.compactMap(\.textContent)
+                if crmWaUserIdByThread[thread.id] == nil,
+                   let phone = PhoneCallLauncher.firstPhone(in: texts) {
+                    crmWaUserIdByThread[thread.id] = phone
+                }
+            } catch {
+                continue
+            }
+            phoneScannedThreadIds.insert(thread.id)
         }
     }
 
@@ -165,7 +367,7 @@ final class ChatInboxStore: ObservableObject {
             avatarR: isInstagram ? 0.69 : 0.16,
             avatarG: isInstagram ? 0.32 : 0.68,
             avatarB: isInstagram ? 0.87 : 0.38,
-            avatarCarURL: (row.contactPhotoUrl?.isEmpty == false) ? URL(string: row.contactPhotoUrl!) : nil,
+            avatarCarURL: CrmChatService.resolveMediaURL(row.contactPhotoUrl),
             socialSource: isInstagram ? .instagram : .whatsApp,
             isVerified: false,
             isPinned: row.pinned ?? false,
@@ -790,10 +992,12 @@ enum CrmChatService {
         let lastMessage: String?
         let unreadCount: Int?
         let updatedAt: String?
+        let contactPhone: String?
         let waUserId: String?
         let source: String?
         let pinned: Bool?
         let aiActive: Bool?
+        let vehicleId: String?
     }
 
     struct Message: Identifiable {
@@ -810,6 +1014,98 @@ enum CrmChatService {
 
     // MARK: Peticiones
 
+    // MARK: Peticiones
+
+    /// Extrae la URL de foto de perfil del contacto desde la fila del CRM (nombres alternativos).
+    static func extractContactPhotoURL(from row: [String: Any]) -> String? {
+        let directKeys = [
+            "contact_photo_url", "contactPhotoUrl", "contact_photo",
+            "profile_picture_url", "profilePictureUrl", "profile_pic_url",
+            "profile_pic", "profilePic", "avatar_url", "avatarUrl",
+            "photo_url", "photoUrl", "picture_url", "pictureUrl",
+            "wa_profile_picture", "whatsapp_profile_picture", "profile_picture",
+        ]
+        for key in directKeys {
+            if let raw = flexString(row[key])?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                return raw
+            }
+        }
+        if let nested = row["contact"] as? [String: Any],
+           let fromContact = extractContactPhotoURL(from: nested) {
+            return fromContact
+        }
+        if let nested = row["profile"] as? [String: Any],
+           let fromProfile = extractContactPhotoURL(from: nested) {
+            return fromProfile
+        }
+        if let data = row["data"] as? [String: Any],
+           let fromData = extractContactPhotoURL(from: data) {
+            return fromData
+        }
+        if let urlObj = row["contact_photo_url"] as? [String: Any],
+           let nested = extractContactPhotoURL(from: urlObj) {
+            return nested
+        }
+        return nil
+    }
+
+    /// Convierte rutas relativas del CRM o data-URLs en `URL` válida.
+    static func resolveMediaURL(_ raw: String?) -> URL? {
+        guard var trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        if trimmed.hasPrefix("data:") { return URL(string: trimmed) }
+        if trimmed.hasPrefix("//") { trimmed = "https:" + trimmed }
+        if let url = URL(string: trimmed), url.scheme != nil { return url }
+        if trimmed.hasPrefix("/") {
+            var base = baseURL.absoluteString
+            if base.hasSuffix("/") { base.removeLast() }
+            return URL(string: base + trimmed)
+        }
+        if !trimmed.contains("://"), trimmed.contains(".") {
+            return URL(string: "https://" + trimmed)
+        }
+        return URL(string: trimmed)
+    }
+
+    /// Intenta obtener la foto de perfil cuando no viene en el listado de conversaciones.
+    static func fetchContactProfilePhotoURL(
+        token: String,
+        conversationId: String,
+        waUserId: String?
+    ) async throws -> URL? {
+        let encConv = conversationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? conversationId
+        var paths = [
+            "/api/whatsapp/get_contact_profile_picture?conversationId=\(encConv)",
+            "/api/whatsapp/get_profile_picture?conversationId=\(encConv)",
+            "/api/whatsapp/get_contact_photo?conversationId=\(encConv)",
+        ]
+        if let wa = waUserId?.trimmingCharacters(in: .whitespacesAndNewlines), !wa.isEmpty {
+            let encWa = wa.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? wa
+            paths.append(contentsOf: [
+                "/api/whatsapp/get_contact_profile_picture?wa_user_id=\(encWa)",
+                "/api/whatsapp/get_profile_picture?wa_user_id=\(encWa)",
+                "/api/whatsapp/get_contact_photo?wa_user_id=\(encWa)",
+            ])
+        }
+        for path in paths {
+            guard let json = try? await getJSON(path: path, token: token) else { continue }
+            if let raw = extractContactPhotoURL(from: json)
+                ?? flexString(json["url"])
+                ?? flexString(json["photo_url"])
+                ?? flexString(json["profilePictureUrl"]),
+               let resolved = resolveMediaURL(raw) {
+                return resolved
+            }
+            if let data = json["data"] as? [String: Any],
+               let raw = extractContactPhotoURL(from: data),
+               let resolved = resolveMediaURL(raw) {
+                return resolved
+            }
+        }
+        return nil
+    }
+
     static func conversations(token: String, limit: Int = 100) async throws -> [Conversation] {
         let json = try await getJSON(
             path: "/api/whatsapp/get_conversations?limit=\(limit)&offset=0",
@@ -820,14 +1116,22 @@ enum CrmChatService {
             Conversation(
                 id: flexString(r["id"]) ?? UUID().uuidString,
                 contactName: r["contact_name"] as? String,
-                contactPhotoUrl: r["contact_photo_url"] as? String,
+                contactPhotoUrl: CrmChatService.extractContactPhotoURL(from: r),
                 lastMessage: r["last_message"] as? String,
                 unreadCount: flexInt(r["unread_count"]),
                 updatedAt: r["updated_at"] as? String,
+                contactPhone: (r["contact_phone"] as? String)
+                    ?? (r["phone"] as? String)
+                    ?? (r["phone_number"] as? String)
+                    ?? (r["telefono"] as? String),
                 waUserId: r["wa_user_id"] as? String,
                 source: r["source"] as? String,
                 pinned: (r["pinned"] as? Bool) ?? (r["is_pinned"] as? Bool),
-                aiActive: r["ai_active"] as? Bool
+                aiActive: r["ai_active"] as? Bool,
+                vehicleId: flexString(r["vehicle_id"])
+                    ?? flexString(r["vehicleId"])
+                    ?? flexString(r["car_id"])
+                    ?? flexString(r["carId"])
             )
         }
     }
@@ -885,17 +1189,108 @@ enum CrmChatService {
 
     /// Envía un mensaje de texto al cliente (WhatsApp o Instagram, según la conversación).
     static func send(token: String, conversationId: String, text: String) async throws {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/whatsapp/send_message"))
+        try await postJSON(
+            path: "/api/whatsapp/send_message",
+            token: token,
+            body: [
+                "conversationId": conversationId,
+                "textContent": text,
+            ]
+        )
+    }
+
+    /// Envía una nota de voz al cliente por WhatsApp/Instagram.
+    static func sendAudio(token: String, conversationId: String, fileURL: URL) async throws {
+        let data = try Data(contentsOf: fileURL)
+        guard data.count > 400 else { throw ServiceError.badResponse }
+        let b64 = data.base64EncodedString()
+        let filename = fileURL.lastPathComponent.isEmpty ? "voice.m4a" : fileURL.lastPathComponent
+
+        let payloads: [[String: Any]] = [
+            [
+                "conversationId": conversationId,
+                "textContent": "",
+                "messageType": "audio",
+                "mediaType": "audio/mp4",
+                "mediaContent": b64,
+                "mediaFilename": filename,
+            ],
+            [
+                "conversationId": conversationId,
+                "textContent": "",
+                "messageType": "ptt",
+                "mediaType": "audio/ogg; codecs=opus",
+                "mediaContent": b64,
+                "mediaFilename": filename,
+            ],
+            [
+                "conversationId": conversationId,
+                "audioBase64": b64,
+                "mimeType": "audio/mp4",
+            ],
+        ]
+
+        var lastError: Error = ServiceError.badResponse
+        for body in payloads {
+            do {
+                try await postJSON(path: "/api/whatsapp/send_message", token: token, body: body)
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    /// ¿Es un mensaje de audio / nota de voz?
+    static func isAudioMessage(_ row: Message) -> Bool {
+        let type = combinedMediaType(row).lowercased()
+        if type.contains("audio") || type.contains("ptt") || type.contains("voice") {
+            return true
+        }
+        if let url = row.mediaUrl?.lowercased() {
+            return [".ogg", ".opus", ".m4a", ".mp3", ".aac", ".amr", ".mp4", ".webm"]
+                .contains { url.contains($0) }
+        }
+        if row.mediaContent != nil, type.contains("ogg") || type.contains("opus") || type.contains("mpeg") {
+            return true
+        }
+        return false
+    }
+
+    /// URL o data-URL del audio del mensaje CRM.
+    static func audioURL(for row: Message) -> URL? {
+        if let resolved = resolveMediaURL(row.mediaUrl) { return resolved }
+        guard isAudioMessage(row), let b64 = row.mediaContent?.trimmingCharacters(in: .whitespacesAndNewlines), !b64.isEmpty else {
+            return nil
+        }
+        let clean = b64.contains(",") ? String(b64.split(separator: ",").last ?? "") : b64
+        let mime = combinedMediaType(row).contains("/") ? combinedMediaType(row) : "audio/ogg"
+        return URL(string: "data:\(mime);base64,\(clean)")
+    }
+
+    private static func combinedMediaType(_ row: Message) -> String {
+        (row.mediaType ?? row.messageType ?? "")
+    }
+
+    private static func postJSON(path: String, token: String, body: [String: Any]) async throws {
+        guard let url = URL(string: baseURL.absoluteString + path) else { throw ServiceError.badResponse }
+        var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [
-            "conversationId": conversationId,
-            "textContent": text,
-        ])
-        let (_, res) = try await URLSession.shared.data(for: req)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, res) = try await URLSession.shared.data(for: req)
         guard let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
-            throw ServiceError.badResponse
+            let status = (res as? HTTPURLResponse)?.statusCode ?? -1
+            let snippet = String(data: data.prefix(240), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let detail = snippet.isEmpty ? "HTTP \(status)" : "HTTP \(status): \(snippet)"
+            throw NSError(
+                domain: "CrmChat",
+                code: status,
+                userInfo: [NSLocalizedDescriptionKey: detail]
+            )
         }
     }
 
@@ -973,5 +1368,209 @@ enum CrmChatService {
         fmt.locale = Locale(identifier: "es_ES")
         fmt.dateFormat = "H:mm"
         return fmt.string(from: date)
+    }
+}
+
+// MARK: - Carga de fotos de perfil de contactos CRM
+
+enum CrmContactPhotoLoader {
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 25
+        config.urlCache = URLCache(memoryCapacity: 20 * 1024 * 1024, diskCapacity: 80 * 1024 * 1024)
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        return URLSession(configuration: config)
+    }()
+
+    static func load(url: URL, accessToken: String?) async -> UIImage? {
+        let cacheKey = url.absoluteString
+        if let cached = ImageCacheService.shared.image(forKey: cacheKey) {
+            return cached
+        }
+        if url.scheme?.lowercased() == "data" {
+            let raw = url.absoluteString
+            if let comma = raw.firstIndex(of: ",") {
+                let payload = String(raw[raw.index(after: comma)...])
+                if let data = Data(base64Encoded: payload), let img = UIImage(data: data) {
+                    ImageCacheService.shared.store(img, forKey: cacheKey)
+                    return img
+                }
+            }
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+            forHTTPHeaderField: "User-Agent"
+        )
+        if needsAuthorization(for: url), let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200 ... 299).contains(http.statusCode),
+                  let img = UIImage(data: data)
+            else { return nil }
+            ImageCacheService.shared.store(img, forKey: cacheKey)
+            return img
+        } catch {
+            return nil
+        }
+    }
+
+    private static func needsAuthorization(for url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else {
+            return url.path.hasPrefix("/api/")
+        }
+        return host.contains("carhubackend") || host.contains("carhub365")
+    }
+}
+
+// MARK: - Llamadas telefónicas (tel:)
+
+extension Notification.Name {
+    static let phoneCallDidFail = Notification.Name("CarHub.phoneCallDidFail")
+}
+
+enum PhoneCallLauncher {
+    /// Extrae el teléfono de un wa_user_id de WhatsApp (34600123456, +34…, @s.whatsapp.net).
+    static func whatsAppPhone(from raw: String) -> String? {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("ig:") { return nil }
+
+        if let at = trimmed.firstIndex(of: "@") {
+            trimmed = String(trimmed[..<at])
+        }
+        trimmed = trimmed.replacingOccurrences(of: " ", with: "")
+
+        let hasPlus = trimmed.hasPrefix("+")
+        let digits = trimmed.filter(\.isNumber)
+        guard digits.count >= 9 else { return nil }
+
+        // Móvil español sin prefijo (9 dígitos)
+        if digits.count == 9, let first = digits.first, "6789".contains(first) {
+            return "+34\(digits)"
+        }
+        // Con prefijo internacional
+        if digits.count >= 10 || hasPlus {
+            return "+\(digits)"
+        }
+        return digits
+    }
+
+    static func sanitizedDialString(from raw: String) -> String? {
+        whatsAppPhone(from: raw) ?? {
+            var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            if trimmed.lowercased().hasPrefix("ig:") { return nil }
+            if let atRange = trimmed.range(of: "@") {
+                trimmed = String(trimmed[..<atRange.lowerBound])
+            }
+            let hasPlus = trimmed.contains("+")
+            let digits = trimmed.filter(\.isNumber)
+            guard digits.count >= 9 else { return nil }
+            if hasPlus || digits.count > 9 { return "+\(digits)" }
+            return digits
+        }()
+    }
+
+    /// Formato legible: +34637360011 → +34 637 360 011
+    static func displayFormat(_ dial: String) -> String {
+        let digits = dial.filter(\.isNumber)
+        if dial.hasPrefix("+34") || (digits.count == 11 && digits.hasPrefix("34")) {
+            let local = digits.count == 11 ? String(digits.suffix(9)) : String(digits.dropFirst(2))
+            guard local.count == 9 else { return dial }
+            let i = local.index(local.startIndex, offsetBy: 3)
+            let j = local.index(i, offsetBy: 3)
+            return "+34 \(local[..<i]) \(local[i..<j]) \(local[j...])"
+        }
+        if digits.count >= 9 {
+            return dial.hasPrefix("+") ? dial : "+\(digits)"
+        }
+        return dial
+    }
+
+    static func extractPhone(from text: String) -> String? {
+        let pattern = #"(?:\+?\d[\d\s\-().]{7,}\d)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let swiftRange = Range(match.range, in: text)
+        else { return nil }
+        return sanitizedDialString(from: String(text[swiftRange]))
+    }
+
+    /// Primer teléfono encontrado en una lista de mensajes (p. ej. Instagram).
+    static func firstPhone(in texts: [String]) -> String? {
+        for text in texts {
+            if let phone = extractPhone(from: text) { return phone }
+        }
+        return nil
+    }
+
+    static func resolvedPhone(
+        for thread: ChatThread,
+        chatInbox: ChatInboxStore,
+        crmLeads: [LeadCrm] = []
+    ) -> String? {
+        if let fromInbox = chatInbox.contactPhone(for: thread) {
+            return fromInbox
+        }
+        guard thread.kind == .lead else { return nil }
+        let key = thread.title.lowercased()
+        if let lead = crmLeads.first(where: {
+            $0.title.lowercased() == key
+                || ($0.phone ?? "").lowercased().contains(key)
+                || key.contains(($0.phone ?? "").lowercased())
+        }), let phone = lead.phone, !phone.isEmpty {
+            return whatsAppPhone(from: phone) ?? sanitizedDialString(from: phone)
+        }
+        return extractPhone(from: thread.preview) ?? extractPhone(from: thread.title)
+    }
+
+    private static func telURL(for dial: String) -> URL? {
+        var allowed = CharacterSet.decimalDigits
+        allowed.insert(charactersIn: "+")
+        let encoded = dial.addingPercentEncoding(withAllowedCharacters: allowed) ?? dial
+        return URL(string: "tel:\(encoded)")
+    }
+
+    @MainActor
+    static func call(_ rawPhone: String) {
+        guard let dial = sanitizedDialString(from: rawPhone),
+              let url = telURL(for: dial)
+        else { return }
+
+        NotificationCenter.default.post(name: .phoneCallDidStart, object: nil)
+
+        #if targetEnvironment(simulator)
+        copyAndNotifyFailure(dial: dial, reason: "simulator")
+        return
+        #else
+        UIApplication.shared.open(url, options: [:]) { success in
+            if !success {
+                Task { @MainActor in
+                    copyAndNotifyFailure(dial: dial, reason: "unavailable")
+                }
+            }
+        }
+        #endif
+    }
+
+    @MainActor
+    private static func copyAndNotifyFailure(dial: String, reason: String) {
+        UIPasteboard.general.string = dial
+        NotificationCenter.default.post(
+            name: .phoneCallDidFail,
+            object: nil,
+            userInfo: ["number": dial, "reason": reason]
+        )
     }
 }

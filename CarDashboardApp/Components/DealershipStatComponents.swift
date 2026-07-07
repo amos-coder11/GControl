@@ -264,7 +264,7 @@ private let dashboardTileCorner: CGFloat = 26
 
 // MARK: - Cabecera unificada (misma geometría en Inicio, Coches, Chat, Ajustes, Buscador)
 
-/// Avatar → Ajustes (mismo que Inicio).
+/// Avatar → Ajustes (push dentro del NavigationStack; la tab bar sigue visible abajo).
 struct AppChromeAvatarProfileButton: View {
     let initials: String
     var profileImage: UIImage? = nil
@@ -323,7 +323,7 @@ struct AppChromeAvatarProfileButton: View {
         }
         .buttonStyle(ChromeCirclePressButtonStyle(diameter: AppChromeHeaderMetrics.avatarSize))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Perfil, abrir ajustes")
+        .accessibilityLabel("Perfil, abrir ajustes de usuario")
     }
 }
 
@@ -626,6 +626,72 @@ struct DashboardWideLiquidEarningsCard: View {
                 .shadow(color: .black.opacity(0.07), radius: 16, x: 0, y: 8)
                 .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
         }
+    }
+}
+
+// MARK: - Skeleton (valor stock)
+
+/// Placeholder animado mientras se contabiliza el inventario (sin mostrar cifra exacta).
+struct DashboardSkeletonAmountPlaceholder: View {
+    var height: CGFloat = 48
+    var maxWidth: CGFloat = 280
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            let shimmer = (sin(elapsed * 2.4) + 1) / 2
+
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .frame(height: height)
+                .frame(maxWidth: maxWidth)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.04),
+                                    Color.white.opacity(0.10 + shimmer * 0.18),
+                                    Color.white.opacity(0.04),
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.6)
+                }
+        }
+        .accessibilityLabel("Cargando valor del stock")
+    }
+}
+
+// MARK: - Contador animado (valor stock)
+
+/// Sube el importe de forma continua cuando cambia el inventario contabilizado.
+struct AnimatedEURAmountText: View, Animatable {
+    var amount: Double
+    var font: Font = .system(size: 44, weight: .bold, design: .rounded)
+    var foreground: Color = .white
+    var minimumScaleFactor: CGFloat = 0.55
+
+    var animatableData: Double {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    var body: some View {
+        Text(DealershipStatsViewModel.formatEUR(amount))
+            .font(font)
+            .foregroundStyle(foreground)
+            .minimumScaleFactor(minimumScaleFactor)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .monospacedDigit()
+            .frame(maxWidth: .infinity)
     }
 }
 

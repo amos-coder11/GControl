@@ -39,6 +39,10 @@ struct Car: Identifiable, Hashable {
     var exteriorColorLabel: String?
     var onlineListing: Bool?
     var isReservable: Bool?
+    /// Marca explícita de vendido (`is_sold`, etc.) si existe en Supabase.
+    var isSold: Bool?
+    /// Estado de stock (`status`, `vehicle_status`, …) para inferir vendido/reservado.
+    var stockStatus: String?
 
     init(
         id: UUID = UUID(),
@@ -71,7 +75,9 @@ struct Car: Identifiable, Hashable {
         equipmentSummary: String? = nil,
         exteriorColorLabel: String? = nil,
         onlineListing: Bool? = nil,
-        isReservable: Bool? = nil
+        isReservable: Bool? = nil,
+        isSold: Bool? = nil,
+        stockStatus: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -104,6 +110,8 @@ struct Car: Identifiable, Hashable {
         self.exteriorColorLabel = exteriorColorLabel
         self.onlineListing = onlineListing
         self.isReservable = isReservable
+        self.isSold = isSold
+        self.stockStatus = stockStatus
     }
 
     /// Slots efectivos para la UI: galería o, si no hay, la única imagen legacy.

@@ -12,11 +12,11 @@ final class CarsViewModel: ObservableObject {
     /// Última carga terminó sin filas en servidor (útil para mensajes cuando no hay filtros activos).
     @Published private(set) var lastFetchHadZeroRowsFromBackend = false
 
-    /// Listado tipo marketplace (pestaña Coches): búsqueda, orden y filtros sobre `cars` ya cargados.
+    /// Listado tipo marketplace (pestaña Coches): búsqueda, orden y segmento sobre `cars` ya cargados.
     @Published var browseSearchText = ""
     /// Por defecto: precio al contado más alto primero al abrir la app.
     @Published var browseSort: CarSortOption = .priceDesc
-    @Published var browseFilters = CarListFilters()
+    @Published var browseSegment: CarsInventorySegment = .all
 
     init() {}
 
@@ -79,10 +79,19 @@ final class CarsViewModel: ObservableObject {
         typealias Pair = (idx: Int, car: Car)
         let pairs: [Pair] = cars.enumerated().map { (idx: $0.offset, car: $0.element) }
         let filtered = pairs.filter {
-            $0.car.matchesBrowseSearch(browseSearchText) && $0.car.matchesBrowseFilters(browseFilters)
+            $0.car.matchesBrowseSearch(browseSearchText)
+                && $0.car.matchesBrowseSegment(browseSegment)
         }
         let sorted = Self.sortBrowsePairs(filtered, by: browseSort)
         return Self.moveBrowseListPinnedToEnd(sorted)
+    }
+
+    func soldInventoryCount() -> Int {
+        cars.filter { $0.matchesBrowseSegment(.sold) }.count
+    }
+
+    func reservedInventoryCount() -> Int {
+        cars.filter { $0.matchesBrowseSegment(.reserved) }.count
     }
 
     /// Anuncio concreto que debe mostrarse siempre al final; el resto conserva el orden del criterio elegido.

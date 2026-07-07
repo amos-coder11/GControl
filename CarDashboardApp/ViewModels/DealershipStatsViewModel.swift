@@ -18,11 +18,18 @@ final class DealershipStatsViewModel: ObservableObject {
     @Published var vehiclesInStock: Int = 0
     @Published var vehiclesStockBadge: String = ""
     @Published var totalStockValue: String = "0€"
+    @Published var totalStockValueAmount: Double = 0
+    @Published private(set) var isStockValueReady = false
     @Published var totalStockBadge: String = ""
     @Published var carsSold: Int = 0
     @Published var salesProfit: String = "0 €"
     @Published var capturedCars: Int = 0
     @Published var capturedChangePercent: Int = 0
+    /// Comisión mensual del comercial con sesión iniciada.
+    @Published var monthlyCommissionAmount: Double = 0
+    @Published var monthlyCommissionFormatted: String = "0€"
+    /// Captaciones atribuidas al comercial actual.
+    @Published var myCapturedCars: Int = 0
     @Published var commercialCommissions: String = "0€"
     @Published var commissionsSubtitle: String = "Comisiones del equipo"
     @Published var totalDealershipEarnings: String = "0 €"
@@ -33,6 +40,11 @@ final class DealershipStatsViewModel: ObservableObject {
     @Published var leadOpportunities: Int = 0
     @Published var appointmentsCount: Int = 0
     @Published var conversionRate: String = "0%"
+    @Published var lostRateLabel: String = "—"
+    @Published var appointmentRateTrend: String?
+    @Published var wonRateTrend: String?
+    @Published var lostRateTrend: String?
+    @Published var leadsCountTrend: String?
     @Published var avgResponseLabel: String = "—"
     @Published var isLoadingMetrics: Bool = false
 
@@ -41,7 +53,7 @@ final class DealershipStatsViewModel: ObservableObject {
     }
 
     /// Carga las métricas reales del backend (leads + ranking de comerciales).
-    func refreshFromBackend(token: String) async {
+    func refreshFromBackend(token: String, userId: UUID? = nil) async {
         isLoadingMetrics = true
         defer { isLoadingMetrics = false }
         if let m = try? await CrmMetricsService.leadMetrics(token: token) {
@@ -50,7 +62,20 @@ final class DealershipStatsViewModel: ObservableObject {
             appointmentsCount = m.appointments
             carsSold = m.won
             capturedCars = m.captacion
-            conversionRate = String(format: "%.0f%%", m.wonRate)
+            conversionRate = String(format: "%.1f%%", m.wonRate)
+            lostRateLabel = String(format: "%.1f%%", m.lostRate)
+            if m.appointmentRate > 0 {
+                appointmentRateTrend = String(format: "↗ %.0f%%", m.appointmentRate)
+            }
+            if m.wonRate > 0 {
+                wonRateTrend = String(format: "↗ %.1f%%", m.wonRate)
+            }
+            if m.lostRate > 0 {
+                lostRateTrend = String(format: "↗ %.1f%%", m.lostRate)
+            }
+            if m.total > 0 {
+                leadsCountTrend = String(format: "↗ %d", m.total)
+            }
             if let s = m.avgResponseSeconds {
                 avgResponseLabel = s >= 60 ? "\(s / 60) min" : "\(s) s"
             }
@@ -60,6 +85,15 @@ final class DealershipStatsViewModel: ObservableObject {
             if totalImporte > 0 {
                 totalDealershipEarnings = Self.formatEUR(totalImporte)
                 salesProfit = Self.formatEUR(totalImporte)
+            }
+
+            if let uid = userId {
+                let key = uid.uuidString.lowercased()
+                if let mine = rows.first(where: { $0.id.lowercased() == key }) {
+                    myCapturedCars = mine.captaciones
+                    monthlyCommissionAmount = mine.monthCommission
+                    monthlyCommissionFormatted = Self.formatEUR(mine.monthCommission)
+                }
             }
         }
     }
@@ -71,19 +105,20 @@ final class DealershipStatsViewModel: ObservableObject {
         let total = cars.reduce(0.0) { acc, car in
             acc + (car.listPriceEUR ?? 0)
         }
+        totalStockValueAmount = total
         totalStockValue = Self.formatEUR(total)
     }
 
-    private static func monthLabel(for date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "es_ES")
-        f.dateFormat = "LLLL yyyy"
-        let raw = f.string(from: date)
-        // Capitaliza el mes: "abril 2026" -> "Abril 2026"
-        return raw.prefix(1).uppercased() + raw.dropFirst()
+    func beginStockValueLoad() {
+        isStockValueReady = false
     }
 
-    private static func formatEUR(_ amount: Double) -> String {
+    func finishStockValueLoad(from cars: [Car]) {
+        refreshFromInventory(cars: cars)
+        isStockValueReady = true
+    }
+
+    static func formatEUR(_ amount: Double) -> String {
         let n = NSNumber(value: amount.rounded())
         let f = NumberFormatter()
         f.locale = Locale(identifier: "es_ES")
@@ -93,6 +128,15 @@ final class DealershipStatsViewModel: ObservableObject {
         f.decimalSeparator = ","
         let s = f.string(from: n) ?? "0"
         return "\(s)€"
+    }
+
+    private static func monthLabel(for date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_ES")
+        f.dateFormat = "LLLL yyyy"
+        let raw = f.string(from: date)
+        // Capitaliza el mes: "abril 2026" -> "Abril 2026"
+        return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 }
 
@@ -131,6 +175,7 @@ enum CrmMetricsService {
         let ventas: Int
         let captaciones: Int
         let importe: Double
+        let monthCommission: Double
         let conversion: String
     }
 
@@ -157,18 +202,32 @@ enum CrmMetricsService {
     static func commercialRanking(token: String) async throws -> [CommercialRow] {
         let json = try await getJSON(path: "/api/commercial-ranking", token: token)
         let rows = (json["ranking"] as? [[String: Any]]) ?? []
-        return rows.map { r in
-            CommercialRow(
-                id: flexString(r["user_id"]) ?? flexString(r["id"]) ?? UUID().uuidString,
-                name: (r["name"] as? String) ?? "Comercial",
-                role: (r["role"] as? String) ?? "user",
-                avatar: r["avatar"] as? String,
-                ventas: intOf(r["ventas"]) ?? 0,
-                captaciones: intOf(r["captaciones"]) ?? 0,
-                importe: doubleOf(r["importe"]) ?? 0,
-                conversion: (r["conversion"] as? String) ?? "0%"
-            )
+        return rows.map { parseCommercialRow($0) }
+    }
+
+    private static func parseCommercialRow(_ r: [String: Any]) -> CommercialRow {
+        let monthKeys = [
+            "importe_mes", "comision_mes", "importeMes", "comisionMes",
+            "monthly_commission", "comision_mensual", "importe"
+        ]
+        var month: Double = 0
+        for key in monthKeys {
+            if let v = doubleOf(r[key]) {
+                month = v
+                break
+            }
         }
+        return CommercialRow(
+            id: flexString(r["user_id"]) ?? flexString(r["id"]) ?? UUID().uuidString,
+            name: (r["name"] as? String) ?? "Comercial",
+            role: (r["role"] as? String) ?? "user",
+            avatar: r["avatar"] as? String,
+            ventas: intOf(r["ventas"]) ?? 0,
+            captaciones: intOf(r["captaciones"]) ?? 0,
+            importe: doubleOf(r["importe"]) ?? 0,
+            monthCommission: month,
+            conversion: (r["conversion"] as? String) ?? "0%"
+        )
     }
 
     // MARK: Utilidades

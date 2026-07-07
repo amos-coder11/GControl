@@ -108,4 +108,61 @@ extension Car {
 
         return true
     }
+
+    /// Segmento Todos / Vendidos / Reservados en la pestaña Coches.
+    func matchesBrowseSegment(_ segment: CarsInventorySegment) -> Bool {
+        switch segment {
+        case .all:
+            return true
+        case .sold:
+            return isInventorySold
+        case .reserved:
+            return isInventoryReserved
+        }
+    }
+
+    var isInventorySold: Bool {
+        if isSold == true { return true }
+        return Self.matchesExplicitSoldStatus(stockStatus)
+    }
+
+    var isInventoryReserved: Bool {
+        if isInventorySold { return false }
+        if isReservable == true { return true }
+        return Self.matchesExplicitReservedStatus(stockStatus)
+    }
+
+    static func matchesExplicitSoldStatus(_ raw: String?) -> Bool {
+        let s = normalizedInventoryStatus(raw)
+        guard !s.isEmpty else { return false }
+        return explicitSoldStatuses.contains(s)
+    }
+
+    static func matchesExplicitReservedStatus(_ raw: String?) -> Bool {
+        let s = normalizedInventoryStatus(raw)
+        guard !s.isEmpty else { return false }
+        return explicitReservedStatuses.contains(s)
+    }
+
+    private static let explicitSoldStatuses: Set<String> = [
+        "vendido", "vendida", "sold", "sold_out", "sold-out", "sold out", "venta_cerrada", "soldout",
+    ]
+
+    private static let explicitReservedStatuses: Set<String> = [
+        "reservado", "reservada", "reserved", "booking", "on_hold", "on hold", "hold",
+    ]
+
+    private static func normalizedInventoryStatus(_ raw: String?) -> String {
+        (raw ?? "")
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_ES"))
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    }
+
+    private var normalizedStockStatus: String {
+        Self.normalizedInventoryStatus(stockStatus)
+    }
 }

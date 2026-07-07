@@ -62,7 +62,6 @@
 		AA000052 /* CarImageSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000051 /* CarImageSlot.swift */; };
 		AA000053 /* CarsBrowseHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000052 /* CarsBrowseHeaderBar.swift */; };
 		AA000054 /* RevolutBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000053 /* RevolutBackgroundView.swift */; };
-		AA000055 /* DashboardHomeNotificationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000054 /* DashboardHomeNotificationsSection.swift */; };
 		AA000056 /* UserProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000055 /* UserProfileService.swift */; };
 		AA000057 /* VehicleImageDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000056 /* VehicleImageDiagnostics.swift */; };
 		AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */; };
@@ -112,6 +111,16 @@
 		AA000112 /* UserModerationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000112 /* UserModerationStore.swift */; };
 		AA000113 /* UGCTermsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000113 /* UGCTermsView.swift */; };
 		AA000114 /* ContentReportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ContentReportSheet.swift */; };
+		AA000115 /* CarsProBrowseViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000115 /* CarsProBrowseViews.swift */; };
+		AA000116 /* CarInventoryLeadIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000116 /* CarInventoryLeadIndex.swift */; };
+		AA000117 /* CarVehicleConversationMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000117 /* CarVehicleConversationMatcher.swift */; };
+		AA000118 /* DashboardLeadsHomeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000118 /* DashboardLeadsHomeSection.swift */; };
+		AA000120 /* MessageNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000120 /* MessageNotificationService.swift */; };
+		AA000121 /* WorkdayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000121 /* WorkdayStore.swift */; };
+		AA000122 /* WorkdayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000122 /* WorkdayView.swift */; };
+		AA000123 /* WorkdayNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000123 /* WorkdayNotificationService.swift */; };
+		AA000124 /* CrmAudioLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000124 /* CrmAudioLoader.swift */; };
+		AA000125 /* CallsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000125 /* CallsHubView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -170,7 +179,6 @@
 		AB000051 /* CarImageSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarImageSlot.swift; sourceTree = "<group>"; };
 		AB000052 /* CarsBrowseHeaderBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarsBrowseHeaderBar.swift; sourceTree = "<group>"; };
 		AB000053 /* RevolutBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevolutBackgroundView.swift; sourceTree = "<group>"; };
-		AB000054 /* DashboardHomeNotificationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeNotificationsSection.swift; sourceTree = "<group>"; };
 		AB000055 /* UserProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileService.swift; sourceTree = "<group>"; };
 		AB000056 /* VehicleImageDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleImageDiagnostics.swift; sourceTree = "<group>"; };
 		AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = cab6b0cf98f7935fc0365a8ee1191735.mp4; sourceTree = "<group>"; };
@@ -224,6 +232,16 @@
 		AB000112 /* UserModerationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserModerationStore.swift; sourceTree = "<group>"; };
 		AB000113 /* UGCTermsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UGCTermsView.swift; sourceTree = "<group>"; };
 		AB000114 /* ContentReportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentReportSheet.swift; sourceTree = "<group>"; };
+		AB000115 /* CarsProBrowseViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarsProBrowseViews.swift; sourceTree = "<group>"; };
+		AB000116 /* CarInventoryLeadIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarInventoryLeadIndex.swift; sourceTree = "<group>"; };
+		AB000117 /* CarVehicleConversationMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarVehicleConversationMatcher.swift; sourceTree = "<group>"; };
+		AB000118 /* DashboardLeadsHomeSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLeadsHomeSection.swift; sourceTree = "<group>"; };
+		AB000120 /* MessageNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageNotificationService.swift; sourceTree = "<group>"; };
+		AB000121 /* WorkdayStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkdayStore.swift; sourceTree = "<group>"; };
+		AB000122 /* WorkdayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkdayView.swift; sourceTree = "<group>"; };
+		AB000123 /* WorkdayNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkdayNotificationService.swift; sourceTree = "<group>"; };
+		AB000124 /* CrmAudioLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrmAudioLoader.swift; sourceTree = "<group>"; };
+		AB000125 /* CallsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallsHubView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -273,6 +291,7 @@
 				AB000002 /* Car.swift */,
 				AB000047 /* Car+Browse.swift */,
 				AB000046 /* CarBrowseModels.swift */,
+				AB000117 /* CarVehicleConversationMatcher.swift */,
 				AB000067 /* AIContractDocumentKind.swift */,
 				AB000051 /* CarImageSlot.swift */,
 				AB000003 /* CarMetric.swift */,
@@ -282,6 +301,7 @@
 				AB000042 /* LeadCrm.swift */,
 				AB000030 /* ChatThread.swift */,
 				AB000033 /* ChatInboxStore.swift */,
+				AB000121 /* WorkdayStore.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -295,6 +315,7 @@
 				AB000007 /* SettingsViewModel.swift */,
 				AB000035 /* AuthViewModel.swift */,
 				AB000044 /* LeadsViewModel.swift */,
+				AB000116 /* CarInventoryLeadIndex.swift */,
 				AB000075 /* DashboardCommunityViewModel.swift */,
 				AB000060 /* AppLockManager.swift */,
 				AB000112 /* UserModerationStore.swift */,
@@ -307,6 +328,8 @@
 			children = (
 				AB000034 /* SupabaseClientProvider.swift */,
 				AB000083 /* RemotePushRegistration.swift */,
+				AB000120 /* MessageNotificationService.swift */,
+				AB000123 /* WorkdayNotificationService.swift */,
 				AB000064 /* AnthropicContractClient.swift */,
 				AB000071 /* ContractTemplateLoader.swift */,
 				AB000072 /* ContractPDFExporter.swift */,
@@ -323,6 +346,7 @@
 				AB000073 /* CommunityProfilesService.swift */,
 				AB000091 /* TeamDirectMessagesService.swift */,
 				AB000101 /* TeamDirectVoiceStorage.swift */,
+				AB000124 /* CrmAudioLoader.swift */,
 				AB000102 /* VoiceMessageWaveformExtractor.swift */,
 				AB000103 /* OpenAIVehicleVisionClient.swift */,
 				AB000104 /* VehiclesInsertColumnMap.swift */,
@@ -345,13 +369,17 @@
 				AB000036 /* LoginView.swift */,
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
+				AB000122 /* WorkdayView.swift */,
+				AB000118 /* DashboardLeadsHomeSection.swift */,
 				AB000079 /* DashboardHubScreens.swift */,
 				AB000080 /* TeamLocationMapViews.swift */,
 				AB000076 /* DashboardHomeRevolutSections.swift */,
 				AB000063 /* AIContractGeneratorView.swift */,
 				AB000012 /* CarsView.swift */,
+				AB000115 /* CarsProBrowseViews.swift */,
 				AB000105 /* AddVehicleListingDetailsForm.swift */,
 				AB000028 /* ChatView.swift */,
+				AB000125 /* CallsHubView.swift */,
 				AB000031 /* ChatConversationView.swift */,
 				AB000029 /* SearchView.swift */,
 				AB000013 /* SettingsView.swift */,
@@ -380,7 +408,6 @@
 				AB000019 /* CarRow.swift */,
 				AB000040 /* CarThumbnailView.swift */,
 				AB000049 /* CarListingCard.swift */,
-				AB000054 /* DashboardHomeNotificationsSection.swift */,
 				AB000052 /* CarsBrowseHeaderBar.swift */,
 				AB000020 /* SectionHeader.swift */,
 				AB000024 /* ShowroomBannerView.swift */,
@@ -526,8 +553,15 @@
 				AA000009 /* MockTelemetryService.swift in Sources */,
 				AA000010 /* MainTabView.swift in Sources */,
 				AA000011 /* DashboardView.swift in Sources */,
+				AA000118 /* DashboardLeadsHomeSection.swift in Sources */,
+				AA000120 /* MessageNotificationService.swift in Sources */,
+				AA000121 /* WorkdayStore.swift in Sources */,
+				AA000122 /* WorkdayView.swift in Sources */,
+				AA000123 /* WorkdayNotificationService.swift in Sources */,
+				AA000124 /* CrmAudioLoader.swift in Sources */,
 				AA000064 /* AIContractGeneratorView.swift in Sources */,
 				AA000012 /* CarsView.swift in Sources */,
+				AA000115 /* CarsProBrowseViews.swift in Sources */,
 				AA000105 /* AddVehicleListingDetailsForm.swift in Sources */,
 				AA000106 /* VehicleAppListingPayload.swift in Sources */,
 				AA000013 /* SettingsView.swift in Sources */,
@@ -545,6 +579,7 @@
 				AA000026 /* DealershipStatComponents.swift in Sources */,
 				AA000027 /* PremiumGlass.swift in Sources */,
 				AA000028 /* ChatView.swift in Sources */,
+				AA000125 /* CallsHubView.swift in Sources */,
 				AA000029 /* SearchView.swift in Sources */,
 				AA000030 /* ChatThread.swift in Sources */,
 				AA000033 /* ChatInboxStore.swift in Sources */,
@@ -567,8 +602,10 @@
 				AA000043 /* LeadCrm.swift in Sources */,
 				AA000044 /* LeadsCrmService.swift in Sources */,
 				AA000045 /* LeadsViewModel.swift in Sources */,
+				AA000116 /* CarInventoryLeadIndex.swift in Sources */,
 				AA000046 /* LeadsListView.swift in Sources */,
 				AA000047 /* CarBrowseModels.swift in Sources */,
+				AA000117 /* CarVehicleConversationMatcher.swift in Sources */,
 				AA000066 /* AIContractDocumentKind.swift in Sources */,
 				AA000048 /* Car+Browse.swift in Sources */,
 				AA000049 /* CarUIImageLoader.swift in Sources */,
@@ -579,7 +616,6 @@
 				AA000053 /* CarsBrowseHeaderBar.swift in Sources */,
 				AA000054 /* RevolutBackgroundView.swift in Sources */,
 				AA000059 /* DashboardHomeVideoBackdrop.swift in Sources */,
-				AA000055 /* DashboardHomeNotificationsSection.swift in Sources */,
 				AA000060 /* AppPINKeychain.swift in Sources */,
 				AA000061 /* AppLockManager.swift in Sources */,
 				AA000062 /* LockScreenView.swift in Sources */,

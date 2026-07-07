@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Raíz: sesión Supabase → PIN inicial si hace falta → bloqueo Face ID/PIN → app principal.
+/// Raíz: sesión Supabase → términos UGC (si aplica) → app principal.
 struct AuthRootView: View {
     @ObservedObject var auth: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
-    @EnvironmentObject var appLock: AppLockManager
     @EnvironmentObject var moderationStore: UserModerationStore
     @State private var showPostAuthTerms = false
 
@@ -29,10 +28,6 @@ struct AuthRootView: View {
                         }
                     }
                     .onAppear { showPostAuthTerms = true }
-                } else if !appLock.hasPINConfigured {
-                    PINSetupView()
-                } else if !appLock.isUnlocked {
-                    LockScreenView()
                 } else {
                     MainTabView()
                 }

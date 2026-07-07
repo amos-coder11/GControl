@@ -532,9 +532,6 @@ struct VieraAssistantRichCardsView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Color.white.opacity(0.5))
                             if teamRowsForDisplay.count > 1 {
-                                Text("Toca quién debe recibir la tarea")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.white.opacity(0.42))
                                 selectableTeamAvatarsStrip
                             } else {
                                 teamAvatarsStrip
@@ -542,11 +539,7 @@ struct VieraAssistantRichCardsView: View {
                         }
                     }
                     if !mergedCarsForStrip.isEmpty {
-                        if canComposeOffer, let row = offerRecipientRow {
-                            vieraTaskComposerBlock(recipient: row)
-                        } else {
-                            carImagesStrip
-                        }
+                        carImagesStrip
                     }
                 }
                 .task(id: mergedCarsSelectionToken) {

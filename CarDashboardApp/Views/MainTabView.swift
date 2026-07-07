@@ -11,9 +11,8 @@ import UniformTypeIdentifiers
 enum CarHubMainTab: Hashable {
     case home
     case cars
+    case calls
     case chat
-    case ai
-    case settings
 }
 
 @MainActor
@@ -36,6 +35,7 @@ struct MainTabView: View {
     @StateObject private var chatInbox = ChatInboxStore()
     @StateObject private var communityVM = DashboardCommunityViewModel()
     @StateObject private var chatNav = ChatNavigationCoordinator()
+    @StateObject private var workdayStore = WorkdayStore()
     @State private var chatSearchText = ""
 
     @EnvironmentObject var auth: AuthViewModel
@@ -55,24 +55,14 @@ struct MainTabView: View {
                 }
             }
 
+            Tab("Llamada", systemImage: "phone.fill", value: CarHubMainTab.calls) {
+                CallsHubView()
+            }
+
             Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: CarHubMainTab.chat) {
                 ChatView(searchText: $chatSearchText)
             }
             .badge(chatInbox.totalUnansweredMessageCount)
-
-            if auth.canAccessIASection {
-                Tab("IA", systemImage: "sparkles", value: CarHubMainTab.ai) {
-                    TeamAITabView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .toolbarBackground(.hidden, for: .tabBar)
-                }
-            }
-
-            Tab("Ajustes", systemImage: "gearshape.fill", value: CarHubMainTab.settings) {
-                NavigationStack {
-                    SettingsView()
-                }
-            }
         }
         .environmentObject(chatInbox)
         .environmentObject(tabRouter)
@@ -80,38 +70,56 @@ struct MainTabView: View {
         .environmentObject(communityVM)
         .environmentObject(invoiceHistory)
         .environmentObject(notificationsStore)
+        .environmentObject(workdayStore)
         /// Anula el `AccentColor` azul del catálogo: la tab seleccionada debe ser blanca, no azul.
         .accentColor(.white)
         .tint(.white)
         .onAppear {
             MainTabBarAppearance.applyWhiteSelection()
             communityVM.attach(auth: auth)
+            workdayStore.attach(userId: auth.session?.user.id)
             communityVM.startPeriodicRefresh()
-            Task { await communityVM.refresh() }
+            Task {
+                await communityVM.refresh()
+                await WorkdayNotificationService.rescheduleAll()
+            }
         }
         .onDisappear {
             communityVM.stopPeriodicRefresh()
         }
-        .onChange(of: auth.session?.user.id) { _, _ in
+        .onChange(of: auth.session?.user.id) { _, uid in
             communityVM.attach(auth: auth)
+            workdayStore.attach(userId: uid)
             Task { await communityVM.refresh() }
-        }
-        .onChange(of: auth.organizationId) { _, _ in
-            if !auth.canAccessIASection, tabRouter.selected == .ai {
-                tabRouter.selected = .home
-            }
         }
         .toolbarBackground(PremiumAccent.tabBarDockBackgroundGradient, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarColorScheme(.dark, for: .tabBar)
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabBarMinimizeBehavior(.never)
         .task {
             await carsVM.loadVehicles(companyId: auth.companyId)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .coordinatorTaskAcceptedFromPush)) { _ in
-            guard let uid = auth.session?.user.id else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
+            guard let info = note.userInfo else { return }
+            MessageNotificationService.applyOpenChatRouting(
+                info,
+                chatInbox: chatInbox,
+                tabRouter: tabRouter,
+                chatNav: chatNav
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CarHub.refreshInboxFromPush"))) { _ in
+            guard let token = auth.session?.accessToken else { return }
             Task {
-                await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
+                await chatInbox.refreshCrmConversations(accessToken: token)
+            }
+        }
+        .task(id: auth.session?.user.id) {
+            while !Task.isCancelled {
+                if let token = auth.session?.accessToken {
+                    await chatInbox.refreshCrmConversations(accessToken: token)
+                }
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
             }
         }
     }
@@ -920,9 +928,6 @@ struct TeamAITabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            chatGPTTopChrome
-            memoryStatusRow
-
             if session.isRecordingAudio {
                 recordingFocusStack
             }
@@ -1068,70 +1073,6 @@ struct TeamAITabView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-    }
-
-    private var chatGPTTopChrome: some View {
-        HStack(spacing: 10) {
-            Menu {
-                Button("Inicio") { tabRouter.selected = .home }
-                Button("Coches") { tabRouter.selected = .cars }
-                Button("Chat") { tabRouter.selected = .chat }
-                Button("Ajustes") { tabRouter.selected = .settings }
-            } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 44, height: 44)
-                    .background {
-                        TeamAIGlassCircleBackground()
-                    }
-            }
-
-            Spacer(minLength: 0)
-
-            Menu {
-                Section("Modelo") {
-                    Text("Viera IA — asistente CarHub")
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Viera IA")
-                        .font(.system(size: 16, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background {
-                    TeamAIGlassCapsuleBackground()
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            Color.clear
-                .frame(width: 44, height: 44)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
-    }
-
-    private var memoryStatusRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "cpu")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.blue.opacity(0.85))
-            Text("Memoria desactivada")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.5))
-            Image(systemName: "info.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(Color.white.opacity(0.35))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 10)
     }
 
     /// Borde izquierdo: deslizar hacia la derecha (como «atrás» en un chat) → Inicio.
@@ -1457,45 +1398,6 @@ struct TeamAITabView: View {
 }
 
 // MARK: - Chrome estilo chat (glass, tarjetas, ondas, menú +)
-
-/// Cristal oscuro sobre negro: material + velo y bisel tipo liquid glass.
-private struct TeamAIGlassCapsuleBackground: View {
-    var body: some View {
-        Capsule(style: .continuous)
-            .fill(.ultraThinMaterial)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.05),
-                                Color.white.opacity(0.02)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.42),
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            }
-            .shadow(color: .black.opacity(0.45), radius: 22, x: 0, y: 12)
-            .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
-    }
-}
 
 /// Campo de mensaje multilínea: esquinas **fijas** (no `Capsule`), para que al crecer en altura
 /// no queden semicírculos arriba/abajo que comen el texto (comportamiento tipo iMessage / ChatGPT).

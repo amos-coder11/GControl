@@ -10,6 +10,7 @@ private enum ListingPalette {
     static let tagStroke = Color.white.opacity(0.22)
 
     static let pricePillFill = Color.black.opacity(0.88)
+    static let footerFill = Color(red: 0.055, green: 0.065, blue: 0.085)
     static let goldBorder = LinearGradient(
         colors: [
             Color(red: 0.76, green: 0.58, blue: 0.22),
@@ -21,8 +22,16 @@ private enum ListingPalette {
     )
 }
 
+enum CarHeroImagePresentation {
+    /// Foto completa con márgenes (detalle).
+    case contain
+    /// Recorte a pantalla completa del slot (grid).
+    case cover
+}
+
 struct CarListingCard: View {
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var chatInbox: ChatInboxStore
 
     let car: Car
     var isSelected: Bool = false
@@ -34,14 +43,17 @@ struct CarListingCard: View {
         car.resolvedImageSlots
     }
 
-    private let cardCornerRadius: CGFloat = 18
-    private let horizontalPadding: CGFloat = 11
-    private let thumbnailHeight: CGFloat = 138
+    private var interestedThreads: [ChatThread] {
+        chatInbox.leadThreads(for: car)
+    }
+
+    private let cardCornerRadius: CGFloat = 22
+    private let contentPadding: CGFloat = 10
+    private let heroHeight: CGFloat = 148
 
     var body: some View {
         Button(action: onSelect) {
             listingCardInterior
-            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 DashboardChromeCardBackground(cornerRadius: cardCornerRadius)
@@ -75,106 +87,54 @@ struct CarListingCard: View {
 
     private var listingCardInterior: some View {
         VStack(alignment: .leading, spacing: 0) {
-            listingCardMainRow
+            listingHeroImage
+                .frame(height: heroHeight)
+                .frame(maxWidth: .infinity)
+                .clipped()
 
             VStack(alignment: .leading, spacing: 6) {
-                tagsRow
-
-                if car.isConnected {
-                    HStack(spacing: 6) {
-                        Image(systemName: "link.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(ListingPalette.secondary)
-                        Text("Vehículo conectado en tu cuenta")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(ListingPalette.tertiary)
-                    }
-                }
-            }
-            .padding(.horizontal, horizontalPadding)
-            .padding(.top, 4)
-            .padding(.bottom, 0)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var listingCardMainRow: some View {
-        HStack(alignment: .top, spacing: 0) {
-            listingThumbnailFlushLeft
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(car.name)
-                    .font(.system(size: 19, weight: .bold))
+                Text(car.displayBrandUppercased)
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(ListingPalette.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if !car.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(car.model)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ListingPalette.secondary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.9)
+                        .lineLimit(1)
                 }
 
-                goldPricePill
-
-                secondaryPriceLine
-
-                if let specs = technicalDetailLine {
-                    Text(specs)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(ListingPalette.secondary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.86)
-                }
-
-                if let meta = metaDetailLine {
-                    Text(meta)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(ListingPalette.tertiary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.88)
-                }
+                CarListingPricePill(priceText: car.displayListPriceText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 2)
             }
-            .padding(.leading, 10)
-            .padding(.trailing, horizontalPadding)
+            .padding(.horizontal, contentPadding)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+            .background(ListingPalette.footerFill)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Miniatura a ras del borde izquierdo; ancho ~52 %; alto = fila de texto
-
-    private var listingThumbnailFlushLeft: some View {
-        listingThumbnailCore
-            .containerRelativeFrame(.horizontal) { width, _ in
-                let w = (width.isFinite && width > 1) ? width : 320
-                return min(210, max(132, w * 0.52))
-            }
-            // Altura fija para que ninguna imagen (vertical u horizontal) estire la tarjeta.
-            .frame(height: thumbnailHeight)
-            // Evita CAMetalLayer drawable 0×0 cuando el layout aún no propaga tamaño (LazyVStack).
-            .frame(minWidth: 160, minHeight: 104)
-            .clipped()
-    }
-
-    private var listingThumbnailCore: some View {
-        ZStack(alignment: .bottomTrailing) {
+    private var listingHeroImage: some View {
+        ZStack {
             Group {
                 if imageSlots.isEmpty {
                     ZStack {
                         Rectangle().fill(Color.white.opacity(0.08))
                         Image(systemName: car.icon)
-                            .font(.system(size: 30, weight: .medium))
+                            .font(.system(size: 28, weight: .medium))
                             .foregroundStyle(.white.opacity(0.42))
                     }
                 } else if imageSlots.count == 1, let only = imageSlots.first {
-                    CarHeroImageSlotView(slot: only)
+                    CarHeroImageSlotView(slot: only, presentation: .cover)
                 } else {
                     TabView(selection: $galleryIndex) {
                         ForEach(Array(imageSlots.enumerated()), id: \.element.id) { idx, slot in
-                            CarHeroImageSlotView(slot: slot)
+                            CarHeroImageSlotView(slot: slot, presentation: .cover)
                                 .tag(idx)
                         }
                     }
@@ -183,154 +143,353 @@ struct CarListingCard: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if imageSlots.count > 1 {
-                Text("\(galleryIndex + 1)/\(imageSlots.count)")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.48), in: Capsule())
-                    .padding(4)
+            if car.isInventorySold {
+                CarListingSoldPhotoOverlay()
+            } else if car.isInventoryReserved {
+                CarListingReservedPhotoOverlay()
             }
-        }
-    }
 
-    // MARK: - Precio (pastilla negra + borde dorado)
+            VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    if !interestedThreads.isEmpty {
+                        CarListingInterestedStrip(threads: interestedThreads)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
 
-    private var goldPricePill: some View {
-        Text(listPriceText)
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(ListingPalette.primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(ListingPalette.pricePillFill, in: Capsule())
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(ListingPalette.goldBorder, lineWidth: 1)
-            }
-    }
+                Spacer(minLength: 0)
 
-    @ViewBuilder
-    private var secondaryPriceLine: some View {
-        if let cuota = car.monthlyPaymentEUR {
-            Text("\(formatDecimalES(cuota)) €/mes*")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(ListingPalette.secondary)
-        } else if let fin = car.financedPriceEUR {
-            Text("Financiado \(formatEUR(fin))")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(ListingPalette.tertiary)
-        }
-    }
+                HStack(alignment: .bottom, spacing: 6) {
+                    if imageSlots.count > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("\(min(galleryIndex + 1, max(imageSlots.count, 1)))/\(imageSlots.count)")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.55), in: Capsule())
+                    }
 
-    private var listPriceText: String {
-        guard let p = car.listPriceEUR else { return "Consultar" }
-        return "\(formatIntegerES(Int(p.rounded()))) €"
-    }
+                    Spacer(minLength: 4)
 
-    /// Resumen técnico principal visible en listado (datos de tabla `vehicles`).
-    private var technicalDetailLine: String? {
-        var parts: [String] = []
-        if let km = car.mileageKm, km > 0 {
-            parts.append("\(formatIntegerES(km)) km")
-        }
-        if let fuel = car.fuelType?.trimmingCharacters(in: .whitespacesAndNewlines), !fuel.isEmpty {
-            parts.append(fuel)
-        }
-        if let cv = car.powerCv, cv > 0 {
-            parts.append("\(cv) CV")
-        }
-        if parts.isEmpty { return nil }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Segunda línea con caja/carrocería/color/ubicación cuando existan en datos.
-    private var metaDetailLine: String? {
-        var parts: [String] = []
-        if let t = car.transmission?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
-            parts.append(t)
-        }
-        if let bt = car.bodyType?.trimmingCharacters(in: .whitespacesAndNewlines), !bt.isEmpty {
-            parts.append(bt)
-        }
-        if let c = car.exteriorColorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
-            parts.append(c)
-        }
-        if let loc = car.locationText?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
-            parts.append(loc)
-        }
-        if parts.isEmpty { return nil }
-        return parts.joined(separator: " · ")
-    }
-
-    @ViewBuilder
-    private var tagsRow: some View {
-        FlowTagRow {
-            if car.isReservable == true {
-                tagPill("Reservable", fill: ListingPalette.tagFill, foreground: ListingPalette.primary)
-            }
-            if let sk = car.sellerKind, !sk.isEmpty {
-                HStack(spacing: 4) {
-                    Text(sk)
-                        .font(.system(size: 12, weight: .semibold))
-                    if let r = car.sellerRating {
-                        Text(String(format: "%.1f", r))
-                            .font(.system(size: 12, weight: .bold))
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.yellow)
+                    if let trim = car.listingHeroTrimLabel {
+                        Text(trim)
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
                 }
-                .foregroundStyle(ListingPalette.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(ListingPalette.tagFill, in: Capsule())
-                .overlay {
-                    Capsule(style: .continuous)
-                        .strokeBorder(ListingPalette.tagStroke, lineWidth: 0.5)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}
+
+struct CarListingInterestedStrip: View {
+    @EnvironmentObject private var auth: AuthViewModel
+
+    let threads: [ChatThread]
+
+    private let avatarSize: CGFloat = 26
+    private let badgeSize: CGFloat = 11
+    private let maxVisible = 3
+
+    private var visibleThreads: [ChatThread] {
+        Array(threads.prefix(maxVisible))
+    }
+
+    var body: some View {
+        HStack(spacing: -6) {
+            ForEach(Array(visibleThreads.enumerated()), id: \.element.id) { index, thread in
+                interestedAvatar(for: thread)
+                    .zIndex(Double(index))
+            }
+        }
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(threads.count) interesados")
+    }
+
+    @ViewBuilder
+    private func interestedAvatar(for thread: ChatThread) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if let url = thread.avatarCarURL {
+                    ChatAsyncContactPhoto(
+                        url: url,
+                        accessToken: auth.session?.accessToken,
+                        fallbackInitial: thread.avatarInitial,
+                        fallbackColor: thread.avatarColor,
+                        diameter: avatarSize
+                    )
+                } else {
+                    initialsAvatar(for: thread)
                 }
             }
-            if let dgt = car.dgtLabel, !dgt.isEmpty {
-                tagPill("DGT \(dgt)", fill: ListingPalette.tagFill, foreground: ListingPalette.secondary)
+            .frame(width: avatarSize, height: avatarSize)
+            .clipShape(Circle())
+            .overlay {
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 1)
+            }
+
+            if let source = thread.socialSource {
+                Circle()
+                    .fill(source == .whatsApp
+                        ? Color(red: 0.12, green: 0.72, blue: 0.38)
+                        : Color(red: 0.69, green: 0.28, blue: 0.82))
+                    .frame(width: badgeSize, height: badgeSize)
+                    .overlay {
+                        Image(systemName: source == .whatsApp ? "message.fill" : "camera.fill")
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .overlay {
+                        Circle().strokeBorder(Color.white, lineWidth: 0.75)
+                    }
+                    .offset(x: 1, y: 1)
+            }
+        }
+        .frame(width: avatarSize, height: avatarSize)
+        .shadow(color: .black.opacity(0.2), radius: 1.5, x: 0, y: 0.5)
+    }
+
+    private func initialsAvatar(for thread: ChatThread) -> some View {
+        Circle()
+            .fill(thread.avatarColor.opacity(0.85))
+            .overlay {
+                Text(thread.avatarInitial ?? String(thread.title.prefix(1)).uppercased())
+                    .font(.system(size: avatarSize * 0.46, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+    }
+}
+
+struct CarListingSoldPhotoOverlay: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.08, green: 0.62, blue: 0.28).opacity(0.52)
+
+            VStack(spacing: 4) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 22, weight: .bold))
+                Text("VENDIDO")
+                    .font(.system(size: 13, weight: .black))
+                    .tracking(1.1)
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+}
+
+struct CarListingReservedPhotoOverlay: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.12, green: 0.42, blue: 0.92).opacity(0.52)
+
+            VStack(spacing: 4) {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: 22, weight: .bold))
+                Text("RESERVADO")
+                    .font(.system(size: 12, weight: .black))
+                    .tracking(0.9)
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+}
+
+struct CarListingLeadFooter: View {
+    let stats: CarLeadStats
+
+    var body: some View {
+        HStack(spacing: 0) {
+            footerCell(icon: "calendar", value: stats.appointments, label: "CITAS", tint: Color(red: 0.62, green: 0.45, blue: 0.98))
+            footerDivider
+            footerCell(icon: "person.3.fill", value: stats.leads, label: "LEADS", tint: .cyan)
+            footerDivider
+            footerCell(icon: "trophy.fill", value: stats.won, label: "GANADOS", tint: .green)
+        }
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(height: 0.5)
+        }
+    }
+
+    private var footerDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.1))
+            .frame(width: 0.5)
+            .padding(.vertical, 6)
+    }
+
+    private func footerCell(icon: String, value: Int, label: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+            Text("\(value)")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white.opacity(0.42))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Formato compartido listado + detalle
+
+extension Car {
+    var displayBrandUppercased: String {
+        let brand = brandName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let brand, !brand.isEmpty { return brand.uppercased() }
+        return name.uppercased()
+    }
+
+    var displayListPriceText: String {
+        guard let p = listPriceEUR else { return "Consultar" }
+        let n = Int(p.rounded()).formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
+        return "\(n) €"
+    }
+
+    var listingHeroTrimLabel: String? {
+        if let eq = equipmentSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !eq.isEmpty {
+            let line = eq.split(separator: "\n").first.map(String.init) ?? eq
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count >= 4 { return trimmed.uppercased() }
+        }
+        if let dgt = dgtLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !dgt.isEmpty {
+            return dgt.uppercased()
+        }
+        return nil
+    }
+}
+
+struct CarListingPricePill: View {
+    let priceText: String
+
+    var body: some View {
+        Text(priceText)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(Color.black.opacity(0.72), in: Capsule())
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.95, green: 0.55, blue: 0.18),
+                                Color(red: 0.98, green: 0.72, blue: 0.28),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+    }
+}
+
+struct CarListingSpecIconRow: View {
+    let car: Car
+
+    var body: some View {
+        HStack(spacing: 14) {
+            if let km = car.mileageKm, km > 0 {
+                specItem(icon: "speedometer", text: "\(formatInt(km)) km")
+            }
+            if let fuel = car.fuelType?.trimmingCharacters(in: .whitespacesAndNewlines), !fuel.isEmpty {
+                specItem(icon: "fuelpump.fill", text: fuel.uppercased())
+            }
+            if let cv = car.powerCv, cv > 0 {
+                specItem(icon: "engine.combustion.fill", text: "\(cv) CV")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func specItem(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(0.72))
+    }
+
+    private func formatInt(_ v: Int) -> String {
+        v.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
+    }
+}
+
+struct CarListingTagRow: View {
+    let car: Car
+
+    var body: some View {
+        FlowTagRow {
+            if let t = car.transmission?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                tagPill(t.uppercased())
+            }
+            if let bt = car.bodyType?.trimmingCharacters(in: .whitespacesAndNewlines), !bt.isEmpty {
+                tagPill(bt.uppercased())
+            }
+            if let c = car.exteriorColorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.white.opacity(0.35)).frame(width: 7, height: 7)
+                    tagPill(c.uppercased())
+                }
+            }
+            if let loc = car.locationText?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 10, weight: .semibold))
+                    tagPill(loc)
+                }
             }
         }
     }
 
-    private func tagPill(_ text: String, fill: Color, foreground: Color) -> some View {
+    private func tagPill(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(fill, in: Capsule())
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(ListingPalette.tagStroke, lineWidth: 0.5)
-            }
-    }
-
-    private func formatEUR(_ value: Double) -> String {
-        "\(formatIntegerES(Int(value.rounded()))) €"
-    }
-
-    private func formatIntegerES(_ v: Int) -> String {
-        v.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
-    }
-
-    private func formatDecimalES(_ v: Double) -> String {
-        let nf = NumberFormatter()
-        nf.locale = Locale(identifier: "es_ES")
-        nf.minimumFractionDigits = 2
-        nf.maximumFractionDigits = 2
-        return nf.string(from: NSNumber(value: v)) ?? String(format: "%.2f", v)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.82))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.1), in: Capsule())
     }
 }
 
 // MARK: - Imagen de slot (miniatura o página de galería)
 
-private struct CarHeroImageSlotView: View {
+struct CarHeroImageSlotView: View {
     @EnvironmentObject private var auth: AuthViewModel
     let slot: CarImageSlot
+    var presentation: CarHeroImagePresentation = .contain
 
     @State private var image: UIImage?
     @State private var loadFinishedWithoutImage = false
@@ -342,21 +501,29 @@ private struct CarHeroImageSlotView: View {
             Rectangle().fill(Color.white.opacity(0.08))
 
             if let ui = image {
-                // Fondo adaptado + foto completa: evita recortes feos en vertical y mantiene coherencia visual.
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .blur(radius: 18)
-                    .overlay(Color.black.opacity(0.34))
-                    .clipped()
+                switch presentation {
+                case .cover:
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                case .contain:
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .blur(radius: 18)
+                        .overlay(Color.black.opacity(0.34))
+                        .clipped()
 
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(6)
-                    .clipped()
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(6)
+                        .clipped()
+                }
             } else if loadFinishedWithoutImage {
                 Image(systemName: "photo")
                     .font(.system(size: 28, weight: .medium))
@@ -428,4 +595,5 @@ private struct FlowTagRow<Content: View>: View {
         }
     }
     .environmentObject(AuthViewModel())
+    .environmentObject(ChatInboxStore())
 }
