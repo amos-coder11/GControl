@@ -100,6 +100,7 @@
 		AA000096 /* WaveformDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000096 /* WaveformDemoView.swift */; };
 		AA000097 /* VieraChatRichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000097 /* VieraChatRichContent.swift */; };
 		AA000098 /* CoordinatorTaskPushActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000098 /* CoordinatorTaskPushActionHandler.swift */; };
+		AA0000F1 /* SoftphoneCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000F1 /* SoftphoneCallView.swift */; };
 		AA000101 /* TeamDirectVoiceStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000101 /* TeamDirectVoiceStorage.swift */; };
 		AA000102 /* VoiceMessageWaveformExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000102 /* VoiceMessageWaveformExtractor.swift */; };
 		AA000103 /* OpenAIVehicleVisionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000103 /* OpenAIVehicleVisionClient.swift */; };
@@ -221,6 +222,7 @@
 		AB000096 /* WaveformDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformDemoView.swift; sourceTree = "<group>"; };
 		AB000097 /* VieraChatRichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VieraChatRichContent.swift; sourceTree = "<group>"; };
 		AB000098 /* CoordinatorTaskPushActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorTaskPushActionHandler.swift; sourceTree = "<group>"; };
+		AB0000F1 /* SoftphoneCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftphoneCallView.swift; sourceTree = "<group>"; };
 		AB000101 /* TeamDirectVoiceStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectVoiceStorage.swift; sourceTree = "<group>"; };
 		AB000102 /* VoiceMessageWaveformExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageWaveformExtractor.swift; sourceTree = "<group>"; };
 		AB000103 /* OpenAIVehicleVisionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIVehicleVisionClient.swift; sourceTree = "<group>"; };
@@ -381,6 +383,7 @@
 				AB000028 /* ChatView.swift */,
 				AB000125 /* CallsHubView.swift */,
 				AB000031 /* ChatConversationView.swift */,
+				AB0000F1 /* SoftphoneCallView.swift */,
 				AB000029 /* SearchView.swift */,
 				AB000013 /* SettingsView.swift */,
 				AB000045 /* LeadsListView.swift */,
@@ -584,6 +587,7 @@
 				AA000030 /* ChatThread.swift in Sources */,
 				AA000033 /* ChatInboxStore.swift in Sources */,
 				AA000031 /* ChatConversationView.swift in Sources */,
+				AA0000F1 /* SoftphoneCallView.swift in Sources */,
 				AA000032 /* ChatAvatarViews.swift in Sources */,
 				AA000035 /* SupabaseClientProvider.swift in Sources */,
 				AA000083 /* RemotePushRegistration.swift in Sources */,
@@ -799,7 +803,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.carhub.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -834,7 +838,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.carhub.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

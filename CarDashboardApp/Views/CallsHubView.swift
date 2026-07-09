@@ -9,6 +9,7 @@ struct CallsHubView: View {
 
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
+    @State private var softphoneTarget: SoftphoneTarget?
 
     private var searchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -85,6 +86,30 @@ struct CallsHubView: View {
             }
         }
         .accentColor(.white)
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                softphoneTarget = SoftphoneTarget(number: "", name: "Marcar", isDialer: true)
+            } label: {
+                Image(systemName: "circle.grid.3x3.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Color(red: 0.14, green: 0.71, blue: 0.38), in: Circle())
+                    .shadow(color: Color(red: 0.14, green: 0.71, blue: 0.38).opacity(0.5), radius: 12, y: 6)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 22)
+            .padding(.bottom, 26)
+            .accessibilityLabel("Marcar número")
+        }
+        .fullScreenCover(item: $softphoneTarget) { target in
+            SoftphoneCallView(
+                target: target,
+                accessToken: auth.session?.accessToken
+            ) {
+                softphoneTarget = nil
+            }
+        }
         .task(id: auth.session?.accessToken) {
             if let token = auth.session?.accessToken {
                 await chatInbox.refreshCrmConversations(accessToken: token)
@@ -149,7 +174,7 @@ struct CallsHubView: View {
 
                 if let phone {
                     Button {
-                        PhoneCallLauncher.call(phone)
+                        softphoneTarget = SoftphoneTarget(number: phone, name: thread.title)
                     } label: {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 13, weight: .bold))

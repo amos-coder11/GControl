@@ -222,6 +222,7 @@ struct ChatConversationView: View {
     @State private var moderationAlertMessage: String?
     @State private var showModerationAlert = false
     @State private var showObjectionableContentAlert = false
+    @State private var softphoneTarget: SoftphoneTarget?
 
     private struct ModerationTarget: Identifiable {
         let id = UUID()
@@ -594,6 +595,14 @@ struct ChatConversationView: View {
             )
             .environmentObject(moderation)
         }
+        .fullScreenCover(item: $softphoneTarget) { target in
+            SoftphoneCallView(
+                target: target,
+                accessToken: auth.session?.accessToken
+            ) {
+                softphoneTarget = nil
+            }
+        }
         .confirmationDialog(
             "Bloquear usuario",
             isPresented: $showBlockConfirm,
@@ -705,11 +714,11 @@ struct ChatConversationView: View {
             if chatInbox.canCallLead(thread),
                let phone = chatInbox.contactPhone(for: thread) {
                 Button {
-                    PhoneCallLauncher.call(phone)
+                    softphoneTarget = SoftphoneTarget(number: phone, name: thread.title)
                 } label: {
-                    Image(systemName: "phone")
+                    Image(systemName: "phone.fill")
                         .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.45))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Llamar")
