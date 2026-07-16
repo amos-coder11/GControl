@@ -4,25 +4,25 @@ import Supabase
 import UserNotifications
 
 /// Identificadores de categoría / acción para push de `team_coordinator_tasks` (coinciden con el payload APNs).
-enum CarHubNotificationCategories {
+enum DrflowNotificationCategories {
     static let coordinatorTask = "COORDINATOR_TASK"
     static let coordinatorTaskAcceptAction = "COORDINATOR_TASK_ACCEPT"
 }
 
 extension Notification.Name {
     /// Tras aceptar desde la notificación: refrescar tareas en la bandeja.
-    static let coordinatorTaskAcceptedFromPush = Notification.Name("CarHub.coordinatorTaskAcceptedFromPush")
+    static let coordinatorTaskAcceptedFromPush = Notification.Name("Drflow.coordinatorTaskAcceptedFromPush")
 }
 
 enum CoordinatorTaskNotificationRegistration {
     static func registerCategories() {
         let accept = UNNotificationAction(
-            identifier: CarHubNotificationCategories.coordinatorTaskAcceptAction,
+            identifier: DrflowNotificationCategories.coordinatorTaskAcceptAction,
             title: "Aceptar",
             options: [.foreground]
         )
         let category = UNNotificationCategory(
-            identifier: CarHubNotificationCategories.coordinatorTask,
+            identifier: DrflowNotificationCategories.coordinatorTask,
             actions: [accept],
             intentIdentifiers: [],
             options: []
@@ -37,23 +37,23 @@ enum CoordinatorTaskPushActionHandler {
         response: UNNotificationResponse,
         completion: @escaping () -> Void
     ) {
-        guard response.actionIdentifier == CarHubNotificationCategories.coordinatorTaskAcceptAction else {
+        guard response.actionIdentifier == DrflowNotificationCategories.coordinatorTaskAcceptAction else {
             completion()
             return
         }
         let userInfo = response.notification.request.content.userInfo
-        guard let carhub = userInfo["carhub"] as? [String: Any],
-              (carhub["kind"] as? String) == "coordinator_task",
-              let taskIdStr = stringFromAPNs(carhub["task_id"]),
+        guard let drflow = userInfo["drflow"] as? [String: Any],
+              (drflow["kind"] as? String) == "coordinator_task",
+              let taskIdStr = stringFromAPNs(drflow["task_id"]),
               let taskId = UUID(uuidString: taskIdStr)
         else {
             completion()
             return
         }
-        let pushTitle = stringFromAPNs(carhub["task_title"])?
+        let pushTitle = stringFromAPNs(drflow["task_title"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let pushNotes = stringFromAPNs(carhub["task_notes"]) ?? ""
-        let pushDeadlineISO = stringFromAPNs(carhub["deadline_at"])
+        let pushNotes = stringFromAPNs(drflow["task_notes"]) ?? ""
+        let pushDeadlineISO = stringFromAPNs(drflow["deadline_at"])
 
         Task {
             do {
@@ -70,7 +70,7 @@ enum CoordinatorTaskPushActionHandler {
                 }
 
                 let titleRaw = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                let calTitle = titleRaw.isEmpty ? (pushTitle.isEmpty ? "Tarea CarHub" : pushTitle) : titleRaw
+                let calTitle = titleRaw.isEmpty ? (pushTitle.isEmpty ? "Tarea Drflow" : pushTitle) : titleRaw
                 let calNotes = row.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? pushNotes
                     : row.body
@@ -82,7 +82,7 @@ enum CoordinatorTaskPushActionHandler {
                 try await addCalendarEvent(title: calTitle, notes: calNotes, startDate: startDate)
             } catch {
                 #if DEBUG
-                print("[CarHub] Aceptar tarea desde notificación: \(error.localizedDescription)")
+                print("[Drflow] Aceptar tarea desde notificación: \(error.localizedDescription)")
                 #endif
             }
             await MainActor.run {
@@ -108,7 +108,7 @@ enum CoordinatorTaskPushActionHandler {
     private static func addCalendarEvent(title: String, notes: String, startDate: Date?) async throws {
         guard let start = startDate else {
             #if DEBUG
-            print("[CarHub] Calendario: sin fecha de plazo (revisar deadline_at en servidor o payload).")
+            print("[Drflow] Calendario: sin fecha de plazo (revisar deadline_at en servidor o payload).")
             #endif
             return
         }
@@ -117,7 +117,7 @@ enum CoordinatorTaskPushActionHandler {
         let granted = await requestCalendarAccess(store: store)
         guard granted else {
             #if DEBUG
-            print("[CarHub] Calendario: permiso denegado.")
+            print("[Drflow] Calendario: permiso denegado.")
             #endif
             return
         }
@@ -126,7 +126,7 @@ enum CoordinatorTaskPushActionHandler {
             ?? store.calendars(for: .event).first(where: { $0.allowsContentModifications })
         else {
             #if DEBUG
-            print("[CarHub] Calendario: no hay calendario editable.")
+            print("[Drflow] Calendario: no hay calendario editable.")
             #endif
             return
         }

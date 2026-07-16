@@ -3,7 +3,7 @@ import UserNotifications
 
 /// Notificaciones locales recurrentes al inicio y fin del horario del concesionario.
 enum WorkdayNotificationService {
-    private static let idPrefix = "carhub.workday.schedule."
+    private static let idPrefix = "drflow.workday.schedule."
 
     static func rescheduleAll() async {
         guard await notificationsAuthorized() else { return }

@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         #if DEBUG
-        print("[CarHub APNs] Registro fallido: \(error.localizedDescription)")
+        print("[Drflow APNs] Registro fallido: \(error.localizedDescription)")
         #endif
     }
 
@@ -37,23 +37,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         NotificationCenter.default.post(
-            name: Notification.Name("CarHub.refreshInboxFromPush"),
+            name: Notification.Name("Drflow.refreshInboxFromPush"),
             object: nil,
             userInfo: userInfo
         )
         completionHandler(.newData)
     }
 
-    /// Acciones de notificación (Aceptar tarea Viera) o abrir chat al pulsar el aviso.
+    /// Acciones de notificación (Aceptar tarea Viera) o abrir chat / recordatorios al pulsar el aviso.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        if response.actionIdentifier == CarHubNotificationCategories.coordinatorTaskAcceptAction {
+        if response.actionIdentifier == DrflowNotificationCategories.coordinatorTaskAcceptAction {
             CoordinatorTaskPushActionHandler.handleAcceptIfNeeded(response: response, completion: completionHandler)
             return
         }
+
+        let userInfo = response.notification.request.content.userInfo
+        if userInfo["grooReminderId"] != nil {
+            NotificationCenter.default.post(name: .grooOpenRemindersTab, object: nil)
+            completionHandler()
+            return
+        }
+
         MessageNotificationService.postOpenChatRouting(from: response)
         completionHandler()
     }

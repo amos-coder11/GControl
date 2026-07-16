@@ -1,7 +1,7 @@
 import Foundation
 import Supabase
 
-/// Fila de `public.leads_crm`. Mapeo flexible de columnas (igual criterio que `LeadCrmDto` en Flutter).
+/// Fila de `public.leads_crm`. Mapeo flexible de columnas (mapeo flexible de columnas).
 struct LeadCrm: Identifiable, Hashable, Sendable {
     let id: String
     var name: String?
@@ -12,10 +12,7 @@ struct LeadCrm: Identifiable, Hashable, Sendable {
     var source: String?
     var notes: String?
     var createdAt: String?
-    /// UUID del vehículo en `vehicles`, si la fila CRM lo incluye.
-    var vehicleId: String?
-
-    var isWonLead: Bool {
+        var isWonLead: Bool {
         let s = (status ?? "").lowercased()
         return s.contains("ganado") || s.contains("won")
     }
@@ -23,24 +20,6 @@ struct LeadCrm: Identifiable, Hashable, Sendable {
     var isAppointmentLead: Bool {
         let s = [(status ?? ""), (notes ?? ""), (source ?? "")].joined(separator: " ").lowercased()
         return s.contains("cita") || s.contains("appointment")
-    }
-
-    func matches(car: Car) -> Bool {
-        if let vid = vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines), !vid.isEmpty {
-            if vid.lowercased() == car.id.uuidString.lowercased() { return true }
-            let plate = car.plate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !plate.isEmpty, vid == plate { return true }
-        }
-        let blob = [
-            title, notes ?? "", company ?? "", phone ?? "", email ?? "",
-            car.name, car.model, car.plate, car.brandName ?? "",
-        ]
-            .joined(separator: " ")
-            .lowercased()
-        let tokens = [car.name, car.model, car.plate, car.brandName ?? ""]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { $0.count >= 3 }
-        return tokens.contains { blob.contains($0) }
     }
 
     var title: String {
@@ -83,9 +62,6 @@ struct LeadCrm: Identifiable, Hashable, Sendable {
         status = Self.firstString(json, ["status", "estado", "stage", "pipeline_stage"])
         source = Self.firstString(json, ["source", "origin", "origen", "lead_source"])
         notes = Self.firstString(json, ["notes", "description", "notas", "message", "comentarios"])
-        vehicleId = Self.firstString(json, [
-            "vehicle_id", "vehicleId", "car_id", "carId", "vehiculo_id", "vehiculoId",
-        ])
 
         createdAt = Self.firstString(json, ["created_at", "inserted_at", "updated_at"])
     }

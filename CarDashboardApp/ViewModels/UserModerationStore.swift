@@ -132,7 +132,7 @@ final class UserModerationStore: ObservableObject {
         blockedUserIds.remove(blockedId)
     }
 
-    private static let localTermsKey = "CarHub.UGC.TermsVersion"
+    private static let localTermsKey = "Drflow.UGC.TermsVersion"
 
     private static func localTermsAcceptedVersion() -> String? {
         UserDefaults.standard.string(forKey: localTermsKey)

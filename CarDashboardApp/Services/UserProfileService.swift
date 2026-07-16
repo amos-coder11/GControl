@@ -165,4 +165,94 @@ enum UserProfileService {
 
         return nil
     }
+
+    // MARK: - Avatar local + subida
+
+    enum AvatarUploadError: LocalizedError {
+        case encodingFailed
+        case notAuthenticated
+
+        var errorDescription: String? {
+            switch self {
+            case .encodingFailed: return "Could not process the image."
+            case .notAuthenticated: return "Sign in to save your photo."
+            }
+        }
+    }
+
+    private struct ProfileAvatarUpsert: Encodable {
+        let userId: String
+        let avatarUrl: String
+
+        enum CodingKeys: String, CodingKey {
+            case userId = "user_id"
+            case avatarUrl = "avatar_url"
+        }
+    }
+
+    static func localAvatarFileURL(userId: UUID) -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("groo-avatar-\(userId.uuidString.lowercased()).jpg")
+    }
+
+    static func saveLocalAvatar(_ image: UIImage, userId: UUID) {
+        let resized = resizeAvatar(image)
+        guard let data = resized.jpegData(compressionQuality: 0.85) else { return }
+        let url = localAvatarFileURL(userId: userId)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func loadLocalAvatar(userId: UUID) -> UIImage? {
+        let url = localAvatarFileURL(userId: userId)
+        guard let data = try? Data(contentsOf: url), let image = UIImage(data: data), image.size.width > 0 else {
+            return nil
+        }
+        return image
+    }
+
+    static func uploadProfileAvatar(
+        image: UIImage,
+        userId: UUID,
+        client: SupabaseClient
+    ) async throws -> String {
+        let resized = resizeAvatar(image)
+        guard let jpeg = resized.jpegData(compressionQuality: 0.82) else {
+            throw AvatarUploadError.encodingFailed
+        }
+
+        let path = "\(userId.uuidString.lowercased())/avatar.jpg"
+        let bucket = SupabaseClientProvider.userAvatarBucket
+
+        _ = try await client.storage
+            .from(bucket)
+            .upload(
+                path,
+                data: jpeg,
+                options: FileOptions(contentType: "image/jpeg", upsert: true)
+            )
+
+        let payload = ProfileAvatarUpsert(userId: userId.uuidString.lowercased(), avatarUrl: path)
+        try await client
+            .from(SupabaseClientProvider.profilesTableName)
+            .upsert(payload)
+            .execute()
+
+        ImageCacheService.shared.remove(forKey: "profileAvatar:\(userId.uuidString.lowercased()):\(path)")
+        return path
+    }
+
+    private static func resizeAvatar(_ image: UIImage, maxSide: CGFloat = 512) -> UIImage {
+        let size = image.size
+        guard size.width > maxSide || size.height > maxSide else { return image }
+        let scale = min(maxSide / size.width, maxSide / size.height)
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
 }

@@ -5,7 +5,7 @@ import UserNotifications
 
 /// Registro de APNs y sincronización del token con Supabase (`user_apns_devices`).
 enum RemotePushRegistration {
-    private static let pendingTokenKey = "CarHub.pendingAPNsTokenHex"
+    private static let pendingTokenKey = "Drflow.pendingAPNsTokenHex"
 
     /// Solicita permiso de alertas y registra el dispositivo en APNs (token llega al `AppDelegate`).
     @MainActor
@@ -15,7 +15,7 @@ enum RemotePushRegistration {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             guard granted else {
                 #if DEBUG
-                print("[CarHub APNs] Permiso de notificaciones denegado: no habrá push hasta que lo actives en Ajustes.")
+                print("[Drflow APNs] Permiso de notificaciones denegado: no habrá push hasta que lo actives en Ajustes.")
                 #endif
                 return
             }
@@ -34,7 +34,7 @@ enum RemotePushRegistration {
         UserDefaults.standard.set(hex, forKey: pendingTokenKey)
         #if DEBUG
         let prefix = hex.prefix(12)
-        print("[CarHub APNs] Token recibido de Apple (hex \(prefix)…, \(hex.count) chars). Subiendo a Supabase si hay sesión.")
+        print("[Drflow APNs] Token recibido de Apple (hex \(prefix)…, \(hex.count) chars). Subiendo a Supabase si hay sesión.")
         #endif
         Task {
             await syncPendingTokenToSupabase()
@@ -46,7 +46,7 @@ enum RemotePushRegistration {
         guard let hex = UserDefaults.standard.string(forKey: pendingTokenKey), !hex.isEmpty else { return }
         guard let uid = client.auth.currentSession?.user.id else {
             #if DEBUG
-            print("[CarHub APNs] Hay token pero no hay sesión: inicia sesión para guardarlo en user_apns_devices.")
+            print("[Drflow APNs] Hay token pero no hay sesión: inicia sesión para guardarlo en user_apns_devices.")
             #endif
             return
         }
@@ -62,11 +62,11 @@ enum RemotePushRegistration {
                 .upsert(Row(user_id: uid, device_token: hex), onConflict: "user_id,device_token")
                 .execute()
             #if DEBUG
-            print("[CarHub APNs] OK: token guardado en Supabase (user_apns_devices) para usuario \(uid.uuidString.prefix(8))…")
+            print("[Drflow APNs] OK: token guardado en Supabase (user_apns_devices) para usuario \(uid.uuidString.prefix(8))…")
             #endif
         } catch {
             #if DEBUG
-            print("[CarHub APNs] Error al guardar token: \(error)")
+            print("[Drflow APNs] Error al guardar token: \(error)")
             #endif
         }
     }

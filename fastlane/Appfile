@@ -1,0 +1,6 @@
+app_identifier("com.grooapp.app")
+# Con la API key de App Store Connect, deliver localiza la app por el bundle id.
+# Si quieres fijar el Apple ID numérico de la app, exporta ASC_APP_APPLE_ID.
+apple_id(ENV["ASC_APP_APPLE_ID"]) if ENV["ASC_APP_APPLE_ID"]
+
+team_id("T6PX988URP")

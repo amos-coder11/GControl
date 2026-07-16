@@ -1,4 +1,42 @@
 import SwiftUI
+import UIKit
+
+/// Paleta clara de Groo (fondo blanco, texto oscuro, acento violeta de marca).
+enum DrflowTheme {
+    static let background = Color.white
+    static let surface = Color.white
+    static let surfaceMuted = Color(red: 0.97, green: 0.95, blue: 0.98)
+
+    static let textPrimary = Color(red: 0.11, green: 0.14, blue: 0.22)
+    static let textSecondary = Color(red: 0.45, green: 0.48, blue: 0.54)
+    static let textTertiary = Color(red: 0.58, green: 0.61, blue: 0.66)
+    static let textMuted = Color(red: 0.72, green: 0.74, blue: 0.78)
+
+    static let positive = Color(red: 0.12, green: 0.72, blue: 0.42)
+    static let separator = Color.black.opacity(0.08)
+    static let cardBorder = Color.black.opacity(0.06)
+    static let cardShadow = Color.black.opacity(0.06)
+    static let searchFill = Color(red: 0.96, green: 0.94, blue: 0.98)
+    static let controlFill = Color(red: 0.95, green: 0.93, blue: 0.97)
+}
+
+/// Marca Groo — color primario `#8d2eb5`.
+enum GrooBrand {
+    /// #8d2eb5
+    static let purple = Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255)
+    /// Tinte suave para fondos y chips.
+    static let purpleSoft = Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255).opacity(0.12)
+    /// Degradado de marca para heroes y CTAs.
+    static let heroGradient = LinearGradient(
+        colors: [
+            Color(red: 0.42, green: 0.12, blue: 0.55),
+            Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255),
+            Color(red: 0.72, green: 0.38, blue: 0.88)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+}
 
 /// Acentos suaves (coral, menta, hielo, ámbar) — solo iconos y highlights.
 enum PremiumAccent {
@@ -7,14 +45,14 @@ enum PremiumAccent {
     static let ice = Color(red: 0.52, green: 0.72, blue: 0.92)
     static let amber = Color(red: 0.96, green: 0.76, blue: 0.42)
     static let ink = Color(red: 0.18, green: 0.22, blue: 0.28)
-    /// Azul de ítem activo en tab bar (estilo referencia tipo “Chats”).
-    static let tabActive = Color(red: 0.16, green: 0.44, blue: 0.98)
+    /// Violeta Groo (`#8d2eb5`) — ítem activo en tab bar y CTAs.
+    static let tabActive = GrooBrand.purple
 
-    /// Fondo del dock de pestañas (#0501FF → #4D01FF).
+    /// Fondo del dock de pestañas (blanco con ligero tinte violeta).
     static let tabBarDockBackgroundGradient = LinearGradient(
         colors: [
-            Color(red: 5 / 255, green: 1 / 255, blue: 255 / 255),
-            Color(red: 77 / 255, green: 1 / 255, blue: 255 / 255)
+            Color.white,
+            Color(red: 0.99, green: 0.97, blue: 1.0)
         ],
         startPoint: .top,
         endPoint: .bottom
@@ -101,47 +139,27 @@ struct LiquidGlassCardBackground: View {
 struct DashboardChromeSearchCapsuleBackground: View {
     var body: some View {
         Capsule(style: .continuous)
-            .fill(.ultraThinMaterial)
-            .environment(\.colorScheme, .dark)
+            .fill(DrflowTheme.searchFill)
             .overlay {
                 Capsule(style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.38),
-                                Color.white.opacity(0.1),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.65
-                    )
+                    .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.75)
             }
     }
 }
 
-/// Tarjeta con el **mismo** cristal oscuro y bisel que la pastilla del buscador (Ajustes y similares).
+/// Tarjeta blanca con borde suave y sombra ligera (Inicio, Ajustes y similares).
 struct DashboardChromeCardBackground: View {
     var cornerRadius: CGFloat
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .environment(\.colorScheme, .dark)
+            .fill(DrflowTheme.surface)
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.38),
-                                Color.white.opacity(0.1),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.65
-                    )
+                    .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.75)
             }
+            .shadow(color: DrflowTheme.cardShadow, radius: 14, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.02), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -176,24 +194,13 @@ struct DashboardChromeHeaderCircleBackground: View {
 
     var body: some View {
         Circle()
-            .fill(.ultraThinMaterial)
-            .environment(\.colorScheme, .dark)
+            .fill(DrflowTheme.controlFill)
             .frame(width: size, height: size)
             .overlay {
                 Circle()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.35),
-                                Color.white.opacity(0.08),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.65
-                    )
+                    .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.75)
             }
-            .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+            .shadow(color: DrflowTheme.cardShadow, radius: 8, x: 0, y: 3)
     }
 }
 
@@ -206,7 +213,7 @@ struct ChromeCirclePressButtonStyle: ButtonStyle {
         configuration.label
             .overlay {
                 Circle()
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.28 : 0))
+                    .fill(Color.black.opacity(configuration.isPressed ? 0.06 : 0))
                     .frame(width: diameter, height: diameter)
             }
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
@@ -217,7 +224,7 @@ struct ChromeCirclePressButtonStyle: ButtonStyle {
 struct ChromeRowPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0))
+            .background(Color.black.opacity(configuration.isPressed ? 0.04 : 0))
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
@@ -230,7 +237,7 @@ struct ChromeSmallCirclePressButtonStyle: ButtonStyle {
         configuration.label
             .overlay {
                 Circle()
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.35 : 0))
+                    .fill(Color.black.opacity(configuration.isPressed ? 0.08 : 0))
                     .frame(width: diameter, height: diameter)
             }
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
@@ -239,9 +246,9 @@ struct ChromeSmallCirclePressButtonStyle: ButtonStyle {
 
 /// Colores del campo de búsqueda de Inicio (reutilizar en Coches/Buscador).
 enum DashboardChromeSearchFieldStyle {
-    static let iconOpacity: Double = 0.92
-    static let promptOpacity: Double = 0.48
-    static let iconClearOpacity: Double = 0.48
+    static let iconOpacity: Double = 0.42
+    static let promptOpacity: Double = 0.42
+    static let iconClearOpacity: Double = 0.38
 }
 
 /// Misma posición y anchura del buscador que en Inicio (avatar + pastilla flexible + 2 círculos).
@@ -324,43 +331,22 @@ private let liquidGlassFormFieldOnDarkStroke = LinearGradient(
     endPoint: .bottomTrailing
 )
 
-/// Campo de formulario en hoja oscura: cristal más legible, brillo superior y bisel definido.
+/// Campo de formulario en hoja clara: fondo suave y borde definido.
 struct LiquidGlassFormFieldBackground: View {
     var cornerRadius: CGFloat = 16
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(.thinMaterial)
-            .environment(\.colorScheme, .dark)
-            .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(liquidGlassFormFieldOnDarkFill)
-            }
+            .fill(DrflowTheme.searchFill)
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.3), location: 0),
-                                .init(color: Color.white.opacity(0.08), location: 0.2),
-                                .init(color: Color.clear, location: 0.55),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .allowsHitTesting(false)
+                    .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.75)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(liquidGlassFormFieldOnDarkStroke, lineWidth: 0.7)
-            }
-            .shadow(color: .black.opacity(0.55), radius: 10, x: 0, y: 4)
-            .shadow(color: .white.opacity(0.06), radius: 1, x: 0, y: -0.5)
+            .shadow(color: DrflowTheme.cardShadow, radius: 8, x: 0, y: 3)
     }
 }
 
-/// Agrupa campos en formularios modales oscuros: contenedor más suave para que resalten los inputs.
+/// Agrupa campos en formularios modales claros.
 struct LiquidGlassDarkFormPanel<Content: View>: View {
     var cornerRadius: CGFloat = 20
     @ViewBuilder var content: () -> Content
@@ -370,40 +356,7 @@ struct LiquidGlassDarkFormPanel<Content: View>: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-                    .background {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.09),
-                                        Color.white.opacity(0.035),
-                                        Color.white.opacity(0.015),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.38),
-                                        Color.white.opacity(0.14),
-                                        Color.white.opacity(0.06),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.65
-                            )
-                    }
-                    .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
-                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                DashboardChromeCardBackground(cornerRadius: cornerRadius)
             }
     }
 }
@@ -452,7 +405,7 @@ struct LiquidGlassKeyboardAccessoryBar: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .foregroundStyle(DrflowTheme.textPrimary.opacity(0.9))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -541,5 +494,85 @@ struct GlassPhotoBadge: View {
                             .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.5)
                     }
             }
+    }
+}
+
+// MARK: - Iconos de redes (PNG en Assets)
+
+enum DrflowSocialPlatformIcon: String {
+    case instagram
+    case facebook
+    case tiktok
+    case live
+
+    var assetName: String {
+        switch self {
+        case .instagram: return "IconInstagram"
+        case .facebook: return "IconFacebook"
+        case .tiktok: return "IconTikTok"
+        case .live: return "IconEnVivo"
+        }
+    }
+
+    var labelColor: Color {
+        switch self {
+        case .instagram: return Color(red: 0.75, green: 0.22, blue: 0.55)
+        case .facebook: return Color(red: 0.09, green: 0.47, blue: 0.95)
+        case .tiktok: return Color(red: 0.08, green: 0.08, blue: 0.1)
+        case .live: return DrflowTheme.textSecondary
+        }
+    }
+
+    static func from(channel: String) -> DrflowSocialPlatformIcon? {
+        let normalized = channel.lowercased()
+        if normalized.contains("tiktok") { return .tiktok }
+        if normalized.contains("instagram") { return .instagram }
+        if normalized.contains("facebook") { return .facebook }
+        if normalized.contains("vivo") { return .live }
+        return nil
+    }
+}
+
+struct DrflowSocialIcon: View {
+    let platform: DrflowSocialPlatformIcon
+    var size: CGFloat = 12
+
+    var body: some View {
+        Image(platform.assetName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+    }
+}
+
+/// Imagen de producto desde el catálogo de assets (`Assets.xcassets/Productos`).
+struct DrflowProductImage: View {
+    let assetName: String
+    var height: CGFloat = 148
+    var cornerRadius: CGFloat = 14
+    var padding: CGFloat = 10
+
+    private var hasAsset: Bool {
+        UIImage(named: assetName) != nil
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(DrflowTheme.background)
+
+            if hasAsset {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(padding)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(DrflowTheme.textMuted)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
     }
 }

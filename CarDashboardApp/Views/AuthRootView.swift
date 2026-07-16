@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Raíz: sesión Supabase → términos UGC (si aplica) → app principal.
+/// Raíz: sesión Supabase → términos UGC (si aplica) → flujo GROO (onboarding / CARE / app).
 struct AuthRootView: View {
     @ObservedObject var auth: AuthViewModel
-    @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var moderationStore: UserModerationStore
+    @StateObject private var groo = GrooAppStore()
     @State private var showPostAuthTerms = false
 
     var body: some View {
@@ -29,13 +29,15 @@ struct AuthRootView: View {
                     }
                     .onAppear { showPostAuthTerms = true }
                 } else {
-                    MainTabView()
+                    GrooRootFlow()
+                        .environmentObject(groo)
                 }
             } else {
                 LoginView(auth: auth)
             }
         }
         .environmentObject(auth)
+        .environmentObject(groo)
         .onOpenURL { url in
             SupabaseClientProvider.shared.auth.handle(url)
         }
@@ -44,7 +46,6 @@ struct AuthRootView: View {
 
 #Preview {
     AuthRootView(auth: AuthViewModel())
-        .environmentObject(CarsViewModel())
         .environmentObject(SettingsViewModel())
         .environmentObject(AppLockManager())
 }

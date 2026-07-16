@@ -1,28 +1,23 @@
 import SwiftUI
+import UIKit
 
 struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
-    @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var notificationsStore: DashboardNotificationsStore
+    @EnvironmentObject private var ordersStore: OrdersStore
 
     @StateObject private var vm = DealershipStatsViewModel()
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatInbox: ChatInboxStore
-    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @EnvironmentObject private var workdayStore: WorkdayStore
     @State private var homeSearchText = ""
     @State private var showFinancialStatsSheet = false
     @State private var showNotificationsSheet = false
-    @State private var showAddCarSheet = false
-    @State private var showRankingSheet = false
-    @State private var showBlitzSheet = false
-    @State private var showContractsSheet = false
-    @State private var showWorkdaySheet = false
 
     var body: some View {
         ZStack {
-            DashboardHomeBackdropImage()
+            DrflowTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
                     // Cabecera fija (no se desplaza con el contenido), como en la referencia.
                     DashboardHomeTopBar(
@@ -36,21 +31,10 @@ struct DashboardView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 22) {
-                            DashboardKPICarousel(vm: vm, workday: workdayStore)
-                                .frame(maxWidth: .infinity)
+                            DashboardMonthlyCommissionsCard(stats: vm)
                                 .padding(.top, 16)
 
-                            DashboardQuickActionsRow(
-                                onAddCar: { showAddCarSheet = true },
-                                onRanking: { showRankingSheet = true },
-                                onBudgets: { showContractsSheet = true },
-                                onMore: { showBlitzSheet = true }
-                            )
-
-                            DashboardLeadsHomeSection(
-                                stats: vm,
-                                onWorkdayTap: { showWorkdaySheet = true }
-                            )
+                            DashboardCommerceHomeSection(stats: vm)
 
                             if let err = communityVM.lastError, !err.isEmpty {
                                 Text(err)
@@ -67,8 +51,8 @@ struct DashboardView: View {
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .light)
+        .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showFinancialStatsSheet) {
             DashboardFinancialDetailSheet(stats: vm)
@@ -76,58 +60,14 @@ struct DashboardView: View {
         .sheet(isPresented: $showNotificationsSheet) {
             DashboardNotificationsSheet(store: notificationsStore)
         }
-        .sheet(isPresented: $showAddCarSheet) {
-            AddVehicleSheet()
-                .environmentObject(tabRouter)
-                .environmentObject(auth)
-                .environmentObject(carsVM)
-        }
-        .sheet(isPresented: $showRankingSheet) {
-            CommercialRankingSheet(profiles: communityVM.directory)
-        }
-        .sheet(isPresented: $showBlitzSheet) {
-            BlitzHubSheet()
-                .environmentObject(tabRouter)
-        }
-        .sheet(isPresented: $showContractsSheet) {
-            InvoiceAndContractsHubSheet()
-        }
-        .sheet(isPresented: $showWorkdaySheet) {
-            WorkdayJornadaSheet()
-                .environmentObject(workdayStore)
-                .environmentObject(auth)
-        }
-        // Recalcula el resumen de inventario cuando termina la carga o cambian los coches.
-        .onChange(of: carsVM.isLoadingVehicles) { _, loading in
-            if loading, carsVM.cars.isEmpty {
-                vm.beginStockValueLoad()
-            } else if !loading {
-                withAnimation(.easeOut(duration: 1.15)) {
-                    vm.finishStockValueLoad(from: carsVM.cars)
-                }
-            }
-        }
-        .onChange(of: carsVM.cars) { _, newCars in
-            guard !carsVM.isLoadingVehicles || !newCars.isEmpty else { return }
-            withAnimation(.easeOut(duration: 1.15)) {
-                vm.finishStockValueLoad(from: newCars)
-            }
-        }
-        .onAppear {
-            if carsVM.cars.isEmpty, carsVM.isLoadingVehicles {
-                vm.beginStockValueLoad()
-            } else {
-                withAnimation(.easeOut(duration: 1.15)) {
-                    vm.finishStockValueLoad(from: carsVM.cars)
-                }
-            }
-        }
-        // Métricas REALES del CRM (leads, ventas, importe del equipo). Se recargan
+        // Métricas REALES del CRM
         // al entrar y al cambiar de usuario.
         .task(id: auth.session?.accessToken) {
             if let token = auth.session?.accessToken {
                 await vm.refreshFromBackend(token: token, userId: auth.session?.user.id)
+                await chatInbox.refreshCrmConversations(accessToken: token)
             }
+            await ordersStore.refresh()
         }
         .onAppear {
             workdayStore.attach(userId: auth.session?.user.id)
@@ -136,196 +76,228 @@ struct DashboardView: View {
         .onChange(of: auth.session?.user.id) { _, uid in
             workdayStore.attach(userId: uid)
         }
+        .navigationDestination(for: DashboardHomeDestination.self) { destination in
+            switch destination {
+            case .orders:
+                HomeOrdersDestinationView()
+            case .affiliates:
+                HomeAffiliatesDestinationView()
+            }
+        }
+        .navigationDestination(for: DrflowProduct.self) { product in
+            ProductDetailView(product: product)
+        }
+        .navigationDestination(for: ProductMetricsRoute.self) { route in
+            ProductMetricsView(
+                product: route.product,
+                metrics: DrflowProductMetricsCatalog.metrics(for: route.product)
+            )
+        }
+        .navigationDestination(for: DrflowOrder.self) { order in
+            OrderDetailSimulationView(simulation: DrflowOrderCatalog.simulation(for: order))
+        }
+        .navigationDestination(for: AffiliateDetailRoute.self) { route in
+            homeAffiliateDetail(for: route)
+        }
+        .navigationDestination(for: AffiliateStatsRoute.self) { route in
+            AffiliateStatisticsView(profile: route.profile)
+        }
+    }
+
+    @ViewBuilder
+    private func homeAffiliateDetail(for route: AffiliateDetailRoute) -> some View {
+        if let row = communityVM.directory.first(where: { $0.userId == route.userId }) {
+            let profile = DrflowAffiliateCatalog.profile(for: row, rank: route.rank)
+            AffiliateDetailView(
+                profile: profile,
+                directoryRow: row,
+                accessToken: auth.session?.accessToken,
+                isSelf: row.userId == auth.session?.user.id,
+                localAvatarImage: row.userId == auth.session?.user.id ? auth.profileAvatarImage : nil
+            )
+        } else {
+            ContentUnavailableView("Afiliado no encontrado", systemImage: "person.crop.circle.badge.xmark")
+        }
     }
 }
 
-// MARK: - Carrusel KPI (tipo Revolut)
+// MARK: - Destinos desde Inicio
 
-private struct DashboardKPISlide: Identifiable {
-    let id: String
-    let eyebrow: String
-    let value: String
-    let pill: String?
-}
+struct HomeOrdersDestinationView: View {
+    @EnvironmentObject private var ordersStore: OrdersStore
 
-private struct DashboardKPICarousel: View {
-    @ObservedObject var vm: DealershipStatsViewModel
-    @ObservedObject var workday: WorkdayStore
-    @State private var selection: String = "monthly_commission"
-
-    private var slides: [DashboardKPISlide] {
-        [
-            DashboardKPISlide(
-                id: "monthly_commission",
-                eyebrow: "Comisiones mensuales",
-                value: vm.monthlyCommissionFormatted,
-                pill: vm.periodDisplayLabel
-            ),
-            DashboardKPISlide(
-                id: "calls",
-                eyebrow: "Llamadas hechas",
-                value: "\(workday.callsMadeToday)",
-                pill: "Hoy"
-            ),
-            DashboardKPISlide(
-                id: "messages",
-                eyebrow: "Mensajes respondidos",
-                value: "\(workday.messagesRespondedToday)",
-                pill: "Hoy"
-            ),
-            DashboardKPISlide(
-                id: "captured_mine",
-                eyebrow: "Coches captados",
-                value: "\(vm.myCapturedCars > 0 ? vm.myCapturedCars : vm.capturedCars)",
-                pill: "Mis captaciones"
-            ),
-            DashboardKPISlide(
-                id: "sold",
-                eyebrow: "Coches vendidos",
-                value: "\(vm.carsSold)",
-                pill: vm.periodDisplayLabel
-            ),
-        ]
-    }
-
-    private var selectionIndex: Int {
-        slides.firstIndex { $0.id == selection } ?? 0
-    }
+    private var orders: [DrflowOrder] { ordersStore.orders }
 
     var body: some View {
-        VStack(spacing: 16) {
-            TabView(selection: $selection) {
-                ForEach(slides) { slide in
-                    VStack(spacing: 12) {
-                        Spacer(minLength: 20)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Pedidos de la red")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(DrflowTheme.textSecondary)
 
-                        Text(slide.eyebrow)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.52))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity)
-
-                        if slide.id == "monthly_commission" {
-                            AnimatedEURAmountText(amount: vm.monthlyCommissionAmount)
-                                .animation(.easeOut(duration: 1.15), value: vm.monthlyCommissionAmount)
-                        } else {
-                            Text(slide.value)
-                                .font(.system(size: 44, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .minimumScaleFactor(0.55)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity)
+                VStack(spacing: 12) {
+                    ForEach(orders) { order in
+                        NavigationLink(value: order) {
+                            HomeOrderPreviewRow(order: order)
                         }
-
-                        if let pill = slide.pill, !pill.isEmpty {
-                            Text(pill)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.88))
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 7)
-                                .background {
-                                    Capsule(style: .continuous)
-                                        .fill(.ultraThinMaterial)
-                                        .environment(\.colorScheme, .dark)
-                                }
-                                .overlay {
-                                    Capsule(style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.6)
-                                }
-                        }
-
-                        Spacer(minLength: 12)
+                        .buttonStyle(.plain)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .tag(slide.id)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 268)
-
-            HStack(spacing: 6) {
-                ForEach(Array(slides.enumerated()), id: \.element.id) { index, _ in
-                    Capsule(style: .continuous)
-                        .fill(index == selectionIndex ? Color.white : Color.white.opacity(0.28))
-                        .frame(width: index == selectionIndex ? 9 : 6, height: 6)
-                        .animation(.easeInOut(duration: 0.2), value: selectionIndex)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 36)
         }
-        .frame(maxWidth: .infinity)
+        .background(DrflowTheme.background.ignoresSafeArea())
+        .navigationTitle("Pedidos")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 }
 
-// MARK: - Acciones rápidas (cristal oscuro)
-
-private struct DashboardQuickActionsRow: View {
-    var onAddCar: () -> Void
-    var onRanking: () -> Void
-    var onBudgets: () -> Void
-    var onMore: () -> Void
+private struct HomeOrderPreviewRow: View {
+    let order: DrflowOrder
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            quickItem(icon: "plus.circle.fill", title: "Añadir un coche", action: onAddCar)
-            quickItem(icon: "chart.bar.xaxis", title: "Ranking", action: onRanking)
-            quickItem(icon: "doc.text.fill", title: "Contratos", action: onBudgets)
-            quickItem(icon: "ellipsis.circle.fill", title: "Más", action: onMore)
+        HStack(spacing: 12) {
+            if let asset = order.imageAssetName {
+                DrflowProductImage(assetName: asset, height: 52, cornerRadius: 12, padding: 4)
+                    .frame(width: 52)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(order.productTitle)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(DrflowTheme.textPrimary)
+                    .lineLimit(2)
+                Text(order.channel)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DrflowTheme.textTertiary)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(order.amountFormatted)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                HStack(spacing: 3) {
+                    Text("Simulación")
+                        .font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(PremiumAccent.tabActive)
+            }
         }
+        .padding(14)
+        .background { DashboardChromeCardBackground(cornerRadius: 18) }
+    }
+}
+
+struct HomeAffiliatesDestinationView: View {
+    @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+
+    private var team: [(row: CommunityProfilesService.DirectoryRow, rank: Int)] {
+        let sorted = communityVM.directory.sorted {
+            mockSales(for: $0.userId) > mockSales(for: $1.userId)
+        }
+        return sorted.enumerated().map { ($0.element, $0.offset + 1) }
     }
 
-    private func quickItem(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                        .frame(width: 58, height: 58)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.white.opacity(0.35),
-                                            Color.white.opacity(0.08),
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 0.75
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Toca un afiliado para ver su perfil completo.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(DrflowTheme.textSecondary)
+
+                if team.isEmpty {
+                    ContentUnavailableView {
+                        Label("Sin afiliados", systemImage: "person.2")
+                    } description: {
+                        Text("Aún no hay perfiles en el directorio.")
+                    }
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(team, id: \.row.id) { item in
+                            NavigationLink(value: AffiliateDetailRoute(userId: item.row.userId, rank: item.rank)) {
+                                HomeAffiliatePreviewRow(
+                                    row: item.row,
+                                    rank: item.rank,
+                                    accessToken: auth.session?.accessToken,
+                                    isSelf: item.row.userId == auth.session?.user.id,
+                                    localAvatarImage: item.row.userId == auth.session?.user.id ? auth.profileAvatarImage : nil
                                 )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+                    }
                 }
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.78))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 36)
         }
-        .buttonStyle(.plain)
+        .background(DrflowTheme.background.ignoresSafeArea())
+        .navigationTitle("Afiliados")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+
+    private func mockSales(for userId: UUID) -> Double {
+        Double(1_200 + abs(userId.hashValue) % 28_800)
+    }
+}
+
+private struct HomeAffiliatePreviewRow: View {
+    let row: CommunityProfilesService.DirectoryRow
+    let rank: Int
+    let accessToken: String?
+    let isSelf: Bool
+    let localAvatarImage: UIImage?
+
+    private var mockSales: Double {
+        Double(1_200 + abs(row.userId.hashValue) % 28_800)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(rank)")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(rank <= 3 ? PremiumAccent.tabActive : DrflowTheme.textMuted)
+                .frame(width: 20)
+
+            DashboardConnectedMemberCell(
+                row: row,
+                size: 48,
+                accessToken: accessToken,
+                isSelf: isSelf,
+                localAvatarImage: localAvatarImage,
+                showsNameBelowAvatar: false
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.resolvedDisplayName)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(DrflowTheme.textPrimary)
+                Text("Comisión \(DealershipStatsViewModel.formatUSD(mockSales * 0.20))")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DrflowTheme.textTertiary)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(PremiumAccent.tabActive)
+        }
+        .padding(14)
+        .background { DashboardChromeCardBackground(cornerRadius: 18) }
     }
 }
 
 #Preview {
     DashboardView()
         .environmentObject(AuthViewModel())
-        .environmentObject(CarsViewModel())
         .environmentObject(MainTabRouter())
         .environmentObject(ChatNavigationCoordinator())
         .environmentObject(DashboardCommunityViewModel())

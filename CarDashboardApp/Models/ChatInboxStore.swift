@@ -110,73 +110,9 @@ final class ChatInboxStore: ObservableObject {
     @Published private(set) var crmWaUserIdByThread: [UUID: String] = [:]
     /// Estado de la IA (encendida/apagada) por hilo del CRM.
     @Published private(set) var crmAiActiveByThread: [UUID: Bool] = [:]
-    /// Ids de vehículo detectados por conversación (API + último mensaje + escaneo de historial).
-    @Published private(set) var linkedVehicleIdsByThread: [UUID: Set<String>] = [:]
-    @Published private(set) var messageScannedThreadIds: Set<UUID> = []
     @Published private(set) var phoneScannedThreadIds: Set<UUID> = []
     /// Ya se cargaron conversaciones reales del CRM al menos una vez.
     @Published private(set) var crmLoadedOnce = false
-
-    /// Hilos de Chat → Generales vinculados a un vehículo concreto.
-    func leadThreads(for car: Car) -> [ChatThread] {
-        liveThreads.filter { thread in
-            guard thread.kind == .lead else { return false }
-            return CarVehicleConversationMatcher.matches(
-                car: car,
-                linkedIds: linkedVehicleIdsByThread[thread.id] ?? [],
-                preview: thread.preview,
-                title: thread.title
-            )
-        }
-    }
-
-    /// Refresca conversaciones CRM y escanea mensajes para detectar enlaces al coche.
-    @MainActor
-    func refreshLeadThreadsForVehicle(_ car: Car, accessToken: String) async {
-        await refreshCrmConversations(accessToken: accessToken)
-        await enrichLeadThreadVehicleLinks(accessToken: accessToken, priorityCar: car)
-    }
-
-    @MainActor
-    private func enrichLeadThreadVehicleLinks(accessToken: String, priorityCar: Car?) async {
-        let leadThreads = liveThreads.filter { $0.kind == .lead }
-        let sorted = leadThreads.sorted { lhs, rhs in
-            guard let car = priorityCar else { return lhs.title < rhs.title }
-            let lMatch = CarVehicleConversationMatcher.matches(
-                car: car,
-                linkedIds: linkedVehicleIdsByThread[lhs.id] ?? [],
-                preview: lhs.preview,
-                title: lhs.title
-            )
-            let rMatch = CarVehicleConversationMatcher.matches(
-                car: car,
-                linkedIds: linkedVehicleIdsByThread[rhs.id] ?? [],
-                preview: rhs.preview,
-                title: rhs.title
-            )
-            if lMatch != rMatch { return lMatch && !rMatch }
-            return lhs.title < rhs.title
-        }
-
-        for thread in sorted where !messageScannedThreadIds.contains(thread.id) {
-            guard let backendId = crmConversationIdByThread[thread.id] else { continue }
-            let texts: [String]
-            do {
-                let rows = try await CrmChatService.messages(token: accessToken, conversationId: backendId, limit: 80)
-                texts = rows.compactMap(\.textContent)
-            } catch {
-                continue
-            }
-            var ids = linkedVehicleIdsByThread[thread.id] ?? []
-            ids.formUnion(CarVehicleConversationMatcher.linkedVehicleIds(fromMessageTexts: texts))
-            linkedVehicleIdsByThread[thread.id] = ids
-            if crmWaUserIdByThread[thread.id] == nil,
-               let phone = PhoneCallLauncher.firstPhone(in: texts) {
-                crmWaUserIdByThread[thread.id] = phone
-            }
-            messageScannedThreadIds.insert(thread.id)
-        }
-    }
 
     /// Marca localmente el estado de la IA de un hilo (respuesta inmediata al pulsar).
     @MainActor
@@ -248,7 +184,7 @@ final class ChatInboxStore: ObservableObject {
         }
     }
 
-    /// Descarga las conversaciones reales del CRM (mismas que la web carhub365.es)
+    /// Descarga las conversaciones reales del CRM (mismas que la web drflow.es)
     /// y sustituye los chats de muestra de la pestaña «Generales».
     @MainActor
     func refreshCrmConversations(accessToken: String) async {
@@ -260,7 +196,6 @@ final class ChatInboxStore: ObservableObject {
             var map: [UUID: String] = [:]
             var waMap: [UUID: String] = [:]
             var aiMap: [UUID: Bool] = [:]
-            var vehicleMap: [UUID: Set<String>] = [:]
             let threads: [ChatThread] = rows.map { row in
                 let uuid = CrmChatService.stableUUID(for: "conv:\(row.id)")
                 map[uuid] = row.id
@@ -275,14 +210,11 @@ final class ChatInboxStore: ObservableObject {
                     waMap[uuid] = phoneRaw
                 }
                 aiMap[uuid] = row.aiActive ?? true
-                vehicleMap[uuid] = CarVehicleConversationMatcher.linkedVehicleIds(conversation: row)
                 return Self.thread(fromCrm: row, uuid: uuid)
             }
             crmConversationIdByThread = map
             crmWaUserIdByThread = waMap
             crmAiActiveByThread = aiMap
-            linkedVehicleIdsByThread = vehicleMap
-            messageScannedThreadIds = []
             phoneScannedThreadIds = []
             liveThreads = threads
             crmLeadSnapshot = Dictionary(
@@ -971,13 +903,13 @@ enum TeamCoordinatorTasksService {
     }
 }
 
-// MARK: - Cliente del backend del CRM (carhubackend) — chats reales de WhatsApp/Instagram
+// MARK: - Cliente del backend del CRM (drflowbackend) — chats reales de WhatsApp/Instagram
 //
-// Usa los MISMOS endpoints que la web carhub365.es, autenticados con el token
+// Usa los MISMOS endpoints que la web drflow.es, autenticados con el token
 // de la sesión de Supabase del usuario (mismo proyecto Supabase que el CRM).
 
 enum CrmChatService {
-    static let baseURL = URL(string: "https://carhubackend.onrender.com")!
+    static let baseURL = URL(string: "https://drflowbackend.onrender.com")!
 
     enum ServiceError: Error {
         case badResponse
@@ -1426,14 +1358,14 @@ enum CrmContactPhotoLoader {
         guard let host = url.host?.lowercased() else {
             return url.path.hasPrefix("/api/")
         }
-        return host.contains("carhubackend") || host.contains("carhub365")
+        return host.contains("drflowbackend") || host.contains("drflow")
     }
 }
 
 // MARK: - Llamadas telefónicas (tel:)
 
 extension Notification.Name {
-    static let phoneCallDidFail = Notification.Name("CarHub.phoneCallDidFail")
+    static let phoneCallDidFail = Notification.Name("Drflow.phoneCallDidFail")
 }
 
 enum PhoneCallLauncher {

@@ -7,8 +7,6 @@ struct SettingsView: View {
     @EnvironmentObject var moderation: UserModerationStore
     @EnvironmentObject var communityVM: DashboardCommunityViewModel
 
-    @AppStorage(VehicleImageDiagnostics.userDefaultsKey) private var logVehicleImageDiagnostics = false
-
     @State private var showDeleteAccountConfirm = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
@@ -18,9 +16,9 @@ struct SettingsView: View {
         RevolutChromeContainer {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 12) {
-                    Text("Ajustes")
+                    Text("Settings")
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DrflowTheme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
 
@@ -29,7 +27,6 @@ struct SettingsView: View {
                         notificationsSection
                         communitySafetySection
                     }
-                    developerSection
                     accountSection
                     aboutSection
                 }
@@ -41,7 +38,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .toolbar(.visible, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(.hidden, for: .tabBar)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
@@ -54,11 +51,11 @@ struct SettingsView: View {
             )
         }
         .confirmationDialog(
-            "Eliminar cuenta",
+            "Delete account",
             isPresented: $showDeleteAccountConfirm,
             titleVisibility: .visible
         ) {
-            Button("Eliminar cuenta", role: .destructive) {
+            Button("Delete account", role: .destructive) {
                 Task {
                     isDeletingAccount = true
                     defer { isDeletingAccount = false }
@@ -69,15 +66,15 @@ struct SettingsView: View {
                     }
                 }
             }
-            Button("Cancelar", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Esta acción elimina tu cuenta y no se puede deshacer.")
+            Text("This action deletes your account and cannot be undone.")
         }
-        .alert("No se pudo eliminar la cuenta", isPresented: Binding(
+        .alert("Could not delete account", isPresented: Binding(
             get: { deleteAccountError != nil },
             set: { if !$0 { deleteAccountError = nil } }
         )) {
-            Button("Aceptar", role: .cancel) { deleteAccountError = nil }
+            Button("OK", role: .cancel) { deleteAccountError = nil }
         } message: {
             Text(deleteAccountError ?? "")
         }
@@ -97,36 +94,36 @@ struct SettingsView: View {
                     settingsRow(
                         icon: "doc.text.fill",
                         iconColor: PremiumAccent.tabActive,
-                        title: "Términos de uso (EULA)"
+                        title: "Terms of Use (EULA)"
                     ) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(DrflowTheme.textMuted)
                     }
                 }
                 .buttonStyle(.plain)
 
                 if !moderation.blockedUserIds.isEmpty {
                     Divider()
-                        .overlay(Color.white.opacity(0.08))
+                        .overlay(DrflowTheme.separator)
                         .padding(.leading, 62)
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Usuarios bloqueados")
+                        Text("Blocked users")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(DrflowTheme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
                             .padding(.bottom, 6)
 
                         ForEach(Array(moderation.blockedUserIds).sorted { $0.uuidString < $1.uuidString }, id: \.self) { uid in
-                            let name = communityVM.directory.first(where: { $0.userId == uid })?.resolvedDisplayName ?? "Usuario"
+                            let name = communityVM.directory.first(where: { $0.userId == uid })?.resolvedDisplayName ?? "User"
                             HStack {
                                 Text(name)
                                     .font(.system(size: 15, weight: .medium))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(DrflowTheme.textPrimary)
                                 Spacer()
-                                Button("Desbloquear") {
+                                Button("Unblock") {
                                     Task { await moderation.unblockUser(uid) }
                                 }
                                 .font(.system(size: 13, weight: .semibold))
@@ -139,20 +136,20 @@ struct SettingsView: View {
                 }
 
                 Divider()
-                    .overlay(Color.white.opacity(0.08))
+                    .overlay(DrflowTheme.separator)
                     .padding(.leading, 62)
 
                 settingsRow(
                     icon: "shield.lefthalf.filled",
                     iconColor: Color(red: 0.45, green: 0.88, blue: 0.62),
-                    title: "Moderación"
+                    title: "Moderation"
                 ) {
                     EmptyView()
                 }
                 .overlay(alignment: .bottom) {
-                    Text("Denuncias revisadas en ≤24 h. Puedes denunciar o bloquear desde cualquier chat.")
+                    Text("Reports reviewed within 24h. You can report or block from any chat.")
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(DrflowTheme.textTertiary)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,9 +165,9 @@ struct SettingsView: View {
     private var notificationsSection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 16) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Notificaciones")
+                Text("Notifications")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(DrflowTheme.textSecondary)
 
                 Toggle(
                     isOn: Binding(
@@ -190,14 +187,14 @@ struct SettingsView: View {
                     )
                 ) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Avisos del equipo y tareas")
+                        Text("Team alerts and tasks")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                         Text(
-                            "Recibir push cuando te envíen un mensaje directo, aviso de grupo o una tarea desde Viera. Desactívalo si no quieres notificaciones en este dispositivo."
+                            "Receive push when you get a direct message, group alert, or task from Viera. Turn off if you don't want notifications on this device."
                         )
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(DrflowTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -227,7 +224,7 @@ struct SettingsView: View {
                             )
                         Text(String(auth.userDisplayName.prefix(1)).uppercased())
                             .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                     }
                 }
                 .frame(width: 60, height: 60)
@@ -236,9 +233,9 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(auth.userDisplayName)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DrflowTheme.textPrimary)
 
-                    Text("Sesión Supabase")
+                    Text("Supabase session")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(PremiumAccent.ice.opacity(0.92))
                 }
@@ -247,34 +244,7 @@ struct SettingsView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-        }
-    }
-
-    // MARK: - Desarrollo (diagnóstico imágenes)
-
-    private var developerSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Desarrollo")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-
-                Toggle(isOn: $logVehicleImageDiagnostics) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Diagnóstico de imágenes (consola Xcode)")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                        Text(
-                            "Al cargar Coches se imprimen columnas JSON, rutas Storage, user_id y cuántos slots ve la UI. Abre la consola con ⌘⇧Y y tira hacia abajo para refrescar el listado."
-                        )
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .tint(PremiumAccent.tabActive)
+                    .foregroundStyle(DrflowTheme.textTertiary)
             }
         }
     }
@@ -290,29 +260,28 @@ struct SettingsView: View {
                     HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                                .environment(\.colorScheme, .dark)
+                                .fill(DrflowTheme.controlFill)
                                 .frame(width: 32, height: 32)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                                        .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.5)
                                 }
                             Image(systemName: "trash.fill")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.red.opacity(0.95))
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(isDeletingAccount ? "Eliminando cuenta..." : "Eliminar cuenta")
+                            Text(isDeletingAccount ? "Deleting account..." : "Delete account")
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.white)
-                            Text("Borra permanentemente tu cuenta de CarHub.")
+                                .foregroundStyle(DrflowTheme.textPrimary)
+                            Text("Permanently deletes your Groo account.")
                                 .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(.white.opacity(0.5))
+                                .foregroundStyle(DrflowTheme.textSecondary)
                         }
                         Spacer()
                         if isDeletingAccount {
                             ProgressView()
-                                .tint(.white.opacity(0.8))
+                                .tint(PremiumAccent.tabActive)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -322,7 +291,7 @@ struct SettingsView: View {
                 .disabled(isDeletingAccount)
 
                 Divider()
-                    .overlay(Color.white.opacity(0.08))
+                    .overlay(DrflowTheme.separator)
                     .padding(.leading, 62)
 
                 Button {
@@ -331,20 +300,19 @@ struct SettingsView: View {
                     HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                                .environment(\.colorScheme, .dark)
+                                .fill(DrflowTheme.controlFill)
                                 .frame(width: 32, height: 32)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                                        .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.5)
                                 }
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.red.opacity(0.95))
                         }
-                        Text("Cerrar sesión")
+                        Text("Sign out")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -363,11 +331,11 @@ struct SettingsView: View {
                 settingsRow(
                     icon: "info.circle.fill",
                     iconColor: PremiumAccent.tabActive,
-                    title: "Versión"
+                    title: "Version"
                 ) {
                     Text("\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(DrflowTheme.textSecondary)
                 }
             }
         }
@@ -384,12 +352,11 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
+                    .fill(DrflowTheme.controlFill)
                     .frame(width: 32, height: 32)
                     .overlay {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                            .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.5)
                     }
 
                 Image(systemName: icon)
@@ -399,7 +366,7 @@ struct SettingsView: View {
 
             Text(title)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
 
             Spacer()
 

@@ -1,10 +1,14 @@
 # Claves locales (Anthropic, etc.)
 CarDashboardApp/DeveloperSettings.local.xcconfig
+CarDashboardApp/AppStoreConnect.local.xcconfig
+AuthKeys/
+*.p8
 
 # Xcode / Swift
 DerivedData/
 DerivedData*/
 .derivedDataAgent/
+.deviceBuild/
 .cliBuild/
 .cliBuildPush/
 build/
@@ -24,6 +28,10 @@ Package.resolved
 *.xccheckout
 *.xcscmblueprint
 
+# Flutter (legacy artifacts)
+.dart_tool/
+.flutter-plugins-dependencies
+
 # macOS
 .DS_Store
 .AppleDouble
@@ -41,3 +49,4 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 CarDashboardApp/Models/CrmMetricsService.swift
+vendor/bundle/

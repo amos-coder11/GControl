@@ -4,7 +4,6 @@ import SwiftUI
 struct CarDashboardAppApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authVM = AuthViewModel()
-    @StateObject private var carsVM = CarsViewModel()
     @StateObject private var settingsVM = SettingsViewModel()
     @StateObject private var appLock = AppLockManager()
     @StateObject private var moderationStore = UserModerationStore()
@@ -12,11 +11,10 @@ struct CarDashboardAppApp: App {
     var body: some Scene {
         WindowGroup {
             AppShellRoot(authVM: authVM)
-                .environmentObject(carsVM)
                 .environmentObject(settingsVM)
                 .environmentObject(appLock)
                 .environmentObject(moderationStore)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
         }
     }
 }
@@ -24,7 +22,6 @@ struct CarDashboardAppApp: App {
 /// Encapsula ciclo de vida de la app y sincroniza sesión Supabase.
 private struct AppShellRoot: View {
     @ObservedObject var authVM: AuthViewModel
-    @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var appLock: AppLockManager
     @EnvironmentObject var moderationStore: UserModerationStore
@@ -32,7 +29,6 @@ private struct AppShellRoot: View {
 
     var body: some View {
         AuthRootView(auth: authVM)
-            .environmentObject(carsVM)
             .environmentObject(settingsVM)
             .environmentObject(appLock)
             .environmentObject(moderationStore)

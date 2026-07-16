@@ -100,4 +100,4 @@ create policy "content_reports_select_own"
   using (auth.uid() = reporter_id);
 
 comment on table public.content_reports is
-  'Denuncias de UGC. El equipo de CarHub revisa y actúa en un plazo máximo de 24 horas.';
+  'Denuncias de UGC. El equipo de Drflow revisa y actúa en un plazo máximo de 24 horas.';

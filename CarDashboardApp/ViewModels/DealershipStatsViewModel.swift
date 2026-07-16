@@ -17,22 +17,22 @@ final class DealershipStatsViewModel: ObservableObject {
 
     @Published var vehiclesInStock: Int = 0
     @Published var vehiclesStockBadge: String = ""
-    @Published var totalStockValue: String = "0€"
+    @Published var totalStockValue: String = "$0"
     @Published var totalStockValueAmount: Double = 0
     @Published private(set) var isStockValueReady = false
     @Published var totalStockBadge: String = ""
     @Published var carsSold: Int = 0
-    @Published var salesProfit: String = "0 €"
+    @Published var salesProfit: String = "$0"
     @Published var capturedCars: Int = 0
     @Published var capturedChangePercent: Int = 0
     /// Comisión mensual del comercial con sesión iniciada.
     @Published var monthlyCommissionAmount: Double = 0
-    @Published var monthlyCommissionFormatted: String = "0€"
+    @Published var monthlyCommissionFormatted: String = "$0"
     /// Captaciones atribuidas al comercial actual.
     @Published var myCapturedCars: Int = 0
-    @Published var commercialCommissions: String = "0€"
+    @Published var commercialCommissions: String = "$0"
     @Published var commissionsSubtitle: String = "Comisiones del equipo"
-    @Published var totalDealershipEarnings: String = "0 €"
+    @Published var totalDealershipEarnings: String = "$0"
     @Published var totalEarningsSubtitle: String = "Importe total de ventas del equipo"
 
     // ─── Métricas REALES de leads (del CRM) ───
@@ -83,8 +83,8 @@ final class DealershipStatsViewModel: ObservableObject {
         if let rows = try? await CrmMetricsService.commercialRanking(token: token), !rows.isEmpty {
             let totalImporte = rows.reduce(0.0) { $0 + $1.importe }
             if totalImporte > 0 {
-                totalDealershipEarnings = Self.formatEUR(totalImporte)
-                salesProfit = Self.formatEUR(totalImporte)
+                totalDealershipEarnings = Self.formatUSD(totalImporte)
+                salesProfit = Self.formatUSD(totalImporte)
             }
 
             if let uid = userId {
@@ -92,42 +92,36 @@ final class DealershipStatsViewModel: ObservableObject {
                 if let mine = rows.first(where: { $0.id.lowercased() == key }) {
                     myCapturedCars = mine.captaciones
                     monthlyCommissionAmount = mine.monthCommission
-                    monthlyCommissionFormatted = Self.formatEUR(mine.monthCommission)
+                    monthlyCommissionFormatted = Self.formatUSD(mine.monthCommission)
                 }
             }
         }
     }
 
-    func refreshFromInventory(cars: [Car], asOf date: Date = Date()) {
+    func refreshFromInventory(stockCount: Int = 0, stockValue: Double = 0, asOf date: Date = Date()) {
         periodDisplayLabel = Self.monthLabel(for: date)
-        vehiclesInStock = cars.count
-
-        let total = cars.reduce(0.0) { acc, car in
-            acc + (car.listPriceEUR ?? 0)
-        }
-        totalStockValueAmount = total
-        totalStockValue = Self.formatEUR(total)
+        vehiclesInStock = stockCount
+        totalStockValueAmount = stockValue
+        totalStockValue = Self.formatUSD(stockValue)
     }
 
     func beginStockValueLoad() {
         isStockValueReady = false
     }
 
-    func finishStockValueLoad(from cars: [Car]) {
-        refreshFromInventory(cars: cars)
+    func finishStockValueLoad(stockCount: Int = 0, stockValue: Double = 0) {
+        refreshFromInventory(stockCount: stockCount, stockValue: stockValue)
         isStockValueReady = true
     }
 
-    static func formatEUR(_ amount: Double) -> String {
+    nonisolated static func formatUSD(_ amount: Double) -> String {
         let n = NSNumber(value: amount.rounded())
         let f = NumberFormatter()
-        f.locale = Locale(identifier: "es_ES")
-        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "en_US")
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
         f.maximumFractionDigits = 0
-        f.groupingSeparator = "."
-        f.decimalSeparator = ","
-        let s = f.string(from: n) ?? "0"
-        return "\(s)€"
+        return f.string(from: n) ?? "$0"
     }
 
     private static func monthLabel(for date: Date) -> String {
@@ -142,11 +136,11 @@ final class DealershipStatsViewModel: ObservableObject {
 
 // MARK: - Servicio de métricas (movido aquí para que el target de Xcode lo compile)
 
-/// Cliente para las MÉTRICAS reales del CRM (carhubackend): estadísticas de
+/// Cliente para las MÉTRICAS reales del CRM (drflowbackend): estadísticas de
 /// leads y ranking de comerciales. Autenticado con el token de la sesión de
 /// Supabase del usuario (igual que el chat).
 enum CrmMetricsService {
-    static let baseURL = URL(string: "https://carhubackend.onrender.com")!
+    static let baseURL = URL(string: "https://drflowbackend.onrender.com")!
 
     enum ServiceError: Error { case badResponse }
 

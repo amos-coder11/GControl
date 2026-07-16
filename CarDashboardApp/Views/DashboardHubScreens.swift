@@ -82,7 +82,7 @@ struct CommercialRankingSheet: View {
                 Text(name)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("Coches vendidos (demo)")
+                Text("Ventas (demo)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.4))
             }
@@ -102,143 +102,17 @@ struct CommercialRankingSheet: View {
     }
 }
 
-// MARK: - Contratos (hoja desde Inicio)
-
-struct ContractsHubView: View {
-    var showsDismissButton = false
-
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var invoiceHistory: InvoiceHistoryStore
-
-    @State private var showGenerator = false
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        Button {
-                            showGenerator = true
-                        } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: "doc.badge.plus")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 48, height: 48)
-                                    .background(Circle().fill(Color.white.opacity(0.12)))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Nuevo contrato")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                    Text("Generación con IA y exportación PDF")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.45))
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.white.opacity(0.35))
-                            }
-                            .padding(16)
-                            .background {
-                                DashboardChromeCardBackground(cornerRadius: 20)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        Text("Historial")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-
-                        if invoiceHistory.entries.isEmpty {
-                            Text("Aún no hay contratos guardados. Al generar uno con la IA, se añadirá aquí automáticamente.")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.45))
-                                .padding(.vertical, 8)
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(Array(invoiceHistory.entries.enumerated()), id: \.element.id) { index, entry in
-                                    contractsHistoryRow(entry)
-                                    if index < invoiceHistory.entries.count - 1 {
-                                        Divider().background(Color.white.opacity(0.1))
-                                    }
-                                }
-                            }
-                            .background {
-                                DashboardChromeCardBackground(cornerRadius: 22)
-                            }
-                        }
-                    }
-                    .padding(16)
-                }
-            }
-            .navigationTitle("Contratos")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.black, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                if showsDismissButton {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showGenerator) {
-                AIContractGeneratorView()
-                    .environmentObject(invoiceHistory)
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-
-    private func contractsHistoryRow(_ entry: InvoiceHistoryStore.Entry) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(entry.subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .lineLimit(2)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
-                Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
-                Button(role: .destructive) {
-                    invoiceHistory.remove(entry)
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-    }
-}
-
-struct InvoiceAndContractsHubSheet: View {
-    var body: some View {
-        ContractsHubView(showsDismissButton: true)
-    }
-}
-
 // MARK: - Blitz (accesos rápidos)
 
 struct BlitzHubSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
+
+    private let visitMocks: [(platform: String, detail: String, time: String)] = [
+        ("Instagram", "Visita al perfil de producto", "Hoy"),
+        ("TikTok", "Clic en enlace de bio", "Ayer"),
+        ("Facebook", "Consulta desde anuncio", "Hace 3 d"),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -272,22 +146,13 @@ struct BlitzHubSheet: View {
                         }
                         .padding(.bottom, 4)
 
-                        blitzSectionTitle("Expedientes de coches")
+                        blitzSectionTitle("Catálogo de productos")
                         VStack(spacing: 0) {
-                            let expedientes = Array(carsVM.cars.prefix(12))
-                            ForEach(Array(expedientes.enumerated()), id: \.element.id) { index, car in
-                                blitzCarRow(car)
-                                if index < expedientes.count - 1 {
-                                    Divider().background(Color.white.opacity(0.12))
-                                }
-                            }
-                            if carsVM.cars.isEmpty {
-                                Text("Sin vehículos en inventario.")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.45))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(16)
-                            }
+                            Text("El catálogo de productos estará disponible pronto.")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.45))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
                         }
                         .background {
                             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -314,9 +179,9 @@ struct BlitzHubSheet: View {
 
                         Button {
                             dismiss()
-                            tabRouter.selected = .cars
+                            tabRouter.selected = .chat
                         } label: {
-                            Label("Abrir coches / marketplace", systemImage: "magnifyingglass")
+                            Label("Abrir catálogo de productos", systemImage: "shippingbox.fill")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)
@@ -354,38 +219,6 @@ struct BlitzHubSheet: View {
             .foregroundStyle(.white.opacity(0.88))
     }
 
-    private func blitzCarRow(_ car: Car) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "doc.text.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.yellow.opacity(0.85))
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.white.opacity(0.1)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(car.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("Expediente · inventario")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.3))
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-    }
-
-    private var visitMocks: [(platform: String, detail: String, time: String)] {
-        [
-            ("AutoScout24", "BMW 320d · listado visto", "Hace 2 h"),
-            ("Mobile.de", "Audi A4 · ficha compartida", "Ayer"),
-            ("Coches.net", "Cupra Formentor · lead", "Hace 3 d"),
-            ("Wallapop", "Tesla Model 3 · chat", "Hace 5 d"),
-        ]
-    }
 
     private func visitRow(_ v: (platform: String, detail: String, time: String)) -> some View {
         HStack(alignment: .top, spacing: 12) {
@@ -426,7 +259,7 @@ final class DashboardNotificationsStore: ObservableObject {
 
     @Published private(set) var items: [Item] = []
 
-    private let key = "CarHub.dashboardNotifications.v1"
+    private let key = "Drflow.dashboardNotifications.v1"
 
     init() {
         load()
@@ -446,9 +279,9 @@ final class DashboardNotificationsStore: ObservableObject {
 
     private func seed() {
         items = [
-            Item(id: UUID(), title: "Stock actualizado", body: "Se sincronizaron vehículos desde el servidor.", date: Date().addingTimeInterval(-3600), isRead: false),
+            Item(id: UUID(), title: "Catálogo actualizado", body: "Se sincronizaron productos desde el servidor.", date: Date().addingTimeInterval(-3600), isRead: false),
             Item(id: UUID(), title: "Lead nuevo", body: "Un comprador ha visto uno de tus anuncios destacados.", date: Date().addingTimeInterval(-86400 * 2), isRead: true),
-            Item(id: UUID(), title: "Recordatorio", body: "Revisa los contratos pendientes de firma esta semana.", date: Date().addingTimeInterval(-2000), isRead: false),
+            Item(id: UUID(), title: "Recordatorio", body: "Comparte tu enlace de afiliado con tu red esta semana.", date: Date().addingTimeInterval(-2000), isRead: false),
         ]
     }
 

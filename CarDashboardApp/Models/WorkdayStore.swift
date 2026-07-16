@@ -508,6 +508,6 @@ final class WorkdayStore: ObservableObject {
 }
 
 extension Notification.Name {
-    static let phoneCallDidStart = Notification.Name("CarHub.phoneCallDidStart")
-    static let messageDidRespond = Notification.Name("CarHub.messageDidRespond")
+    static let phoneCallDidStart = Notification.Name("Drflow.phoneCallDidStart")
+    static let messageDidRespond = Notification.Name("Drflow.messageDidRespond")
 }

@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Historial local de documentos / facturas generados con la IA.
+/// Historial local de documentos / notas generados en la app.
 @MainActor
 final class InvoiceHistoryStore: ObservableObject {
     struct Entry: Identifiable, Codable, Equatable {
@@ -14,25 +14,19 @@ final class InvoiceHistoryStore: ObservableObject {
 
     @Published private(set) var entries: [Entry] = []
 
-    private let storageKey = "CarHub.invoiceHistory.v1"
+    private let storageKey = "Groo.invoiceHistory.v1"
 
     init() {
         load()
     }
 
-    func recordGeneratedContract(
-        kind: AIContractDocumentKind,
-        clientName: String,
-        vehicleSummary: String
-    ) {
-        let title = kind.title
-        let sub = "\(clientName) · \(vehicleSummary)".trimmingCharacters(in: .whitespacesAndNewlines)
+    func record(title: String, subtitle: String, kind: String = "note") {
         let e = Entry(
             id: UUID(),
             createdAt: Date(),
-            documentKindRaw: kind.rawValue,
+            documentKindRaw: kind,
             title: title,
-            subtitle: sub
+            subtitle: subtitle
         )
         entries.insert(e, at: 0)
         save()

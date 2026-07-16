@@ -356,16 +356,6 @@ struct ChatConversationView: View {
         return t.isEmpty || t == "📷 Imagen" || t == "📎 Archivo adjunto" || t.count <= 1
     }
 
-    /// Extrae el id de coche de un enlace de la web (accar.es/stock/<id> o /catalogo/<id>).
-    static func carVehicleId(from text: String) -> String? {
-        let pattern = "(?:catalogo|stock|vehiculos?|coches?)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-        guard let re = try? NSRegularExpression(pattern: pattern),
-              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let r = Range(m.range(at: 1), in: text)
-        else { return nil }
-        return String(text[r])
-    }
-
     private var teamDirectUIMessages: [ChatMessage] {
         guard let myId = auth.session?.user.id else { return [] }
         return teamDirectRows
@@ -613,7 +603,7 @@ struct ChatConversationView: View {
             }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Dejarás de ver los mensajes de esta persona y se enviará un informe al equipo de CarHub.")
+            Text("Dejarás de ver los mensajes de esta persona y se enviará un informe al equipo de Groo.")
         }
         .alert("Contenido no permitido", isPresented: $showObjectionableContentAlert) {
             Button("Entendido", role: .cancel) {}
@@ -813,9 +803,6 @@ struct ChatConversationView: View {
                 } else if let remote = msg.remoteImageURL {
                     remoteImageBubble(url: remote, msg: msg, maxBubbleWidth: maxBubbleWidth)
                 } else if let text = msg.text {
-                    if let carId = Self.carVehicleId(from: text) {
-                        CarLinkCardView(vehicleId: carId, isOutgoing: msg.isOutgoing, maxWidth: min(maxBubbleWidth, 260))
-                    }
                     if msg.isOutgoing {
                         outgoingTextBubble(text: text, time: msg.time, receipt: msg.receipt ?? .sent, maxBubbleWidth: maxBubbleWidth)
                     } else {
@@ -1370,7 +1357,7 @@ struct ChatConversationView: View {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.prepareToRecord()
             guard rec.record() else {
-                throw NSError(domain: "CarHub", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
+                throw NSError(domain: "Drflow", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
             }
             teamVoiceRecorder = rec
             isRecordingTeamVoice = true
@@ -1884,56 +1871,56 @@ struct ChatConversationView: View {
         switch thread.id.uuidString {
         case "10000000-0000-0000-0000-000000000001":
             return [
-                ChatMessage(text: "Hola, vi el XC60 en Instagram. ¿Sigue disponible?", isOutgoing: false, time: "9:38"),
-                ChatMessage(text: "Sí, lo tienes reservado. Mañana lo dejamos impecable.", isOutgoing: true, time: "9:39", receipt: .read),
-                ChatMessage(text: "El Volvo está listo para entrega en el concesionario.", isOutgoing: false, time: "9:42")
+                ChatMessage(text: "Hola, quiero NAD + y Energy Focus del live.", isOutgoing: false, time: "12:18"),
+                ChatMessage(text: "Perfecto, te paso el enlace de pago por $116.", isOutgoing: true, time: "12:22", receipt: .read),
+                ChatMessage(text: "Pedido: NAD + y Energy Focus — $116", isOutgoing: false, time: "12:30")
             ]
         case "10000000-0000-0000-0000-000000000002":
             return [
-                ChatMessage(text: "Buenas, me interesa el RS6 del anuncio.", isOutgoing: false, time: "Ayer 18:02"),
-                ChatMessage(text: "Hola, te paso condiciones y cuota orientativa.", isOutgoing: true, time: "Ayer 18:10", receipt: .read),
-                ChatMessage(text: "¿Sigues con el RS6 publicado? Me interesa financiación.", isOutgoing: false, time: "Ayer 18:20"),
-                ChatMessage(text: "Sí, cuando quieras te mando simulación.", isOutgoing: true, time: "Ayer 18:22", receipt: .read)
+                ChatMessage(text: "¿El Recovery Sleep sigue en stock?", isOutgoing: false, time: "Ayer 17:40"),
+                ChatMessage(text: "Sí, envío hoy mismo. Son $67.", isOutgoing: true, time: "Ayer 17:55", receipt: .read),
+                ChatMessage(text: "Traders Recovery Sleep & Wellness — $67", isOutgoing: false, time: "Ayer 18:10")
             ]
         case "10000000-0000-0000-0000-000000000003":
             return [
-                ChatMessage(text: "Hola, ¿en qué podemos ayudarte?", isOutgoing: false, time: "10:12"),
-                ChatMessage(text: "¿Podemos ver el Serie 3 el jueves por la tarde?", isOutgoing: false, time: "10:14"),
-                ChatMessage(text: "Perfecto, te agendo a las 17:30.", isOutgoing: true, time: "10:18", receipt: .read)
+                ChatMessage(text: "Hola, ¿cuánto tarda el envío de 3 productos?", isOutgoing: false, time: "10:02"),
+                ChatMessage(text: "Consulta envío de 3 productos — $132.40", isOutgoing: false, time: "10:15"),
+                ChatMessage(text: "Entre 3 y 5 días laborables en EE. UU.", isOutgoing: true, time: "10:18", receipt: .read)
             ]
         case "10000000-0000-0000-0000-000000000004":
             return [
-                ChatMessage(text: "No veíamos el Cupra Formentor en el panel tras la importación.", isOutgoing: false, time: "18/03"),
-                ChatMessage(text: "Ya está sincronizado. ¿Lo ves ahora?", isOutgoing: true, time: "18/03", receipt: .read),
-                ChatMessage(text: "Sí, todo correcto. Gracias.", isOutgoing: false, time: "18/03")
+                ChatMessage(text: "Acabo de comprar NAD + en el directo.", isOutgoing: false, time: "08:55"),
+                ChatMessage(text: "Compra NAD + completada — $49", isOutgoing: false, time: "09:02"),
+                ChatMessage(text: "¡Gracias! Tu comisión ya aparece en el panel.", isOutgoing: true, time: "09:05", receipt: .read)
             ]
         case "10000000-0000-0000-0000-000000000005":
             return [
-                ChatMessage(text: "Bienvenido al asistente DealCar. Escribe *stock* o *cita*.", isOutgoing: false, time: "15/03"),
-                ChatMessage(text: "/start", isOutgoing: true, time: "15/03", receipt: .delivered)
+                ChatMessage(text: "Me interesa Energy Focus, ¿cómo pago?", isOutgoing: false, time: "Ayer 18:20"),
+                ChatMessage(text: "Te envío el checkout de TikTok Shop.", isOutgoing: true, time: "Ayer 18:28", receipt: .read),
+                ChatMessage(text: "Pendiente pago Energy Focus — $67", isOutgoing: false, time: "Ayer 18:40")
             ]
         case "10000000-0000-0000-0000-000000000006":
             return [
-                ChatMessage(text: "Integración financiación — dealerId para el Mustang.", isOutgoing: false, time: "4:20"),
-                ChatMessage(text: "const dealerId = process.env.DEALCAR_DEALER_ID ?? \"b7c179e3…\"", isOutgoing: false, time: "4:23"),
-                ChatMessage(text: "Recibido, lo revisamos en staging.", isOutgoing: true, time: "4:25", receipt: .read)
+                ChatMessage(text: "¿Tienen stock de NAD+ para envío hoy?", isOutgoing: false, time: "4:15"),
+                ChatMessage(text: "Sí, quedan unidades. ¿Cuántas necesitas?", isOutgoing: true, time: "4:20", receipt: .read),
+                ChatMessage(text: "Dos frascos, por favor.", isOutgoing: false, time: "4:23")
             ]
         case "10000000-0000-0000-0000-000000000007":
             return [
-                ChatMessage(text: "Hola, el 320d sigue en venta?", isOutgoing: false, time: "mar 11:02"),
-                ChatMessage(text: "Sí, disponible. ¿Quieres más fotos?", isOutgoing: true, time: "mar 11:08", receipt: .read),
-                ChatMessage(text: "¿Sigue disponible el 320d? Puedo pasar mañana.", isOutgoing: false, time: "mar 18:40")
+                ChatMessage(text: "Hola, bundle Recovery + NAD con mi enlace.", isOutgoing: false, time: "mar 11:02"),
+                ChatMessage(text: "Bundle Recovery + NAD — comisión afiliado", isOutgoing: false, time: "mar 11:08"),
+                ChatMessage(text: "Listo, ya está registrado en tu panel.", isOutgoing: true, time: "mar 11:15", receipt: .read)
             ]
         case "10000000-0000-0000-0000-000000000008":
             return [
-                ChatMessage(text: "Interesado en el A4 del Marketplace.", isOutgoing: false, time: "lun 9:05"),
-                ChatMessage(text: "Te dejo el enlace al informe CARFAX del A4.", isOutgoing: false, time: "lun 9:12"),
-                ChatMessage(text: "Gracias, lo miro y te digo.", isOutgoing: true, time: "lun 9:20", receipt: .read)
+                ChatMessage(text: "Compré 2 Energy Focus en el live de anoche.", isOutgoing: false, time: "lun 9:05"),
+                ChatMessage(text: "Pedido confirmado: Energy Focus x2", isOutgoing: false, time: "lun 9:12"),
+                ChatMessage(text: "Genial, comisión actualizada.", isOutgoing: true, time: "lun 9:20", receipt: .read)
             ]
         default:
             return [
                 ChatMessage(text: "Hola, ¿en qué podemos ayudarte?", isOutgoing: false, time: "10:12"),
-                ChatMessage(text: "Gracias, os escribo desde la app del concesionario.", isOutgoing: true, time: "10:18", receipt: .read)
+                ChatMessage(text: "Gracias, te escribo desde Groo.", isOutgoing: true, time: "10:18", receipt: .read)
             ]
         }
     }
@@ -2396,7 +2383,7 @@ private struct VoiceNoteBubbleView: View {
             do {
                 let p = try AVAudioPlayer(contentsOf: temp)
                 p.prepareToPlay()
-                guard p.play() else { throw NSError(domain: "CarHub", code: 3) }
+                guard p.play() else { throw NSError(domain: "Drflow", code: 3) }
                 player = p
                 isPlaying = true
                 let token = UUID()
@@ -2569,124 +2556,5 @@ private struct ConversationBackdrop: View {
             .environmentObject(ChatInboxStore())
             .environmentObject(DashboardCommunityViewModel())
             .environmentObject(AuthViewModel())
-    }
-}
-
-// MARK: - Tarjeta de coche para enlaces compartidos en el chat (accar.es/stock/<id>)
-
-/// Muestra foto + nombre + precio del coche cuando alguien comparte su enlace.
-/// Consulta la ficha pública del backend (vehicle-og). Tocarla abre la web.
-private struct CarLinkCardView: View {
-    let vehicleId: String
-    let isOutgoing: Bool
-    var maxWidth: CGFloat = 260
-
-    @State private var info: VehicleOG?
-    @State private var failed = false
-
-    struct VehicleOG: Decodable {
-        let make: String?
-        let model: String?
-        let version: String?
-        let year: Int?
-        let kilometers: Int?
-        let price: Double?
-        let image: String?
-    }
-
-    private var title: String {
-        let parts = [info?.make, info?.model, info?.version].compactMap { $0 }.filter { !$0.isEmpty }
-        return parts.isEmpty ? "Ver ficha del coche" : parts.joined(separator: " ")
-    }
-
-    private var subtitle: String {
-        var bits: [String] = []
-        if let y = info?.year { bits.append(String(y)) }
-        if let km = info?.kilometers, km > 0 {
-            bits.append("\(km.formatted(.number.grouping(.automatic))) km")
-        }
-        if let p = info?.price, p > 0 {
-            bits.append("\(Int(p).formatted(.number.grouping(.automatic))) €")
-        }
-        return bits.joined(separator: " · ")
-    }
-
-    private var webURL: URL? {
-        URL(string: "https://www.accar.es/catalogo/\(vehicleId)")
-    }
-
-    var body: some View {
-        Group {
-            if let url = webURL {
-                Link(destination: url) { card }
-            } else {
-                card
-            }
-        }
-        .task(id: vehicleId) { await load() }
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                Rectangle().fill(Color.black.opacity(0.25))
-                if let img = info?.image, let u = URL(string: img) {
-                    AsyncImage(url: u) { phase in
-                        if let i = phase.image { i.resizable().scaledToFill() }
-                        else { Image(systemName: "car.fill").font(.system(size: 30)).foregroundStyle(.white.opacity(0.6)) }
-                    }
-                } else {
-                    Image(systemName: "car.fill").font(.system(size: 30)).foregroundStyle(.white.opacity(0.6))
-                }
-            }
-            .frame(width: maxWidth, height: maxWidth * 0.56)
-            .clipped()
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(Color(red: 0.55, green: 0.78, blue: 1.0))
-                }
-                Text("accar.es")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(width: maxWidth, alignment: .leading)
-        }
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-
-    private func load() async {
-        guard info == nil else { return }
-        let urlStr = "https://carhubackend.onrender.com/api/public/vehicle-og/\(vehicleId)"
-        guard let url = URL(string: urlStr) else { failed = true; return }
-        // Reintenta varias veces: si Render está despertando, la 1ª puede fallar.
-        for intento in 0 ..< 4 {
-            if Task.isCancelled { return }
-            do {
-                let (data, res) = try await URLSession.shared.data(from: url)
-                if let http = res as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) {
-                    let decoded = try JSONDecoder().decode(VehicleOG.self, from: data)
-                    await MainActor.run { info = decoded }
-                    return
-                }
-            } catch {
-                // reintentamos
-            }
-            try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * (intento + 1)))
-        }
-        await MainActor.run { failed = true }
     }
 }

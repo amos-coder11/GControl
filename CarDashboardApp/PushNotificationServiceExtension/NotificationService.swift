@@ -2,7 +2,7 @@ import UserNotifications
 
 /// Añade este archivo a un target **Notification Service Extension** en Xcode
 /// (File → New → Target → Notification Service Extension) con bundle id
-/// `com.carhub.app.PushNotificationServiceExtension` y embútelo en la app principal.
+/// `com.groo.app.PushNotificationServiceExtension` y embútelo en la app principal.
 /// La push debe llevar `mutable-content: 1` (ya lo envía la Edge Function `send-message-push`).
 final class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
@@ -21,8 +21,8 @@ final class NotificationService: UNNotificationServiceExtension {
         }
 
         let userInfo = bestAttemptContent.userInfo
-        guard let carhub = userInfo["carhub"] as? [String: Any],
-              let urlString = carhub["avatar_url"] as? String,
+        guard let drflow = userInfo["drflow"] as? [String: Any],
+              let urlString = drflow["avatar_url"] as? String,
               !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let url = URL(string: urlString)
         else {

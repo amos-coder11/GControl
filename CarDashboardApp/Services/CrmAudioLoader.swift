@@ -48,6 +48,6 @@ enum CrmAudioLoader {
         guard let host = url.host?.lowercased() else {
             return url.path.hasPrefix("/api/")
         }
-        return host.contains("carhubackend") || host.contains("carhub365")
+        return host.contains("drflowbackend") || host.contains("drflow")
     }
 }

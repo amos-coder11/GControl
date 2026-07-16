@@ -19,11 +19,11 @@ struct DashboardFinancialSummaryCard: View {
                 HStack {
                     Text("Información financiera")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.52))
+                        .foregroundStyle(DrflowTheme.textSecondary)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.38))
+                        .foregroundStyle(DrflowTheme.textMuted)
                 }
 
                 AnimatedEURAmountText(
@@ -40,7 +40,7 @@ struct DashboardFinancialSummaryCard: View {
 
                 Text("Valor stock · \(stats.periodDisplayLabel)")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(DrflowTheme.textTertiary)
 
                 HStack(spacing: 14) {
                     miniPill(title: "Vendidos", value: "\(stats.carsSold)")
@@ -61,17 +61,17 @@ struct DashboardFinancialSummaryCard: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(DrflowTheme.textTertiary)
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(DrflowTheme.surfaceMuted)
         }
     }
 }
@@ -86,11 +86,11 @@ struct DashboardFinancialDetailSheet: View {
 
     private var categories: [(icon: String, title: String, subtitle: String, amount: String, pct: String, color: Color)] {
         [
-            ("car.fill", "Stock activo", "\(stats.vehiclesInStock) unidades", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
-            ("eurosign.circle.fill", "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, "Neto", .mint),
+            ("shippingbox.fill", "Stock activo", "\(stats.vehiclesInStock) unidades", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
+            ("dollarsign.circle.fill", "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, "Neto", .mint),
             ("person.2.fill", "Comisiones", stats.commissionsSubtitle, stats.commercialCommissions, "Comercial", .orange),
             ("chart.line.uptrend.xyaxis", "Ingresos concesión", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, "Total", .purple),
-            ("camera.metering.centered", "Captación", "+\(stats.capturedChangePercent)% vs periodo", "\(stats.capturedCars) coches", "CRM", .pink),
+            ("chart.line.uptrend.xyaxis", "Captación", "+\(stats.capturedChangePercent)% vs periodo", "\(stats.capturedCars) productos", "CRM", .pink),
         ]
     }
 
@@ -101,7 +101,7 @@ struct DashboardFinancialDetailSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Resumen del periodo")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(DrflowTheme.textSecondary)
                         AnimatedEURAmountText(
                             amount: stats.totalStockValueAmount,
                             font: .system(size: 40, weight: .bold, design: .rounded)
@@ -116,7 +116,7 @@ struct DashboardFinancialDetailSheet: View {
 
                     Text("Por categoría")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DrflowTheme.textPrimary)
 
                     VStack(spacing: 0) {
                         ForEach(Array(categories.enumerated()), id: \.offset) { index, row in
@@ -153,12 +153,12 @@ struct DashboardFinancialDetailSheet: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                     }
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
     }
 
     private func financeCategoryRow(
@@ -176,16 +176,16 @@ struct DashboardFinancialDetailSheet: View {
                     .frame(width: 44, height: 44)
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(DrflowTheme.textPrimary)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(DrflowTheme.textPrimary)
                 Text(subtitle)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(DrflowTheme.textTertiary)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,11 +193,11 @@ struct DashboardFinancialDetailSheet: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(amount)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(DrflowTheme.textPrimary)
                     .multilineTextAlignment(.trailing)
                 Text(pct)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(DrflowTheme.textTertiary)
             }
         }
         .padding(.horizontal, 16)
@@ -233,11 +233,11 @@ struct DashboardTeamMapCard: View {
                 HStack {
                     Text("Ubicación del equipo")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DrflowTheme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(DrflowTheme.textMuted)
                 }
 
                 ZStack {
@@ -259,7 +259,7 @@ struct DashboardTeamMapCard: View {
                         Text("Activa la ubicación para compartir tu posición con el equipo y ver el mapa en vivo.")
                             .font(.system(size: 12, weight: .medium))
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                             .padding(14)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .padding(12)
@@ -274,11 +274,11 @@ struct DashboardTeamMapCard: View {
                 {
                     Text("Cuando los usuarios compartan ubicación, aparecerán aquí. Toca para ver el mapa completo.")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(DrflowTheme.textTertiary)
                 } else {
                     Text("Toca para abrir el mapa con fotos y posición exacta de cada usuario.")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(DrflowTheme.textTertiary)
                 }
             }
             .padding(16)
@@ -305,7 +305,17 @@ struct DashboardTeamMapCard: View {
     }
 }
 
-// MARK: - Mi equipo (carrusel → pestaña Chat, grupo + privados)
+// MARK: - Enlace de afiliado
+
+enum AffiliateLink {
+    static let joinBaseURL = "https://www.drflow.es/join"
+
+    static func urlString(for userId: UUID) -> String {
+        "\(joinBaseURL)?ref=\(userId.uuidString.lowercased())"
+    }
+}
+
+// MARK: - Afiliados (vista previa en Inicio → pestaña Afiliados)
 
 struct DashboardConnectedUsersStrip: View {
     let members: [CommunityProfilesService.DirectoryRow]
@@ -315,60 +325,110 @@ struct DashboardConnectedUsersStrip: View {
     var currentUserInitials: String
 
     @EnvironmentObject private var tabRouter: MainTabRouter
-    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
-    @EnvironmentObject private var chatInbox: ChatInboxStore
+
+    @State private var didCopyAffiliateLink = false
 
     private let avatarSize: CGFloat = 58
 
-    var body: some View {
-        Button {
-            chatInbox.syncTeamThreads(from: members, currentUserId: currentUserId)
-            if let group = chatInbox.teamGroupChatThread {
-                chatNav.threadToOpen = group
-            }
-            tabRouter.selected = .chat
-        } label: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("Mi equipo")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
+    private var affiliateLinkText: String? {
+        guard let uid = currentUserId else { return nil }
+        return AffiliateLink.urlString(for: uid)
+    }
 
-                if members.isEmpty {
-                    Text("Aún no hay perfiles en el directorio o no tienes permisos de lectura.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .padding(.vertical, 8)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
-                            ForEach(orderedTeam) { row in
-                                DashboardConnectedMemberCell(
-                                    row: row,
-                                    size: avatarSize,
-                                    accessToken: accessToken,
-                                    isSelf: row.userId == currentUserId,
-                                    localAvatarImage: row.userId == currentUserId ? currentUserProfileImage : nil,
-                                    localInitialsOverride: row.userId == currentUserId ? currentUserInitials : nil
-                                )
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let link = affiliateLinkText {
+                affiliateLinkCard(link)
+            }
+
+            Button {
+                tabRouter.selected = .chat
+            } label: {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Afiliados")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DrflowTheme.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(DrflowTheme.textMuted)
+                    }
+
+                    if members.isEmpty {
+                        Text("Aún no hay perfiles en el directorio o no tienes permisos de lectura.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(DrflowTheme.textTertiary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(orderedTeam) { row in
+                                    DashboardConnectedMemberCell(
+                                        row: row,
+                                        size: avatarSize,
+                                        accessToken: accessToken,
+                                        isSelf: row.userId == currentUserId,
+                                        localAvatarImage: row.userId == currentUserId ? currentUserProfileImage : nil,
+                                        localInitialsOverride: row.userId == currentUserId ? currentUserInitials : nil
+                                    )
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
-
             }
-            .padding(16)
-            .background {
-                DashboardChromeCardBackground(cornerRadius: 24)
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background {
+            DashboardChromeCardBackground(cornerRadius: 24)
+        }
+    }
+
+    private func affiliateLinkCard(_ link: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Tu enlace de afiliado")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DrflowTheme.textSecondary)
+
+            HStack(spacing: 10) {
+                Text(link)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundStyle(DrflowTheme.textPrimary.opacity(0.92))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    UIPasteboard.general.string = link
+                    didCopyAffiliateLink = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        didCopyAffiliateLink = false
+                    }
+                } label: {
+                    Label(
+                        didCopyAffiliateLink ? "Copiado" : "Copiar",
+                        systemImage: didCopyAffiliateLink ? "checkmark" : "doc.on.doc"
+                    )
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(didCopyAffiliateLink ? DrflowTheme.positive : PremiumAccent.tabActive)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background {
+                        Capsule()
+                            .fill(didCopyAffiliateLink ? DrflowTheme.positive.opacity(0.12) : PremiumAccent.tabActive.opacity(0.1))
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(DrflowTheme.surfaceMuted)
+        }
     }
 
     private var orderedTeam: [CommunityProfilesService.DirectoryRow] {
@@ -385,7 +445,7 @@ struct DashboardConnectedUsersStrip: View {
     }
 }
 
-private struct DashboardConnectedMemberCell: View {
+struct DashboardConnectedMemberCell: View {
     let row: CommunityProfilesService.DirectoryRow
     let size: CGFloat
     var accessToken: String?
@@ -426,7 +486,7 @@ private struct DashboardConnectedMemberCell: View {
             .overlay {
                 Circle()
                     .strokeBorder(
-                        isSelf ? Color.cyan.opacity(0.9) : Color.white.opacity(0.22),
+                        isSelf ? Color.cyan.opacity(0.9) : DrflowTheme.cardBorder,
                         lineWidth: isSelf ? 2.25 : 0.75
                     )
             }
@@ -434,7 +494,7 @@ private struct DashboardConnectedMemberCell: View {
             if showsNameBelowAvatar {
                 Text(row.resolvedDisplayName)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(DrflowTheme.textPrimary.opacity(0.92))
                     .lineLimit(1)
                     .frame(width: size + 12)
             }

@@ -205,7 +205,6 @@ struct CallsHubView: View {
     }
 
     private func openChat(_ thread: ChatThread) {
-        chatNav.threadToOpen = thread
         tabRouter.selected = .chat
     }
 }

@@ -141,7 +141,7 @@ final class AuthViewModel: ObservableObject {
             return
         }
         companyIdTask = Task {
-            let cid = await VehiclesService.fetchMyCompanyId()
+            let cid = await OrgMembershipService.fetchMyCompanyId()
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.companyId = cid
@@ -157,7 +157,7 @@ final class AuthViewModel: ObservableObject {
             return
         }
         organizationIdTask = Task {
-            let oid = await VehiclesService.fetchMyOrganizationId()
+            let oid = await OrgMembershipService.fetchMyOrganizationId()
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.organizationId = oid
@@ -188,8 +188,28 @@ final class AuthViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard self.session?.user.id == userId else { return }
-                self.profileAvatarImage = image
+                self.profileAvatarImage = image ?? UserProfileService.loadLocalAvatar(userId: userId)
             }
+        }
+    }
+
+    /// Guarda la foto de perfil (local + Supabase Storage).
+    func updateProfileAvatar(with image: UIImage) async {
+        guard let session else { return }
+        let userId = session.user.id
+
+        profileAvatarImage = image
+        UserProfileService.saveLocalAvatar(image, userId: userId)
+
+        do {
+            _ = try await UserProfileService.uploadProfileAvatar(
+                image: image,
+                userId: userId,
+                client: client
+            )
+            scheduleProfileAvatarLoad()
+        } catch {
+            lastInfoMessage = "Photo saved on device. \(error.localizedDescription)"
         }
     }
 
@@ -197,7 +217,7 @@ final class AuthViewModel: ObservableObject {
         clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !password.isEmpty else {
-            lastErrorMessage = "Introduce correo y contraseña."
+            lastErrorMessage = "Enter email and password."
             return
         }
         do {
@@ -214,7 +234,7 @@ final class AuthViewModel: ObservableObject {
         clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !password.isEmpty else {
-            lastErrorMessage = "Introduce correo y contraseña."
+            lastErrorMessage = "Enter email and password."
             return .failed
         }
         do {
@@ -227,7 +247,7 @@ final class AuthViewModel: ObservableObject {
                 return .signedIn
             }
             lastInfoMessage =
-                "Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión."
+                "Account created. Check your email to confirm it, then sign in."
             return .emailConfirmationRequired
         } catch {
             let mapped = Self.mapAuthError(error)
@@ -245,31 +265,31 @@ final class AuthViewModel: ObservableObject {
         lastInfoMessage = nil
     }
 
-    /// Traduce errores habituales de Supabase Auth a mensajes claros en español.
+    /// Maps common Supabase Auth errors to clear English messages.
     private static func mapAuthError(_ error: Error) -> String {
         let msg = error.localizedDescription.lowercased()
         if isExistingAccountError(error) {
-            return "Ya existe una cuenta con este correo. Inicia sesión con tu contraseña."
+            return "An account with this email already exists. Sign in with your password."
         }
         if msg.contains("invalid login") || msg.contains("invalid credentials") {
-            return "Correo o contraseña incorrectos."
+            return "Incorrect email or password."
         }
         if msg.contains("password") && (msg.contains("weak") || msg.contains("short") || msg.contains("least")) {
-            return "La contraseña es demasiado débil. Usa al menos 6 caracteres."
+            return "Password is too weak. Use at least 6 characters."
         }
         if msg.contains("rate limit") || msg.contains("too many") || msg.contains("429") {
-            return "Demasiados intentos. Espera un momento e inténtalo de nuevo."
+            return "Too many attempts. Wait a moment and try again."
         }
         if msg.contains("network") || msg.contains("internet") || msg.contains("offline")
             || msg.contains("timed out") || msg.contains("could not connect")
         {
-            return "Sin conexión. Comprueba tu internet e inténtalo de nuevo."
+            return "No connection. Check your internet and try again."
         }
         if msg.contains("signup") && (msg.contains("disabled") || msg.contains("not allowed")) {
-            return "El registro no está disponible en este momento."
+            return "Registration is not available at this time."
         }
         if msg.contains("invalid email") || msg.contains("valid email") {
-            return "Introduce un correo electrónico válido."
+            return "Enter a valid email address."
         }
         return error.localizedDescription
     }
@@ -286,9 +306,9 @@ final class AuthViewModel: ObservableObject {
         clearAuthMessages()
         guard let s = session else {
             throw NSError(
-                domain: "CarHub.Auth",
+                domain: "Drflow.Auth",
                 code: 401,
-                userInfo: [NSLocalizedDescriptionKey: "No hay una sesión activa para eliminar."]
+                userInfo: [NSLocalizedDescriptionKey: "There is no active session to delete."]
             )
         }
         var request = URLRequest(url: SupabaseClientProvider.supabaseURL.appending(path: "auth/v1/user"))
@@ -300,16 +320,16 @@ final class AuthViewModel: ObservableObject {
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(
-                domain: "CarHub.Auth",
+                domain: "Drflow.Auth",
                 code: 500,
-                userInfo: [NSLocalizedDescriptionKey: "Respuesta inesperada del servidor."]
+                userInfo: [NSLocalizedDescriptionKey: "Unexpected server response."]
             )
         }
         guard (200 ... 299).contains(http.statusCode) else {
             throw NSError(
-                domain: "CarHub.Auth",
+                domain: "Drflow.Auth",
                 code: http.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "No se pudo eliminar la cuenta. Inténtalo de nuevo."]
+                userInfo: [NSLocalizedDescriptionKey: "Could not delete account. Try again."]
             )
         }
         try? await client.auth.signOut()
@@ -342,12 +362,12 @@ final class AuthViewModel: ObservableObject {
         clearAuthMessages()
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            lastErrorMessage = "Introduce tu correo."
+            lastErrorMessage = "Enter your email."
             return nil
         }
         do {
             try await client.auth.resetPasswordForEmail(trimmed)
-            return "Si existe una cuenta con ese correo, recibirás un enlace para restablecer la contraseña."
+            return "If an account exists with that email, you'll receive a link to reset your password."
         } catch {
             lastErrorMessage = Self.mapAuthError(error)
             return nil

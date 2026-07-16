@@ -126,7 +126,7 @@ struct DealershipImageStatCard: View {
     let title: String
     let value: String
     let changePercent: Int
-    var imageURL: URL = RemoteAssets.carShowroomImageURL
+    var imageURL: URL = RemoteAssets.dashboardHeroStock
     private let cornerRadius: CGFloat = 20
 
     var body: some View {
@@ -338,7 +338,7 @@ struct AppChromeSearchCapsuleField: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconOpacity))
+                .foregroundStyle(DrflowTheme.textMuted.opacity(DashboardChromeSearchFieldStyle.iconOpacity))
 
             TextField("", text: $text, prompt: prompt)
                 .focused($isSearchFocused)
@@ -346,8 +346,8 @@ struct AppChromeSearchCapsuleField: View {
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white)
-                .tint(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
+                .tint(PremiumAccent.tabActive)
 
             if showsClearButton, !text.isEmpty {
                 Button {
@@ -355,7 +355,7 @@ struct AppChromeSearchCapsuleField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity))
+                        .foregroundStyle(DrflowTheme.textMuted.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity))
                 }
                 .buttonStyle(.plain)
             }
@@ -380,7 +380,7 @@ struct AppChromeHeaderCircleIconButton: View {
                 DashboardChromeHeaderCircleBackground()
                 Image(systemName: systemName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .foregroundStyle(DrflowTheme.textPrimary.opacity(0.9))
             }
         }
         .buttonStyle(ChromeCirclePressButtonStyle())
@@ -427,7 +427,7 @@ struct DashboardHomeTopBar: View {
             profileImage: profileImage,
             searchText: $searchText,
             prompt: Text("Buscar")
-                .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
+                .foregroundStyle(DrflowTheme.textTertiary.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
             showsSearchClearButton: true,
             searchFieldFocused: $searchFieldFocused
         ) {
@@ -675,7 +675,7 @@ struct DashboardSkeletonAmountPlaceholder: View {
 struct AnimatedEURAmountText: View, Animatable {
     var amount: Double
     var font: Font = .system(size: 44, weight: .bold, design: .rounded)
-    var foreground: Color = .white
+    var foreground: Color = DrflowTheme.textPrimary
     var minimumScaleFactor: CGFloat = 0.55
 
     var animatableData: Double {
@@ -684,7 +684,7 @@ struct AnimatedEURAmountText: View, Animatable {
     }
 
     var body: some View {
-        Text(DealershipStatsViewModel.formatEUR(amount))
+        Text(DealershipStatsViewModel.formatUSD(amount))
             .font(font)
             .foregroundStyle(foreground)
             .minimumScaleFactor(minimumScaleFactor)

@@ -4,21 +4,21 @@ import UserNotifications
 
 extension Notification.Name {
     /// Abrir un hilo de chat tras pulsar una notificación (payload en `userInfo`).
-    static let openChatFromPush = Notification.Name("CarHub.openChatFromPush")
+    static let openChatFromPush = Notification.Name("Drflow.openChatFromPush")
 }
 
 /// Avisos locales de nuevos mensajes CRM y enrutamiento al pulsar push remota/local.
 enum MessageNotificationService {
-    static let leadCategoryId = "CARHUB_LEAD_MESSAGE"
+    static let leadCategoryId = "DRFLOW_LEAD_MESSAGE"
 
     static func registerCategories() {
         let accept = UNNotificationAction(
-            identifier: CarHubNotificationCategories.coordinatorTaskAcceptAction,
+            identifier: DrflowNotificationCategories.coordinatorTaskAcceptAction,
             title: "Aceptar",
             options: [.foreground]
         )
         let coordinatorCategory = UNNotificationCategory(
-            identifier: CarHubNotificationCategories.coordinatorTask,
+            identifier: DrflowNotificationCategories.coordinatorTask,
             actions: [accept],
             intentIdentifiers: [],
             options: []
@@ -73,7 +73,7 @@ enum MessageNotificationService {
         content.sound = .default
         content.categoryIdentifier = leadCategoryId
         content.userInfo = [
-            "carhub": [
+            "drflow": [
                 "kind": "crm_lead",
                 "thread_id": thread.id.uuidString,
             ],
@@ -131,23 +131,20 @@ enum MessageNotificationService {
         case "crm_lead":
             guard let idStr = userInfo["thread_id"] as? String,
                   let threadId = UUID(uuidString: idStr),
-                  let thread = chatInbox.liveThreads.first(where: { $0.id == threadId })
+                  chatInbox.liveThreads.contains(where: { $0.id == threadId })
             else { return }
             tabRouter.selected = .chat
-            chatNav.threadToOpen = thread
 
         case "dm":
             guard let senderStr = userInfo["sender_id"] as? String,
                   let senderId = UUID(uuidString: senderStr),
-                  let thread = chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == senderId })
+                  chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == senderId }) != nil
             else { return }
             tabRouter.selected = .chat
-            chatNav.threadToOpen = thread
 
         case "group":
-            guard let group = chatInbox.teamGroupChatThread else { return }
+            guard chatInbox.teamGroupChatThread != nil else { return }
             tabRouter.selected = .chat
-            chatNav.threadToOpen = group
 
         default:
             break
@@ -155,16 +152,16 @@ enum MessageNotificationService {
     }
 
     private static func parseRouting(from userInfo: [AnyHashable: Any]) -> [String: String]? {
-        guard let carhub = userInfo["carhub"] as? [String: Any],
-              let kind = stringValue(carhub["kind"])
+        guard let drflow = userInfo["drflow"] as? [String: Any],
+              let kind = stringValue(drflow["kind"])
         else { return nil }
 
         switch kind {
         case "crm_lead":
-            guard let threadId = stringValue(carhub["thread_id"]) else { return nil }
+            guard let threadId = stringValue(drflow["thread_id"]) else { return nil }
             return ["kind": kind, "thread_id": threadId]
         case "dm":
-            guard let senderId = stringValue(carhub["sender_id"]) else { return nil }
+            guard let senderId = stringValue(drflow["sender_id"]) else { return nil }
             return ["kind": kind, "sender_id": senderId]
         case "group":
             return ["kind": kind]

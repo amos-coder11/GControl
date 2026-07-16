@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Formulario para denunciar contenido objetable.
+/// Form to report objectionable content.
 struct ContentReportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var moderation: UserModerationStore
@@ -16,21 +16,32 @@ struct ContentReportSheet: View {
     @State private var isSubmitting = false
 
     enum ReportReason: String, CaseIterable, Identifiable {
-        case harassment = "Acoso o amenazas"
-        case hate = "Incitación al odio"
-        case sexual = "Contenido sexual explícito"
-        case violence = "Violencia o contenido gráfico"
-        case spam = "Spam o estafa"
-        case other = "Otro motivo"
+        case harassment
+        case hate
+        case sexual
+        case violence
+        case spam
+        case other
 
         var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .harassment: return "Harassment or threats"
+            case .hate: return "Hate speech"
+            case .sexual: return "Explicit sexual content"
+            case .violence: return "Violence or graphic content"
+            case .spam: return "Spam or scam"
+            case .other: return "Other reason"
+            }
+        }
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Denunciar a \(reportedUserName)")
+                    Text("Report \(reportedUserName)")
                         .font(.headline)
                     if let preview = contentPreview?.trimmingCharacters(in: .whitespacesAndNewlines), !preview.isEmpty {
                         Text(preview)
@@ -40,35 +51,35 @@ struct ContentReportSheet: View {
                     }
                 }
 
-                Section("Motivo") {
-                    Picker("Motivo", selection: $selectedReason) {
+                Section("Reason") {
+                    Picker("Reason", selection: $selectedReason) {
                         ForEach(ReportReason.allCases) { reason in
-                            Text(reason.rawValue).tag(reason)
+                            Text(reason.label).tag(reason)
                         }
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
                 }
 
-                Section("Notas (opcional)") {
-                    TextField("Detalles adicionales", text: $extraNotes, axis: .vertical)
+                Section("Notes (optional)") {
+                    TextField("Additional details", text: $extraNotes, axis: .vertical)
                         .lineLimit(3 ... 6)
                 }
 
                 Section {
-                    Text("Revisaremos tu denuncia en un plazo máximo de 24 horas. Podemos eliminar el contenido y expulsar al usuario infractor.")
+                    Text("We'll review your report within 24 hours. We may remove content and ban the offending user.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Denunciar contenido")
+            .navigationTitle("Report content")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Enviar") {
+                    Button("Send") {
                         Task { await submit() }
                     }
                     .disabled(isSubmitting)
@@ -81,7 +92,7 @@ struct ContentReportSheet: View {
     private func submit() async {
         isSubmitting = true
         defer { isSubmitting = false }
-        var reason = selectedReason.rawValue
+        var reason = selectedReason.label
         let notes = extraNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !notes.isEmpty {
             reason += " — \(notes)"

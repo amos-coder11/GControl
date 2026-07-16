@@ -4,7 +4,7 @@
  *
  * Configuración en Supabase Dashboard:
  * 1. Secrets: APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY (PEM completo de la clave .p8),
- *    APNS_BUNDLE_ID (ej. com.carhub.app), PUSH_WEBHOOK_SECRET,
+ *    APNS_BUNDLE_ID (ej. com.groo.app), PUSH_WEBHOOK_SECRET,
  *    opcional APNS_USE_SANDBOX=true para builds de desarrollo.
  * 2. Database Webhooks: dos disparadores INSERT → URL de esta función,
  *    cabecera `x-push-secret: <PUSH_WEBHOOK_SECRET>`.
@@ -75,7 +75,7 @@ function truncate(s: string, max: number): string {
   return t.slice(0, max - 1) + "…";
 }
 
-const TEAM_DIRECT_VOICE_PREFIX = "CARHUB_VOICE_V1:";
+const TEAM_DIRECT_VOICE_PREFIX = "DRFLOW_VOICE_V1:";
 
 function dmPushBodyPreview(body: string): string {
   if (body.startsWith(TEAM_DIRECT_VOICE_PREFIX)) return "Nota de voz";
@@ -286,7 +286,7 @@ Deno.serve(async (req) => {
           sound: "default",
           "mutable-content": 1,
         },
-        carhub: {
+        drflow: {
           kind: "dm",
           sender_id: senderId,
           avatar_url: avatarUrl,
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
           sound: "default",
           "mutable-content": 1,
         },
-        carhub: {
+        drflow: {
           kind: "group",
           sender_id: senderId,
           avatar_url: avatarUrl,
@@ -493,7 +493,7 @@ Deno.serve(async (req) => {
           sound: "default",
           "mutable-content": 1,
         },
-        carhub: {
+        drflow: {
           kind: "coordinator_task",
           task_id: taskId,
           sender_id: senderId,

@@ -19,11 +19,11 @@ private enum ChatInboxListSegment: Int, CaseIterable {
 private enum ChatListChromeTheme {
     static let listBackground = Color.clear
     static let rowBackground = Color.clear
-    static let rowSeparator = Color.white.opacity(0.14)
-    static let primaryText = Color.white
-    static let secondaryText = Color.white
-    static let accentBlue = Color(red: 0.45, green: 0.72, blue: 1.0)
-    static let readGreen = Color(red: 0.45, green: 0.88, blue: 0.62)
+    static let rowSeparator = DrflowTheme.separator
+    static let primaryText = DrflowTheme.textPrimary
+    static let secondaryText = DrflowTheme.textSecondary
+    static let accentBlue = PremiumAccent.tabActive
+    static let readGreen = DrflowTheme.positive
 }
 
 struct ChatView: View {
@@ -69,9 +69,9 @@ struct ChatView: View {
     private var searchPrompt: Text {
         switch listSegment {
         case .team:
-            return Text("Buscar en equipo…").foregroundStyle(.white)
+            return Text("Buscar en equipo…").foregroundStyle(DrflowTheme.textTertiary)
         case .general:
-            return Text("Buscar en plataformas…").foregroundStyle(.white)
+            return Text("Buscar en plataformas…").foregroundStyle(DrflowTheme.textTertiary)
         }
     }
 
@@ -108,12 +108,6 @@ struct ChatView: View {
                     chatInboxSegmentBar
                         .padding(.top, 10)
                         .padding(.bottom, 8)
-
-                    if listSegment == .general {
-                        globalAiToggleBar
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 8)
-                    }
 
                     List {
                         if listSegment == .team {
@@ -157,7 +151,7 @@ struct ChatView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarColorScheme(.light, for: .navigationBar)
                 .toolbar {
                     ToolbarItemGroup(placement: .keyboard) {
                         LiquidGlassKeyboardAccessoryBar {
@@ -171,7 +165,7 @@ struct ChatView: View {
                 }
             }
         }
-        .accentColor(.white)
+        .accentColor(PremiumAccent.tabActive)
         .task(id: auth.session?.user.id) {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await subscribeTeamDirectInboxIfNeeded() }
@@ -190,57 +184,6 @@ struct ChatView: View {
         }
         .onChange(of: chatNav.threadToOpen?.id) { _, _ in
             openPendingChatNavigation()
-        }
-    }
-
-    /// Barra con el interruptor GLOBAL de la IA (apaga/enciende WhatsApp + Instagram).
-    @ViewBuilder
-    private var globalAiToggleBar: some View {
-        let active = inbox.anyCrmAiActive
-        Button {
-            toggleAllCrmAi(to: !active)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: active ? "sparkles" : "person.2.fill")
-                    .font(.system(size: 14, weight: .bold))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(active ? "IA general activada" : "IA general apagada")
-                        .font(.system(size: 14, weight: .bold))
-                    Text(active ? "Toca para que atiendan los comerciales" : "Toca para reactivar la IA en todos")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.75))
-                }
-                Spacer()
-                Text(active ? "Apagar" : "Encender")
-                    .font(.system(size: 13, weight: .bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(.white.opacity(0.18)))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(active
-                        ? LinearGradient(colors: [Color(red: 0.10, green: 0.55, blue: 0.36), Color(red: 0.13, green: 0.66, blue: 0.42)], startPoint: .leading, endPoint: .trailing)
-                        : LinearGradient(colors: [Color(red: 0.72, green: 0.26, blue: 0.24), Color(red: 0.84, green: 0.32, blue: 0.30)], startPoint: .leading, endPoint: .trailing))
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func toggleAllCrmAi(to active: Bool) {
-        guard let token = auth.session?.accessToken else { return }
-        inbox.setAllCrmAiActiveLocal(active)
-        Task {
-            do {
-                try await CrmChatService.setAiActiveAll(token: token, active: active)
-                await inbox.refreshCrmConversations(accessToken: token)
-            } catch {
-                await MainActor.run { inbox.setAllCrmAiActiveLocal(!active) }
-            }
         }
     }
 
@@ -352,7 +295,7 @@ struct ChatView: View {
                         Text(segment.title)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(
-                                listSegment == segment ? Color.white : Color.white.opacity(0.55)
+                                listSegment == segment ? Color.white : DrflowTheme.textSecondary
                             )
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
@@ -360,13 +303,13 @@ struct ChatView: View {
                                 Capsule(style: .continuous)
                                     .fill(
                                         listSegment == segment
-                                            ? Color.white.opacity(0.22)
-                                            : Color.white.opacity(0.06)
+                                            ? PremiumAccent.tabActive
+                                            : DrflowTheme.surfaceMuted
                                     )
                                     .overlay {
                                         if listSegment != segment {
                                             Capsule(style: .continuous)
-                                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
+                                                .strokeBorder(DrflowTheme.cardBorder, lineWidth: 0.75)
                                         }
                                     }
                             }
@@ -384,9 +327,9 @@ struct ChatView: View {
         } description: {
             Text(footnote)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(DrflowTheme.textPrimary)
         .symbolRenderingMode(.hierarchical)
-        .tint(.white.opacity(0.85))
+        .tint(PremiumAccent.tabActive)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
         .listRowBackground(ChatListChromeTheme.rowBackground)
@@ -430,7 +373,7 @@ struct ChatView: View {
             } label: {
                 Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
             }
-            .tint(.white)
+            .tint(PremiumAccent.tabActive)
 
             Button {
                 togglePin(thread)
@@ -572,7 +515,7 @@ struct ChatView: View {
         if thread.showOpenButton {
             Text("ABRIR")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background {
@@ -582,7 +525,7 @@ struct ChatView: View {
         } else if let n = unread, n > 0 {
             Text("\(n)")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
                 .frame(minWidth: 22, minHeight: 22)
                 .background {
                     Circle()

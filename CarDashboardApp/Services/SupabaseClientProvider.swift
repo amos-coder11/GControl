@@ -1,7 +1,7 @@
 import Foundation
 import Supabase
 
-/// Credenciales del proyecto (misma base que `carhubapp` / `app.env`).
+/// Credenciales Supabase del proyecto Groo.
 enum SupabaseClientProvider {
     static let supabaseURL = URL(string: "https://fwdfhbgcurimqufbwkux.supabase.co")!
     static let anonKey =
@@ -34,48 +34,6 @@ enum SupabaseClientProvider {
         )
     }()
 
-    /// Tabla PostgREST del inventario (por si en tu proyecto no se llama `vehicles`).
-    static var vehiclesTableName: String {
-        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "VEHICLES_TABLE") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let v = fromInfoPlist, !v.isEmpty else { return "vehicles" }
-        return v
-    }
-
-    /// Nombre de la RPC en Supabase (`supabase/migrations/20260330140000_marketplace_vehicles_rpc.sql`).
-    static let marketplaceVehiclesRPCName = "marketplace_vehicles_page"
-
-    /// Si es `false` (Info.plist `USE_MARKETPLACE_VEHICLES_RPC`), se omite la RPC y solo se usa el listado por tabla.
-    static var prefersMarketplaceVehiclesRPC: Bool {
-        if let b = Bundle.main.object(forInfoDictionaryKey: "USE_MARKETPLACE_VEHICLES_RPC") as? Bool { return b }
-        return true
-    }
-
-    /// Si es `true` (`VEHICLES_BROWSE_LIMIT_TO_SESSION_USER` en Info): la pestaña Coches solo pide filas con
-    /// `user_id` = usuario con sesión, no mezcla cliente anon ni la RPC `marketplace_vehicles_page` (que devuelve todo el inventario).
-    /// Si todos los coches comparten el mismo `user_id` (cuenta de integración), este filtro no reduce nada: usa
-    /// `VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION`.
-    static var vehiclesBrowseLimitToSessionUser: Bool {
-        Bundle.main.object(forInfoDictionaryKey: "VEHICLES_BROWSE_LIMIT_TO_SESSION_USER") as? Bool ?? false
-    }
-
-    /// Si es `true` (`VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION`): Coches filtra `vehicles.organization_id` = el de `user_profiles`
-    /// del usuario con sesión (multi‑usuario / mismo `user_id` en todos los anuncios).
-    static var vehiclesBrowseLimitToOrganization: Bool {
-        Bundle.main.object(forInfoDictionaryKey: "VEHICLES_BROWSE_LIMIT_TO_ORGANIZATION") as? Bool ?? false
-    }
-
-    /// Bucket donde la app espera URLs/descargas de miniaturas públicas.
-    static let publicVehiclesBucket = "vehicles"
-
-    /// Bucket principal de medios de vehículos (privado en la app Flutter).
-    static var vehicleMediaBucket: String {
-        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "VEHICLE_MEDIA_BUCKET") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let v = fromInfoPlist, !v.isEmpty else { return "vehicle-media" }
-        return v
-    }
-
     /// Tabla pública de perfiles (columna típica `avatar_url`).
     static var profilesTableName: String {
         let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "USER_PROFILES_TABLE") as? String)?
@@ -95,9 +53,9 @@ enum SupabaseClientProvider {
         return v
     }
 
-    /// URL pública de objeto: `{supabaseURL}/storage/v1/object/public/{bucket}/{path}` (p. ej. `vehicle-media/{user_id}/{vehicle_id}/001.jpg`).
+    /// URL pública de objeto: `{supabaseURL}/storage/v1/object/public/{bucket}/{path}`.
     static func publicStorageObjectURL(bucket: String? = nil, path relativePath: String) -> String {
-        let b = (bucket ?? vehicleMediaBucket).trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = (bucket ?? userAvatarBucket).trimmingCharacters(in: .whitespacesAndNewlines)
         let clean = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let encoded = clean.split(separator: "/").map(String.init).map { seg -> String in
             seg.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? seg

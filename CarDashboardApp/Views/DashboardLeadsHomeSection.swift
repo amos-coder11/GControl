@@ -259,7 +259,7 @@ struct DashboardLeadsHomeSection: View {
                         .padding(.vertical, 3)
                         .background(status.color.opacity(0.85), in: Capsule())
                 }
-                Text(thread.preview.isEmpty ? "Consulta sobre un vehículo" : thread.preview)
+                Text(thread.preview.isEmpty ? "Nueva consulta" : thread.preview)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.48))
                     .lineLimit(1)
@@ -328,7 +328,6 @@ struct DashboardLeadsHomeSection: View {
     }
 
     private func openThread(_ thread: ChatThread) {
-        chatNav.threadToOpen = thread
         tabRouter.selected = .chat
     }
 

@@ -1,0 +1,8 @@
+// App Store Connect — copia a AppStoreConnect.local.xcconfig (no versionado).
+// App → General → Apple ID en App Store Connect
+ASC_APP_APPLE_ID = f57dd6a9-2ba0-4ef3-a0c7-82deaf2227b8
+
+// Integrations → App Store Connect API → clave .p8
+// ASC_API_KEY_ID = ABCDE12345
+// ASC_API_ISSUER_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+// ASC_API_KEY_PATH = $(SRCROOT)/AuthKeys/AuthKey_ABCDE12345.p8

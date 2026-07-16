@@ -6,122 +6,91 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-// MARK: - Enrutador de pestañas (mismo módulo que `CarsView` / `DashboardView`)
+// MARK: - Enrutador de pestañas GROO
 
-enum CarHubMainTab: Hashable {
+enum GrooMainTab: Hashable {
     case home
-    case cars
-    case calls
     case chat
+    case sessions
+    case reminders
 }
 
 @MainActor
 final class MainTabRouter: ObservableObject {
-    @Published var selected: CarHubMainTab = .home
+    @Published var selected: GrooMainTab = .home
+    /// Compatibilidad con vistas legacy de comercio (no usadas en tabs GROO).
+    @Published var productToOpen: DrflowProduct?
+
+    func openChat(animated: Bool = true) {
+        guard selected != .chat else { return }
+        if animated {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                selected = .chat
+            }
+        } else {
+            selected = .chat
+        }
+    }
 }
 
-/// Abre un hilo concreto al cambiar a la pestaña Chat (p. ej. grupo «Mi equipo» desde Inicio).
+/// Abre un hilo concreto (legacy CRM); en GROO redirige al chat mentor.
 @MainActor
 final class ChatNavigationCoordinator: ObservableObject {
     @Published var threadToOpen: ChatThread?
 }
 
-// MARK: - Pestañas (TabView nativo iOS 26 + Liquid Glass del sistema)
+// MARK: - Pestañas GROO (Home · Chat · Sessions · Reminders)
 
 struct MainTabView: View {
     @StateObject private var tabRouter = MainTabRouter()
-    @StateObject private var invoiceHistory = InvoiceHistoryStore()
-    @StateObject private var notificationsStore = DashboardNotificationsStore()
-    @StateObject private var chatInbox = ChatInboxStore()
-    @StateObject private var communityVM = DashboardCommunityViewModel()
-    @StateObject private var chatNav = ChatNavigationCoordinator()
-    @StateObject private var workdayStore = WorkdayStore()
-    @State private var chatSearchText = ""
-
     @EnvironmentObject var auth: AuthViewModel
-    @EnvironmentObject var carsVM: CarsViewModel
+    @EnvironmentObject var groo: GrooAppStore
 
     var body: some View {
         TabView(selection: $tabRouter.selected) {
-            Tab("Inicio", systemImage: "house.fill", value: CarHubMainTab.home) {
-                NavigationStack {
-                    DashboardView()
-                }
+            Tab("Home", systemImage: "house.fill", value: GrooMainTab.home) {
+                GrooHomeView()
             }
 
-            Tab("Coches", systemImage: "car.fill", value: CarHubMainTab.cars) {
-                NavigationStack {
-                    CarsView()
-                }
+            Tab("Chat", systemImage: "ellipsis.bubble", value: GrooMainTab.chat) {
+                GrooMentorChatView()
             }
 
-            Tab("Llamada", systemImage: "phone.fill", value: CarHubMainTab.calls) {
-                CallsHubView()
+            Tab("Sessions", systemImage: "doc.text", value: GrooMainTab.sessions) {
+                GrooSessionsView()
             }
 
-            Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: CarHubMainTab.chat) {
-                ChatView(searchText: $chatSearchText)
+            Tab("Reminders", systemImage: "bell", value: GrooMainTab.reminders) {
+                GrooRemindersView()
             }
-            .badge(chatInbox.totalUnansweredMessageCount)
+            .badge(groo.activeRemindersCount)
         }
-        .environmentObject(chatInbox)
         .environmentObject(tabRouter)
-        .environmentObject(chatNav)
-        .environmentObject(communityVM)
-        .environmentObject(invoiceHistory)
-        .environmentObject(notificationsStore)
-        .environmentObject(workdayStore)
-        /// Anula el `AccentColor` azul del catálogo: la tab seleccionada debe ser blanca, no azul.
-        .accentColor(.white)
-        .tint(.white)
+        .environmentObject(groo)
+        .accentColor(PremiumAccent.tabActive)
+        .tint(PremiumAccent.tabActive)
         .onAppear {
-            MainTabBarAppearance.applyWhiteSelection()
-            communityVM.attach(auth: auth)
-            workdayStore.attach(userId: auth.session?.user.id)
-            communityVM.startPeriodicRefresh()
-            Task {
-                await communityVM.refresh()
-                await WorkdayNotificationService.rescheduleAll()
-            }
+            MainTabBarAppearance.applyLightSelection()
+            groo.ensureWelcomeSession()
+            openPendingChatIfNeeded()
+            Task { _ = await GrooReminderNotificationService.ensureAuthorization() }
         }
-        .onDisappear {
-            communityVM.stopPeriodicRefresh()
+        .onChange(of: groo.shouldOpenChatOnMain) { _, _ in
+            openPendingChatIfNeeded()
         }
-        .onChange(of: auth.session?.user.id) { _, uid in
-            communityVM.attach(auth: auth)
-            workdayStore.attach(userId: uid)
-            Task { await communityVM.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
+            tabRouter.selected = .reminders
         }
-        .toolbarBackground(PremiumAccent.tabBarDockBackgroundGradient, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
-        .toolbarColorScheme(.dark, for: .tabBar)
+        .toolbarBackground(Color.white, for: .tabBar)
+        .toolbarColorScheme(.light, for: .tabBar)
         .tabBarMinimizeBehavior(.never)
-        .task {
-            await carsVM.loadVehicles(companyId: auth.companyId)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
-            guard let info = note.userInfo else { return }
-            MessageNotificationService.applyOpenChatRouting(
-                info,
-                chatInbox: chatInbox,
-                tabRouter: tabRouter,
-                chatNav: chatNav
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CarHub.refreshInboxFromPush"))) { _ in
-            guard let token = auth.session?.accessToken else { return }
-            Task {
-                await chatInbox.refreshCrmConversations(accessToken: token)
-            }
-        }
-        .task(id: auth.session?.user.id) {
-            while !Task.isCancelled {
-                if let token = auth.session?.accessToken {
-                    await chatInbox.refreshCrmConversations(accessToken: token)
-                }
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
-            }
-        }
+    }
+
+    private func openPendingChatIfNeeded() {
+        guard groo.shouldOpenChatOnMain else { return }
+        groo.shouldOpenChatOnMain = false
+        tabRouter.openChat()
     }
 }
 
@@ -162,7 +131,7 @@ private final class TeamAIAssistantSession: ObservableObject {
         }
     }
 
-    /// Listado equipo + inventario para el system prompt (desde `TeamAITabView`).
+    /// Listado de equipo para el system prompt (desde `TeamAITabView`).
     var vieraAppContextBuilder: (() -> String)?
 
     @Published var bubbles: [Bubble] = []
@@ -302,7 +271,7 @@ private final class TeamAIAssistantSession: ObservableObject {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.prepareToRecord()
             guard rec.record() else {
-                throw NSError(domain: "CarHub", code: 1, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
+                throw NSError(domain: "Drflow", code: 1, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
             }
             voiceNoteRecorder = rec
             isRecordingVoiceNote = true
@@ -562,7 +531,7 @@ private struct TeamAILongMessageDraftSheet: View {
                 .padding(.bottom, 6)
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 editorFocused = true
@@ -878,7 +847,6 @@ struct TeamAITabView: View {
     @StateObject private var composerState = TeamAIComposerState()
     @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var auth: AuthViewModel
-    @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
@@ -977,7 +945,7 @@ struct TeamAITabView: View {
             )
         }
         .background(Color.clear)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .tint(.white)
         .onDisappear {
             streamScrollDebounceTask?.cancel()
@@ -985,10 +953,9 @@ struct TeamAITabView: View {
         }
         .onAppear {
             session.attachComposer(composerState)
-            session.vieraAppContextBuilder = { [communityVM, carsVM, auth] in
+            session.vieraAppContextBuilder = { [communityVM, auth] in
                 VieraChatContextBuilder.build(
                     directory: communityVM.directory,
-                    cars: carsVM.cars,
                     currentUserId: auth.session?.user.id
                 )
             }
@@ -1245,7 +1212,6 @@ struct TeamAITabView: View {
                     VieraAssistantRichCardsView(
                         payload: cardPayload,
                         directory: communityVM.directory,
-                        cars: carsVM.cars,
                         mentionSourceText: bubble.text,
                         mentionExtraUserText: lastUserTextBeforeBubble(at: index)
                     )
@@ -1536,7 +1502,7 @@ private struct TeamAIPlusMenuSheet: View {
                     plusFeatureRow(
                         icon: "paintbrush.pointed",
                         title: "Crea una imagen",
-                        subtitle: "Próximamente en CarHub"
+                        subtitle: "Próximamente en Groo"
                     )
                     plusFeatureRow(
                         icon: "text.bubble",
@@ -1575,7 +1541,7 @@ private struct TeamAIPlusMenuSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
     }
 
     private func plusQuickButton(icon: String, title: String, action: @escaping () -> Void) -> some View {
@@ -1640,23 +1606,29 @@ private struct TeamAIPlusMenuSheet: View {
     }
 }
 
-// MARK: - UITabBar (icono + título blancos al seleccionar; sin tinte azul del acento global)
+// MARK: - UITabBar (icono + título violeta Groo al seleccionar; gris al inactivo)
 
 private enum MainTabBarAppearance {
-    static func applyWhiteSelection() {
-        let normal = UIColor.white.withAlphaComponent(0.56)
-        let selected = UIColor.white
+    static func applyLightSelection() {
+        let normal = UIColor(red: 0.58, green: 0.61, blue: 0.66, alpha: 1)
+        let selected = UIColor(red: 141 / 255, green: 46 / 255, blue: 181 / 255, alpha: 1)
+        let badgeBlue = UIColor(red: 0.22, green: 0.55, blue: 0.95, alpha: 1)
 
         let item = UITabBarItemAppearance()
         item.normal.iconColor = normal
         item.normal.titleTextAttributes = [.foregroundColor: normal]
+        item.normal.badgeBackgroundColor = badgeBlue
+        item.normal.badgeTextAttributes = [.foregroundColor: UIColor.white]
         item.selected.iconColor = selected
         item.selected.titleTextAttributes = [.foregroundColor: selected]
+        item.selected.badgeBackgroundColor = badgeBlue
+        item.selected.badgeTextAttributes = [.foregroundColor: UIColor.white]
 
         let appearance = UITabBarAppearance()
         appearance.configureWithTransparentBackground()
         appearance.shadowImage = UIImage()
         appearance.shadowColor = .clear
+        appearance.backgroundColor = .clear
 
         appearance.stackedLayoutAppearance = item
         appearance.inlineLayoutAppearance = item
@@ -1759,6 +1731,6 @@ private struct TeamAIImageDocumentPicker: UIViewControllerRepresentable {
 #Preview {
     MainTabView()
         .environmentObject(AuthViewModel())
-        .environmentObject(CarsViewModel())
         .environmentObject(SettingsViewModel())
+        .environmentObject(GrooAppStore())
 }

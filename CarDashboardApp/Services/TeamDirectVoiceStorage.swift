@@ -3,7 +3,7 @@ import Supabase
 
 /// Notas de voz en DMs de equipo: el archivo vive en Storage; `team_direct_messages.body` guarda el prefijo + ruta relativa.
 enum TeamDirectVoiceStorage {
-    static let bodyPrefix = "CARHUB_VOICE_V1:"
+    static let bodyPrefix = "DRFLOW_VOICE_V1:"
 
     static var bucket: String { SupabaseClientProvider.teamDirectVoiceBucket }
 

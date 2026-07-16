@@ -1,4 +1,4 @@
--- Audio de notas de voz en DMs de equipo (ruta en `team_direct_messages.body` con prefijo CARHUB_VOICE_V1:).
+-- Audio de notas de voz en DMs de equipo (ruta en `team_direct_messages.body` con prefijo DRFLOW_VOICE_V1:).
 
 insert into storage.buckets (id, name, public)
 values ('team_direct_voice', 'team_direct_voice', false)

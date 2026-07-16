@@ -1,35 +1,38 @@
 import SwiftUI
 
-/// Texto del EULA / términos de tolerancia cero para contenido generado por usuarios.
+/// EULA / zero-tolerance terms for user-generated content.
 enum UGCTermsText {
-    static let title = "Términos de uso y comunidad"
+    static let title = "Terms of Use and Community"
 
     static let body = """
-    Bienvenido a CarHub365. Al usar el chat, el directorio de equipo y otras funciones con contenido generado por usuarios, aceptas lo siguiente:
+    Welcome to Groo. By using the career mentor chat and other user-generated content features, you agree to the following:
 
-    1. Tolerancia cero
-    No se permite contenido objetable ni conducta abusiva. Esto incluye, entre otros: acoso, amenazas, incitación al odio, contenido sexual explícito, violencia gráfica, spam y suplantación de identidad.
+    1. Zero tolerance
+    Objectionable content and abusive behavior are not allowed. This includes, but is not limited to: harassment, threats, hate speech, explicit sexual content, graphic violence, spam, and impersonation.
 
-    2. Tu responsabilidad
-    Eres responsable del contenido que publicas o envías. CarHub puede eliminar contenido y suspender o expulsar cuentas que infrinjan estas normas.
+    2. Your responsibility
+    You are responsible for the content you post or send. Groo may remove content and suspend or ban accounts that violate these rules.
 
-    3. Denuncias
-    Puedes denunciar mensajes o usuarios desde cualquier conversación. Nuestro equipo revisa cada informe y actúa en un plazo máximo de 24 horas, eliminando el contenido y expulsando al usuario infractor cuando corresponda.
+    3. Reports
+    You can report messages or users from any conversation. Our team reviews each report and acts within 24 hours, removing content and banning offending users when appropriate.
 
-    4. Bloqueo
-    Puedes bloquear a cualquier usuario abusivo. Al bloquear, dejarás de ver su contenido de inmediato y se notificará automáticamente al equipo de CarHub para revisión.
+    4. Blocking
+    You can block any abusive user. When you block someone, you will stop seeing their content immediately and the Groo team will be notified automatically for review.
 
-    5. Filtrado
-    La aplicación filtra automáticamente lenguaje objetable en los mensajes enviados y mostrados.
+    5. Filtering
+    The app automatically filters objectionable language in messages sent and displayed.
 
-    6. Contacto
-    Para consultas sobre moderación: soporte@carhub365.com
+    6. Scope of service
+    Groo is a mentorship platform for human and professional skills development. It does not offer therapy, psychological diagnosis, or medical advice. For mental health concerns, seek support from a qualified professional.
 
-    Versión de términos: \(ContentModerationFilter.currentTermsVersion)
+    7. Contact
+    For moderation inquiries: soporte@groo.co
+
+    Terms version: \(ContentModerationFilter.currentTermsVersion)
     """
 }
 
-/// Pantalla completa de términos (desde ajustes o enlace en registro).
+/// Full terms screen (from settings or registration link).
 struct UGCTermsView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -46,14 +49,14 @@ struct UGCTermsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
             }
         }
     }
 }
 
-/// Hoja de aceptación obligatoria antes de registrarse o iniciar sesión.
+/// Mandatory acceptance sheet before signing up or signing in.
 struct UGCTermsAcceptanceSheet: View {
     @Binding var isPresented: Bool
     var onAccepted: () -> Void
@@ -72,13 +75,13 @@ struct UGCTermsAcceptanceSheet: View {
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
 
-                    Button("Leer términos completos") {
+                    Button("Read full terms") {
                         showFullTerms = true
                     }
                     .font(.system(size: 14, weight: .semibold))
 
                     Toggle(isOn: $didReadTerms) {
-                        Text("He leído y acepto los Términos de uso. Entiendo que no hay tolerancia para contenido objetable ni usuarios abusivos.")
+                        Text("I have read and accept the Terms of Use. I understand there is zero tolerance for objectionable content or abusive users.")
                             .font(.system(size: 14))
                     }
                     .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.35, green: 0.55, blue: 1.0)))
@@ -87,7 +90,7 @@ struct UGCTermsAcceptanceSheet: View {
                         onAccepted()
                         isPresented = false
                     } label: {
-                        Text("Aceptar y continuar")
+                        Text("Accept and continue")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -103,7 +106,7 @@ struct UGCTermsAcceptanceSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { isPresented = false }
+                    Button("Cancel") { isPresented = false }
                 }
             }
             .sheet(isPresented: $showFullTerms) {
@@ -115,5 +118,5 @@ struct UGCTermsAcceptanceSheet: View {
 }
 
 #Preview {
-    UGCTermsView()
+    UGCTermsAcceptanceSheet(isPresented: .constant(true)) {}
 }

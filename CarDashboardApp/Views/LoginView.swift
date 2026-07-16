@@ -8,8 +8,18 @@ private enum AuthPhase {
     case signUp
 }
 
-private let authNavyTop = Color(red: 0.04, green: 0.07, blue: 0.16)
-private let authLinkBlue = Color(red: 0.35, green: 0.55, blue: 1.0)
+private let authNavyTop = Color(red: 0.18, green: 0.06, blue: 0.28)
+private let authLinkPurple = GrooBrand.purple
+private let authDisabledPurple = Color(red: 0.82, green: 0.74, blue: 0.90)
+
+private struct AuthSolidPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .brightness(configuration.isPressed ? -0.04 : 0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
 
 struct LoginView: View {
     @ObservedObject var auth: AuthViewModel
@@ -24,7 +34,6 @@ struct LoginView: View {
     @State private var resetEmail = ""
     @State private var resetInfo: String?
     @State private var showHelpAlert = false
-    @State private var showComingSoonAlert = false
     @State private var showTermsSheet = false
     @State private var pendingAuthAfterTerms = false
     @FocusState private var focusedField: AuthField?
@@ -53,20 +62,15 @@ struct LoginView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .animation(.easeInOut(duration: 0.25), value: phase)
         .sheet(isPresented: $showResetSheet) {
             resetPasswordSheet
         }
-        .alert("Ayuda", isPresented: $showHelpAlert) {
+        .alert("Help", isPresented: $showHelpAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Próximamente podrás obtener ayuda desde aquí.")
-        }
-        .alert("Próximamente", isPresented: $showComingSoonAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Esta opción estará disponible en una próxima actualización.")
+            Text("You'll be able to get help from here soon.")
         }
         .sheet(isPresented: $showTermsSheet) {
             UGCTermsAcceptanceSheet(isPresented: $showTermsSheet) {
@@ -79,215 +83,206 @@ struct LoginView: View {
         }
     }
 
-    // MARK: Welcome (fondo actual, CTA abajo)
+    // MARK: Welcome (fondo login + panel difuminado abajo)
 
     private var welcomeLayer: some View {
-        ZStack {
-            Image("ChatBackdropBase")
-                .resizable()
-                .scaledToFill()
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .ignoresSafeArea()
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.55)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            loginBackdropImage
 
-            VStack(spacing: 0) {
-                Text("Carhub365")
-                    .font(.system(size: horizontalSizeClass == .regular ? 34 : 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
-                    .padding(.top, horizontalSizeClass == .regular ? 28 : 20)
-                    .frame(maxWidth: .infinity)
-
-                Spacer(minLength: 0)
-
-                VStack(spacing: 14) {
-                    Button {
-                        phase = .signUp
-                        auth.clearAuthMessages()
-                    } label: {
-                        Text("Crear cuenta")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.white)
-                            .foregroundStyle(.black)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        phase = .signIn
-                        auth.clearAuthMessages()
-                    } label: {
-                        Text("Iniciar sesión")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.black)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                .padding(.bottom, horizontalSizeClass == .regular ? 48 : 36)
-            }
+            welcomeBottomFrost
         }
     }
 
-    // MARK: Inner (gradiente oscuro + misma imagen de base)
+    private var welcomeBottomFrost: some View {
+        VStack(spacing: 14) {
+            Button {
+                phase = .signUp
+                auth.clearAuthMessages()
+            } label: {
+                Text("Get started")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color(red: 0.95, green: 0.91, blue: 0.98))
+                    .foregroundStyle(GrooBrand.purple)
+                    .clipShape(Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(GrooBrand.purple.opacity(0.2), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(AuthSolidPressStyle())
+
+            Button {
+                phase = .signIn
+                auth.clearAuthMessages()
+            } label: {
+                Text("Sign in")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(GrooBrand.purple)
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(AuthSolidPressStyle())
+        }
+        .frame(maxWidth: authColumnMaxWidth)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
+        .padding(.top, 24)
+        .padding(.bottom, horizontalSizeClass == .regular ? 48 : 36)
+        .background { authWhiteSheetBackground }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var authWhiteSheetBackground: some View {
+        ZStack(alignment: .top) {
+            Color.white
+                .ignoresSafeArea(edges: .bottom)
+            UnevenRoundedRectangle(
+                topLeadingRadius: 28,
+                topTrailingRadius: 28,
+                style: .continuous
+            )
+            .fill(Color.white)
+        }
+    }
+
+    // MARK: Inner (login / registro sobre fondo login)
 
     private var innerAuthLayer: some View {
-        ZStack {
-            Image("ChatBackdropBase")
-                .resizable()
-                .scaledToFill()
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .ignoresSafeArea()
-
-            LinearGradient(
-                colors: [authNavyTop.opacity(0.94), Color.black.opacity(0.97)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            loginBackdropImage
 
             VStack(spacing: 0) {
-                HStack {
-                    circleNavButton(systemName: "chevron.left") {
-                        phase = .welcome
-                        auth.clearAuthMessages()
-                    }
-                    Spacer()
-                    circleNavButton(systemName: "questionmark") {
-                        showHelpAlert = true
-                    }
-                }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                .padding(.top, 8)
+                Spacer(minLength: 0)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if phase == .signIn {
-                            SectionHeader(
-                                title: "Nos alegra volver a verte",
-                                subtitle: "Introduce el correo y la contraseña de tu cuenta CarDashboard.",
-                                lightOnDark: true
-                            )
-                        } else {
-                            SectionHeader(
-                                title: "Crea tu cuenta",
-                                subtitle: "Regístrate con tu correo para guardar tu garaje y sincronizar datos.",
-                                lightOnDark: true
-                            )
-                        }
-
-                        authPillField {
-                            TextField(
-                                "",
-                                text: $email,
-                                prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.42))
-                            )
-                            .textContentType(.emailAddress)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .foregroundStyle(.white)
-                            .focused($focusedField, equals: .email)
-                            .submitLabel(.next)
-                            .onSubmit { focusedField = .password }
-                        }
-
-                        authPillField {
-                            SecureField(
-                                "",
-                                text: $password,
-                                prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.42))
-                            )
-                            .textContentType(phase == .signUp ? .newPassword : .password)
-                            .foregroundStyle(.white)
-                            .focused($focusedField, equals: .password)
-                            .submitLabel(.go)
-                            .onSubmit {
-                                guard canSubmit, !isBusy else { return }
-                                Task { await submitAuth() }
-                            }
-                        }
-
-                        authFeedbackMessages
-
-                        if phase == .signIn {
-                            Button("¿Olvidaste la contraseña?") {
-                                resetEmail = email
-                                showResetSheet = true
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
-
-                        Button("¿No tienes cuenta? Crear cuenta") {
-                            phase = .signUp
+                VStack(spacing: 0) {
+                    HStack {
+                        circleNavButton(systemName: "chevron.left") {
+                            phase = .welcome
                             auth.clearAuthMessages()
                         }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(authLinkBlue)
-
-                        Button("Ver Términos de uso (EULA)") {
-                            showTermsSheet = true
-                        }
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(authLinkBlue.opacity(0.85))
-                        } else {
-                            Button("¿Ya tienes cuenta? Iniciar sesión") {
-                                phase = .signIn
-                                auth.clearAuthMessages()
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
-                        }
-
-                        continueButton
-                            .padding(.top, 4)
-
-                        if phase == .signUp {
-                            termsAcceptanceRow
-                                .padding(.top, 2)
-                        }
-
-                        authOrSeparator
-                            .padding(.top, 4)
-
-                        VStack(spacing: 12) {
-                            secondaryAuthRow(icon: "key.fill", title: "Continuar con passkey") {
-                                showComingSoonAlert = true
-                            }
-                            secondaryAuthRow(icon: "g.circle.fill", title: "Continuar con Google") {
-                                showComingSoonAlert = true
-                            }
-                            secondaryAuthRow(icon: "apple.logo", title: "Continuar con Apple") {
-                                showComingSoonAlert = true
-                            }
+                        Spacer()
+                        circleNavButton(systemName: "questionmark") {
+                            showHelpAlert = true
                         }
                     }
                     .frame(maxWidth: authColumnMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, horizontalSizeClass == .regular ? 48 : 28)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            if phase == .signIn {
+                                SectionHeader(
+                                title: "Good to see you again",
+                                subtitle: "Enter the email and password for your Groo account.",
+                                    lightOnDark: false
+                                )
+                            } else {
+                                SectionHeader(
+                                title: "Create your account",
+                                subtitle: "Sign up for your CARE diagnostic and mentorship with GROO.",
+                                    lightOnDark: false
+                                )
+                            }
+
+                            authPillField {
+                                TextField(
+                                    "",
+                                    text: $email,
+                                    prompt: Text("Email address").foregroundStyle(DrflowTheme.textTertiary)
+                                )
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundStyle(DrflowTheme.textPrimary)
+                                .focused($focusedField, equals: .email)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .password }
+                            }
+
+                            authPillField {
+                                SecureField(
+                                    "",
+                                    text: $password,
+                                    prompt: Text("Password").foregroundStyle(DrflowTheme.textTertiary)
+                                )
+                                .textContentType(phase == .signUp ? .newPassword : .password)
+                                .foregroundStyle(DrflowTheme.textPrimary)
+                                .focused($focusedField, equals: .password)
+                                .submitLabel(.go)
+                                .onSubmit {
+                                    guard canSubmit, !isBusy else { return }
+                                    Task { await submitAuth() }
+                                }
+                            }
+
+                            authFeedbackMessages
+
+                            if phase == .signIn {
+                                Button("Forgot your password?") {
+                                    resetEmail = email
+                                    showResetSheet = true
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(authLinkPurple)
+
+                                Button("Don't have an account? Create account") {
+                                    phase = .signUp
+                                    auth.clearAuthMessages()
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(authLinkPurple)
+
+                                Button("View Terms of Use (EULA)") {
+                                    showTermsSheet = true
+                                }
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(authLinkPurple.opacity(0.85))
+                            } else {
+                                Button("Already have an account? Sign in") {
+                                    phase = .signIn
+                                    auth.clearAuthMessages()
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(authLinkPurple)
+                            }
+
+                            continueButton
+                                .padding(.top, 4)
+
+                            if phase == .signUp {
+                                termsAcceptanceRow
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .frame(maxWidth: authColumnMaxWidth)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, horizontalSizeClass == .regular ? 48 : 36)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .background { authWhiteSheetBackground }
+                .ignoresSafeArea(edges: .bottom)
             }
         }
+    }
+
+    private var loginBackdropImage: some View {
+        Image("LoginBackdrop")
+            .resizable()
+            .scaledToFill()
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .clipped()
+            .ignoresSafeArea()
     }
 
     @ViewBuilder
@@ -312,36 +307,36 @@ struct LoginView: View {
             HStack(spacing: 8) {
                 if isBusy {
                     ProgressView()
-                        .tint(canSubmit ? .black : .white.opacity(0.4))
+                        .tint(canSubmit ? GrooBrand.purple : .white.opacity(0.7))
                 }
-                Text("Continuar")
+                Text("Continue")
                     .font(.system(size: 17, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(canSubmit && !isBusy ? Color.white : Color.white.opacity(0.14))
-            .foregroundStyle(canSubmit && !isBusy ? Color.black : Color.white.opacity(0.38))
+            .background(canSubmit && !isBusy ? GrooBrand.purple : authDisabledPurple)
+            .foregroundStyle(.white)
             .clipShape(Capsule())
             .contentShape(Capsule())
         }
         .disabled(!canSubmit || isBusy)
-        .buttonStyle(.plain)
+        .buttonStyle(AuthSolidPressStyle())
     }
 
     private var termsAcceptanceRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: moderation.hasAcceptedCurrentTerms ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(moderation.hasAcceptedCurrentTerms ? Color.green : Color.white.opacity(0.45))
-                Text("Debes aceptar los Términos de uso antes de crear cuenta. No hay tolerancia para contenido objetable ni usuarios abusivos.")
+                    .foregroundStyle(moderation.hasAcceptedCurrentTerms ? DrflowTheme.positive : DrflowTheme.textMuted)
+                Text("You must accept the Terms of Use before creating an account. There is zero tolerance for objectionable content or abusive users.")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.72))
+                    .foregroundStyle(DrflowTheme.textSecondary)
             }
-            Button("Ver Términos de uso (EULA)") {
+            Button("View Terms of Use (EULA)") {
                 showTermsSheet = true
             }
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(authLinkBlue)
+            .foregroundStyle(authLinkPurple)
         }
     }
 
@@ -369,27 +364,14 @@ struct LoginView: View {
         }
     }
 
-    private var authOrSeparator: some View {
-        HStack(spacing: 10) {
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(height: 1)
-            Text("o")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(height: 1)
-        }
-    }
-
     private func circleNavButton(systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
                 .frame(width: 44, height: 44)
-                .background(Circle().fill(Color.white.opacity(0.12)))
+                .background(Circle().fill(Color.white))
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -401,38 +383,19 @@ struct LoginView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(Color.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(DrflowTheme.cardBorder, lineWidth: 1)
+                    }
             )
-    }
-
-    private func secondaryAuthRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 24, alignment: .center)
-                Text(title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.10))
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private var resetPasswordSheet: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Correo", text: $resetEmail)
+                    TextField("Email", text: $resetEmail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -444,17 +407,17 @@ struct LoginView: View {
                     }
                 }
             }
-            .navigationTitle("Recuperar acceso")
+            .navigationTitle("Recover access")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") {
+                    Button("Close") {
                         showResetSheet = false
                         resetInfo = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Enviar") {
+                    Button("Send") {
                         Task {
                             resetInfo = await auth.resetPassword(email: resetEmail)
                         }

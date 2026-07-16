@@ -39,7 +39,7 @@ final class DashboardCommunityViewModel: ObservableObject {
         lastError = nil
         defer { isLoading = false }
         do {
-            let orgId = await VehiclesService.fetchMyOrganizationId()
+            let orgId = await OrgMembershipService.fetchMyOrganizationId()
             guard let orgId else {
                 lastError = "Tu cuenta no tiene empresa/organización asignada. Un administrador debe asignarte `user_profiles.organization_id`."
                 directory = []
