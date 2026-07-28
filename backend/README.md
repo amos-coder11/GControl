@@ -80,7 +80,7 @@ Endpoints:
 2. Repo Groo, **Root Directory:** `backend`
 3. Build: `npm install` · Start: `npm start`
 4. Environment (copia de tu `.env` local de Instagram):
-   - `INSTAGRAM_APP_ID=1046896744939508`
+   - `INSTAGRAM_APP_ID=1389583559685972`
    - `INSTAGRAM_APP_SECRET=…`
    - `INSTAGRAM_VERIFY_TOKEN=smilestudio_ig_verify_We2rFa7`
    - `INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL=https://TU-SERVICIO.onrender.com`
