@@ -107,6 +107,60 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Public privacy policy (required by Meta App Review)
+app.get(["/privacy", "/privacy-policy"], (req, res) => {
+  res.status(200).type("html").send(`<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy · Smile Studio Wellness / Groo</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#111;line-height:1.55}
+h1{font-size:28px;margin-bottom:8px}h2{font-size:18px;margin-top:28px}
+.muted{color:#666;font-size:14px}a{color:#2563eb}
+ul{padding-left:20px}
+</style></head><body>
+<h1>Privacy Policy</h1>
+<p class="muted">Smile Studio Wellness · Groo · Last updated: July 28, 2026</p>
+<p>This Privacy Policy explains how <strong>Smile Studio Wellness</strong> (“we”, “us”) collects, uses, and shares information when you use our applications and services, including the <strong>Groo</strong> app and Instagram messaging integrations connected to our Meta developer app.</p>
+
+<h2>1. Information we collect</h2>
+<ul>
+  <li><strong>Account information</strong> you provide (name, email, phone, clinic profile).</li>
+  <li><strong>Instagram messaging data</strong> when someone messages our Instagram professional account, including Instagram-scoped user ID, username, profile picture URL, and message content/media needed to operate the inbox.</li>
+  <li><strong>Usage and technical data</strong> such as device type, app version, and diagnostic logs.</li>
+</ul>
+
+<h2>2. How we use information</h2>
+<ul>
+  <li>To provide clinic messaging, chat, and customer support features in Groo.</li>
+  <li>To receive and reply to Instagram Direct Messages on behalf of our business.</li>
+  <li>To operate, secure, and improve our services.</li>
+  <li>To comply with legal obligations and Meta platform requirements.</li>
+</ul>
+
+<h2>3. Sharing</h2>
+<p>We do not sell personal information. We may share data with service providers that help us host and operate the service (for example cloud hosting), and with Meta/Instagram as needed to deliver messaging features. We may disclose information if required by law.</p>
+
+<h2>4. Data retention</h2>
+<p>We retain messaging and account data only as long as needed to provide the service, resolve disputes, and meet legal/compliance requirements. You may request deletion as described below.</p>
+
+<h2>5. Your choices and deletion</h2>
+<p>You can request access or deletion of your information by emailing <a href="mailto:drgsmilecompanies@gmail.com">drgsmilecompanies@gmail.com</a>. Instagram users may also remove app permissions in Instagram/Facebook settings. Meta data deletion callbacks are supported at our published Data Deletion Request URL.</p>
+
+<h2>6. Security</h2>
+<p>We use reasonable administrative and technical safeguards. No method of transmission or storage is 100% secure.</p>
+
+<h2>7. Children’s privacy</h2>
+<p>Our services are not directed to children under 13, and we do not knowingly collect personal information from children.</p>
+
+<h2>8. Contact</h2>
+<p>Smile Studio Wellness<br>
+Email: <a href="mailto:drgsmilecompanies@gmail.com">drgsmilecompanies@gmail.com</a></p>
+<p class="muted">If this policy changes, we will update this page with a new “Last updated” date.</p>
+</body></html>`);
+});
+
 // Instagram / Meta webhooks (callback URL + verify token)
 app.get("/api/webhooks/instagram", handleInstagramVerify);
 app.post("/api/webhooks/instagram", handleInstagramEvent);
