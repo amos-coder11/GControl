@@ -97,7 +97,7 @@ app.get("/health", (req, res) => {
 app.get("/api/webhooks/instagram", handleInstagramVerify);
 app.post("/api/webhooks/instagram", handleInstagramEvent);
 
-// Pegar Page Access Token para poder responder DMs desde la app
+// Pegar token Instagram para poder responder DMs desde la app
 app.get("/api/instagram/connect", (req, res) => {
   const status = instagramSendStatus();
   const webhook = instagramWebhookStatus();
@@ -113,25 +113,23 @@ button{padding:10px 16px;border:0;border-radius:8px;background:#111827;color:#ff
 ol{padding-left:20px}li{margin:8px 0}
 </style></head><body>
 <h1>Conectar respuestas Instagram</h1>
-<p>Estado envío: <strong class="${status.pageTokenConfigured ? "ok" : "warn"}">${status.pageTokenConfigured ? "Listo para responder" : "Falta Page Access Token"}</strong></p>
-${status.tokenPreview ? `<p>Token: <code>${status.tokenPreview}</code></p>` : ""}
+<p>Estado envío: <strong class="${status.pageTokenConfigured ? "ok" : "warn"}">${status.pageTokenConfigured ? "Listo para responder" : "Falta access token"}</strong></p>
+${status.username ? `<p>Cuenta: <strong>@${status.username}</strong></p>` : ""}
+${status.tokenPreview ? `<p>Token: <code>${status.tokenPreview}</code> (${status.tokenKind || "—"})</p>` : ""}
+${status.igUserIdConfigured ? `<p>IG User ID configurado ✅</p>` : `<p class="warn">Falta IG User ID</p>`}
 <p>Webhook: <code>${webhook.callbackUrl || "—"}</code></p>
-<ol>
-  <li>Abre <strong>Meta for Developers</strong> → tu app <em>Smilestiudio Welnes-IG</em>.</li>
-  <li>Ve a <strong>Messenger → Instagram Settings</strong> (o API setup).</li>
-  <li>Vincula la <strong>Facebook Page</strong> de tu cuenta Instagram profesional.</li>
-  <li>Pulsa <strong>Generate token</strong> / copia el <strong>Page Access Token</strong>.</li>
-  <li>Asegúrate de tener permiso <code>instagram_manage_messages</code> y webhook field <code>messages</code>.</li>
-  <li>Pega el token abajo y guarda.</li>
-</ol>
 <form method="POST" action="/api/instagram/token">
-  <label>Page Access Token</label>
-  <textarea name="token" rows="4" placeholder="EAAB..." required></textarea>
-  <label>Page ID (opcional)</label>
+  <label>Username (opcional)</label>
+  <input name="username" placeholder="smilestudiowellness" value="${status.username || ""}">
+  <label>IG User ID</label>
+  <input name="igUserId" placeholder="17841400024368275" required>
+  <label>Access Token (IGAA… o EAAB…)</label>
+  <textarea name="token" rows="4" placeholder="IGAA... o 1784...=IGAA..." required></textarea>
+  <label>Page ID (opcional, solo si usas token de Facebook Page)</label>
   <input name="pageId" placeholder="1234567890">
   <button type="submit">Guardar y activar respuestas</button>
 </form>
-<p class="warn">Sin este token, los DMs llegan a la app pero no se pueden enviar respuestas a Instagram.</p>
+<p class="warn">Sin token + IG User ID, los DMs llegan a la app pero no se pueden enviar respuestas.</p>
 </body></html>`);
 });
 
@@ -140,6 +138,8 @@ app.post("/api/instagram/token", express.urlencoded({ extended: false }), (req, 
     const saved = saveInstagramPageToken({
       accessToken: req.body?.token,
       pageId: req.body?.pageId,
+      igUserId: req.body?.igUserId,
+      username: req.body?.username,
     });
     return res.redirect(
       `/api/instagram/connect?ok=1&preview=${encodeURIComponent(saved.tokenPreview)}`
