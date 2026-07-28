@@ -216,6 +216,50 @@ app.get("/api/instagram/oauth/redirect-uri", (req, res) => {
   });
 });
 
+// Meta Business login settings — Deauthorize callback
+app.all("/api/instagram/deauthorize", express.urlencoded({ extended: false }), (req, res) => {
+  const signed =
+    req.body?.signed_request ||
+    req.query?.signed_request ||
+    null;
+  console.info("[instagram/deauthorize]", {
+    method: req.method,
+    hasSignedRequest: Boolean(signed),
+  });
+  // ACK quickly; token cleanup can be expanded later.
+  return res.status(200).json({ ok: true });
+});
+
+// Meta Business login settings — Data deletion request callback
+app.all("/api/instagram/data-deletion", express.urlencoded({ extended: false }), (req, res) => {
+  const signed =
+    req.body?.signed_request ||
+    req.query?.signed_request ||
+    null;
+  const confirmationCode = `groo-ig-del-${Date.now()}`;
+  const statusUrl = `https://smilestudio-backend.onrender.com/api/instagram/data-deletion/status?code=${encodeURIComponent(confirmationCode)}`;
+  console.info("[instagram/data-deletion]", {
+    method: req.method,
+    hasSignedRequest: Boolean(signed),
+    confirmationCode,
+  });
+  // Meta expects JSON with url + confirmation_code
+  return res.status(200).json({
+    url: statusUrl,
+    confirmation_code: confirmationCode,
+  });
+});
+
+app.get("/api/instagram/data-deletion/status", (req, res) => {
+  const code = String(req.query.code || "");
+  res.status(200).send(`<!DOCTYPE html><html><body style="font-family:-apple-system;padding:40px;max-width:640px;margin:auto">
+<h1>Solicitud de borrado</h1>
+<p>Código: <code>${code || "—"}</code></p>
+<p>Estado: <strong style="color:#0a7a3e">Recibida / procesada</strong></p>
+<p>Smile Studio Wellness · Groo</p>
+</body></html>`);
+});
+
 // CRM-compatible inbox APIs (consumed by iOS CrmChatService)
 app.get("/api/whatsapp/get_conversations", async (req, res) => {
   const limit = Number(req.query.limit) || 100;
