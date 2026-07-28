@@ -13,6 +13,13 @@ import {
   instagramWebhookStatus,
 } from "./instagram-webhook.js";
 import {
+  appendOutgoing,
+  listConversations,
+  listMessages,
+  setAiActive,
+  setAllAiActive,
+} from "./instagram-store.js";
+import {
   buildInstallUrl,
   handleInstallCallback,
   installStatus,
@@ -64,7 +71,7 @@ app.use(
   cors({
     origin: true,
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Accept"],
+    allowedHeaders: ["Content-Type", "Accept", "Authorization"],
   })
 );
 
@@ -80,6 +87,83 @@ app.get("/health", (req, res) => {
 // Instagram / Meta webhooks (callback URL + verify token)
 app.get("/api/webhooks/instagram", handleInstagramVerify);
 app.post("/api/webhooks/instagram", handleInstagramEvent);
+
+// CRM-compatible inbox APIs (consumed by iOS CrmChatService)
+app.get("/api/whatsapp/get_conversations", (req, res) => {
+  const limit = Number(req.query.limit) || 100;
+  const data = listConversations(limit);
+  return res.status(200).json({ data, conversations: data });
+});
+
+app.get("/api/whatsapp/get_messages", (req, res) => {
+  const conversationId = String(req.query.conversationId || "");
+  if (!conversationId) {
+    return res.status(400).json({ error: "conversationId_required" });
+  }
+  const limit = Number(req.query.limit) || 100;
+  return res.status(200).json({ data: listMessages(conversationId, limit) });
+});
+
+app.post("/api/whatsapp/ai_toggle", (req, res) => {
+  const conversationId = String(req.body?.conversationId || "");
+  const active = Boolean(req.body?.active);
+  if (!conversationId) {
+    return res.status(400).json({ error: "conversationId_required" });
+  }
+  setAiActive(conversationId, active);
+  return res.status(200).json({ ok: true, conversationId, active });
+});
+
+app.post("/api/whatsapp/ai_toggle_all", (req, res) => {
+  const active = Boolean(req.body?.active);
+  setAllAiActive(active);
+  return res.status(200).json({ ok: true, active });
+});
+
+app.post("/api/whatsapp/send_message", async (req, res) => {
+  const conversationId = String(req.body?.conversationId || "");
+  const text = String(req.body?.textContent || req.body?.text || "").trim();
+  if (!conversationId || !text) {
+    return res.status(400).json({ error: "conversationId_and_text_required" });
+  }
+
+  appendOutgoing(conversationId, text);
+
+  // Optional: deliver via Instagram Graph if page token is configured.
+  const pageToken = (process.env.INSTAGRAM_PAGE_ACCESS_TOKEN || "").trim();
+  const igsid = conversationId.startsWith("ig:")
+    ? conversationId.slice(3)
+    : null;
+  let graph = null;
+  if (pageToken && igsid) {
+    try {
+      const upstream = await fetch(
+        `https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { id: igsid },
+            message: { text },
+          }),
+        }
+      );
+      const bodyText = await upstream.text();
+      graph = {
+        status: upstream.status,
+        body: bodyText.slice(0, 400),
+      };
+      if (!upstream.ok) {
+        console.warn("[instagram/send] graph failed", graph);
+      }
+    } catch (err) {
+      console.warn("[instagram/send] graph error", err?.message || err);
+      graph = { error: String(err?.message || err) };
+    }
+  }
+
+  return res.status(200).json({ ok: true, conversationId, graph });
+});
 
 app.get("/api/shopify/install", (req, res) => {
   try {

@@ -909,7 +909,16 @@ enum TeamCoordinatorTasksService {
 // de la sesión de Supabase del usuario (mismo proyecto Supabase que el CRM).
 
 enum CrmChatService {
-    static let baseURL = URL(string: "https://drflowbackend.onrender.com")!
+    /// Backend SmileStudio (Instagram inbox + webhook). Override with Info.plist `CRM_BACKEND_BASE_URL`.
+    static var baseURL: URL {
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "CRM_BACKEND_BASE_URL") as? String {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let url = URL(string: trimmed), !trimmed.isEmpty {
+                return url
+            }
+        }
+        return URL(string: "https://smilestudio-backend.onrender.com")!
+    }
 
     enum ServiceError: Error {
         case badResponse
@@ -1358,7 +1367,7 @@ enum CrmContactPhotoLoader {
         guard let host = url.host?.lowercased() else {
             return url.path.hasPrefix("/api/")
         }
-        return host.contains("drflowbackend") || host.contains("drflow")
+        return host.contains("drflowbackend") || host.contains("drflow") || host.contains("smilestudio-backend")
     }
 }
 

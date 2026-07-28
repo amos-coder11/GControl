@@ -4,6 +4,7 @@
  * - POST /api/webhooks/instagram  — eventos de mensajería
  */
 import crypto from "crypto";
+import { ingestInstagramWebhook } from "./instagram-store.js";
 
 export function instagramVerifyToken() {
   return (process.env.INSTAGRAM_VERIFY_TOKEN || "").trim();
@@ -84,14 +85,21 @@ export function handleInstagramEvent(req, res) {
   }
 
   const body = req.body;
+  let stored = 0;
+  try {
+    stored = ingestInstagramWebhook(body);
+  } catch (err) {
+    console.error("[instagram/webhook] ingest failed:", err?.message || err);
+  }
+
   console.info(
     "[instagram/webhook] event",
     JSON.stringify({
       object: body?.object,
       entries: Array.isArray(body?.entry) ? body.entry.length : 0,
+      stored,
     })
   );
 
-  // Acknowledge quickly; process async later (CRM / chat pipeline).
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ ok: true, stored });
 }

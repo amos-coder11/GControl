@@ -6,6 +6,9 @@ struct AuthRootView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var moderationStore: UserModerationStore
     @StateObject private var groo = GrooAppStore()
+    @StateObject private var chatInbox = ChatInboxStore()
+    @StateObject private var communityVM = DashboardCommunityViewModel()
+    @StateObject private var chatNav = ChatNavigationCoordinator()
     @State private var showPostAuthTerms = false
 
     var body: some View {
@@ -38,6 +41,9 @@ struct AuthRootView: View {
         }
         .environmentObject(auth)
         .environmentObject(groo)
+        .environmentObject(chatInbox)
+        .environmentObject(communityVM)
+        .environmentObject(chatNav)
         .onOpenURL { url in
             SupabaseClientProvider.shared.auth.handle(url)
         }
