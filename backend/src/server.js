@@ -20,11 +20,17 @@ import {
 } from "./instagram-token.js";
 import {
   appendOutgoing,
+  getConversation,
   listConversations,
   listMessages,
   setAiActive,
   setAllAiActive,
 } from "./instagram-store.js";
+import {
+  enrichConversationProfile,
+  getRecentWebhookEvents,
+  syncInstagramInboxFromGraph,
+} from "./instagram-sync.js";
 import {
   buildInstallUrl,
   handleInstallCallback,
@@ -151,10 +157,41 @@ app.post("/api/instagram/token", express.urlencoded({ extended: false }), (req, 
 });
 
 // CRM-compatible inbox APIs (consumed by iOS CrmChatService)
-app.get("/api/whatsapp/get_conversations", (req, res) => {
+app.get("/api/whatsapp/get_conversations", async (req, res) => {
   const limit = Number(req.query.limit) || 100;
+  // Pull from Graph when local store is empty / stale so the app sees real DMs.
+  try {
+    await syncInstagramInboxFromGraph({ limit });
+  } catch (err) {
+    console.warn("[instagram/sync]", err?.message || err);
+  }
   const data = listConversations(limit);
   return res.status(200).json({ data, conversations: data });
+});
+
+app.post("/api/instagram/sync", async (req, res) => {
+  try {
+    const result = await syncInstagramInboxFromGraph({
+      limit: Number(req.body?.limit) || 25,
+    });
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    return res.status(502).json({
+      error: "instagram_sync_failed",
+      message: err?.message || "sync_failed",
+    });
+  }
+});
+
+app.get("/api/instagram/debug", (req, res) => {
+  res.status(200).json({
+    health: {
+      ...instagramWebhookStatus(),
+      ...instagramSendStatus(),
+    },
+    conversations: listConversations(20),
+    recentWebhooks: getRecentWebhookEvents(),
+  });
 });
 
 app.get("/api/whatsapp/get_messages", (req, res) => {
@@ -165,6 +202,37 @@ app.get("/api/whatsapp/get_messages", (req, res) => {
   const limit = Number(req.query.limit) || 100;
   return res.status(200).json({ data: listMessages(conversationId, limit) });
 });
+
+function sendContactPhoto(req, res) {
+  const conversationId = String(req.query.conversationId || "");
+  const wa = String(req.query.wa_user_id || "");
+  const convId = conversationId || wa;
+  if (!convId) {
+    return res.status(400).json({ error: "conversationId_required" });
+  }
+  const igsid = convId.startsWith("ig:") ? convId.slice(3) : convId;
+  const fullId = convId.startsWith("ig:") ? convId : `ig:${igsid}`;
+
+  return (async () => {
+    let conv = getConversation(fullId);
+    if (!conv?.contact_photo_url) {
+      await enrichConversationProfile(fullId, igsid);
+      conv = getConversation(fullId);
+    }
+    return res.status(200).json({
+      url: conv?.contact_photo_url || null,
+      contact_photo_url: conv?.contact_photo_url || null,
+      contact_name: conv?.contact_name || null,
+    });
+  })().catch((err) => {
+    console.warn("[instagram/photo]", err?.message || err);
+    return res.status(200).json({ url: null, contact_photo_url: null });
+  });
+}
+
+app.get("/api/whatsapp/get_contact_profile_picture", sendContactPhoto);
+app.get("/api/whatsapp/get_profile_picture", sendContactPhoto);
+app.get("/api/whatsapp/get_contact_photo", sendContactPhoto);
 
 app.post("/api/whatsapp/ai_toggle", (req, res) => {
   const conversationId = String(req.body?.conversationId || "");

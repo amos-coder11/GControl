@@ -5,6 +5,10 @@
  */
 import crypto from "crypto";
 import { ingestInstagramWebhook } from "./instagram-store.js";
+import {
+  enrichConversationProfile,
+  rememberWebhookEvent,
+} from "./instagram-sync.js";
 
 export function instagramVerifyToken() {
   return (process.env.INSTAGRAM_VERIFY_TOKEN || "").trim();
@@ -65,14 +69,23 @@ export async function sendInstagramText({ igsid, text }) {
   });
 
   if (isIgUserToken || igUserId) {
-    if (!igUserId) {
+    let resolvedIgUserId = igUserId;
+    if (!resolvedIgUserId || isIgUserToken) {
+      try {
+        const { resolveInstagramBusinessId } = await import("./instagram-sync.js");
+        resolvedIgUserId = (await resolveInstagramBusinessId()) || igUserId;
+      } catch {
+        // keep configured id
+      }
+    }
+    if (!resolvedIgUserId) {
       const err = new Error("instagram_ig_user_id_missing");
       err.code = "instagram_ig_user_id_missing";
       throw err;
     }
     // Instagram API with Instagram Login
     attempts.push({
-      url: `https://graph.instagram.com/v21.0/${igUserId}/messages`,
+      url: `https://graph.instagram.com/v21.0/${resolvedIgUserId}/messages`,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
@@ -80,7 +93,7 @@ export async function sendInstagramText({ igsid, text }) {
       body: payload,
     });
     attempts.push({
-      url: `https://graph.facebook.com/v21.0/${igUserId}/messages?access_token=${encodeURIComponent(accessToken)}`,
+      url: `https://graph.facebook.com/v21.0/${resolvedIgUserId}/messages?access_token=${encodeURIComponent(accessToken)}`,
       headers: { "Content-Type": "application/json" },
       body: payload,
     });
@@ -177,6 +190,11 @@ export function handleInstagramEvent(req, res) {
   if (secret) {
     if (!raw || !validSignature(raw, signature, secret)) {
       console.warn("[instagram/webhook] invalid signature");
+      rememberWebhookEvent({
+        ok: false,
+        reason: "invalid_signature",
+        object: req.body?.object,
+      });
       return res.status(401).json({ error: "invalid_signature" });
     }
   } else {
@@ -185,11 +203,22 @@ export function handleInstagramEvent(req, res) {
 
   const body = req.body;
   let stored = 0;
+  let customerIds = [];
   try {
-    stored = ingestInstagramWebhook(body);
+    const result = ingestInstagramWebhook(body);
+    stored = result?.added || 0;
+    customerIds = result?.customerIds || [];
   } catch (err) {
     console.error("[instagram/webhook] ingest failed:", err?.message || err);
   }
+
+  rememberWebhookEvent({
+    ok: true,
+    object: body?.object,
+    entries: Array.isArray(body?.entry) ? body.entry.length : 0,
+    stored,
+    customerIds,
+  });
 
   console.info(
     "[instagram/webhook] event",
@@ -199,6 +228,13 @@ export function handleInstagramEvent(req, res) {
       stored,
     })
   );
+
+  // Enrich name + profile photo asynchronously (don't block Meta ACK).
+  if (customerIds.length > 0) {
+    Promise.allSettled(
+      customerIds.map((id) => enrichConversationProfile(`ig:${id}`, id))
+    ).catch(() => {});
+  }
 
   return res.status(200).json({ ok: true, stored });
 }

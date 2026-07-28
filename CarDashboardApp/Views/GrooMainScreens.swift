@@ -38,6 +38,9 @@ struct GrooChatRootView: View {
                 onNewChat: {
                     let id = groo.startNewSession()
                     destination = .mentor(id)
+                },
+                onRefreshInstagram: {
+                    await refreshInstagramInbox()
                 }
             )
             .navigationDestination(item: $destination) { dest in
@@ -57,6 +60,13 @@ struct GrooChatRootView: View {
         }
         .task(id: auth.session?.accessToken) {
             await refreshInstagramInbox()
+        }
+        // Keep Instagram inbox fresh while Chat tab is open.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                await refreshInstagramInbox()
+            }
         }
         .onChange(of: groo.pendingChatNavigation) { _, sessionId in
             guard let sessionId else { return }
@@ -86,12 +96,14 @@ enum GrooInboxFilter: String, CaseIterable, Identifiable {
 struct GrooChatInboxView: View {
     @EnvironmentObject private var groo: GrooAppStore
     @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var auth: AuthViewModel
     @Binding var query: String
     var onOpenSession: (UUID) -> Void
     var onOpenInstagram: (ChatThread) -> Void
     var onNewChat: () -> Void
+    var onRefreshInstagram: (() async -> Void)? = nil
 
-    @State private var filter: GrooInboxFilter = .all
+    @State private var filter: GrooInboxFilter = .instagram
 
     private var q: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -143,6 +155,9 @@ struct GrooChatInboxView: View {
                             conversationListContent
                         }
                     }
+                }
+                .refreshable {
+                    await onRefreshInstagram?()
                 }
             }
 
@@ -352,7 +367,11 @@ struct GrooChatInboxView: View {
                             preview: thread.preview.isEmpty ? "Instagram message" : thread.preview,
                             date: Date(),
                             unreadCount: thread.unread ?? 0,
-                            isPinned: false
+                            isPinned: false,
+                            avatarURL: thread.avatarCarURL,
+                            avatarAccessToken: auth.session?.accessToken,
+                            avatarInitial: thread.avatarInitial,
+                            showsInstagramBadge: true
                         )
                     }
                     .buttonStyle(GrooChatPressStyle())
@@ -381,9 +400,14 @@ struct GrooChatInboxView: View {
                 .padding(.top, 36)
             Text("No Instagram chats yet")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-            Text("When someone DMs your Instagram business account, the message appears here.")
+            Text("Escribe un DM a @smilestudiowellness desde otra cuenta de Instagram. Luego baja para refrescar.")
                 .font(.system(size: 14))
                 .foregroundStyle(GrooChatTheme.metaText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Text("Si no aparece: en Meta suscribe el webhook field “messages”.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.black.opacity(0.35))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
         }

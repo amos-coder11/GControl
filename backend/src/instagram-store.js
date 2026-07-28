@@ -44,90 +44,150 @@ function nowISO(ms = Date.now()) {
   return new Date(ms).toISOString();
 }
 
-export function ingestInstagramWebhook(body) {
+export function ensureConversation(convId, patch = {}) {
   const store = ensureLoaded();
-  let added = 0;
+  if (!store.conversations[convId]) {
+    store.conversations[convId] = {
+      id: convId,
+      contact_name: patch.contact_name || `Instagram · ${String(convId).replace(/^ig:/, "").slice(-6)}`,
+      contact_photo_url: patch.contact_photo_url || null,
+      last_message: patch.last_message || "",
+      unread_count: patch.unread_count || 0,
+      updated_at: patch.updated_at || nowISO(),
+      contact_phone: null,
+      wa_user_id: convId,
+      source: "instagram",
+      pinned: false,
+      ai_active: false,
+    };
+  } else {
+    Object.assign(store.conversations[convId], Object.fromEntries(
+      Object.entries(patch).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ));
+  }
+  if (!store.messages[convId]) store.messages[convId] = [];
+  persist();
+  return store.conversations[convId];
+}
 
+export function updateConversationProfile(conversationId, { contact_name, contact_photo_url } = {}) {
+  const store = ensureLoaded();
+  const conv = store.conversations[conversationId];
+  if (!conv) return false;
+  if (contact_name) conv.contact_name = contact_name;
+  if (contact_photo_url) conv.contact_photo_url = contact_photo_url;
+  persist();
+  return true;
+}
+
+/** @returns {boolean} true if inserted */
+export function upsertMessage(conversationId, message, { bumpUnread = true } = {}) {
+  const store = ensureLoaded();
+  ensureConversation(conversationId);
+  if (!store.messages[conversationId]) store.messages[conversationId] = [];
+  if (store.messages[conversationId].some((m) => m.id === message.id)) return false;
+
+  store.messages[conversationId].push({
+    id: message.id,
+    text_content: message.text_content || "",
+    sender_type: message.sender_type || "customer",
+    created_at: message.created_at || nowISO(),
+    message_type: message.message_type || "text",
+    media_url: message.media_url || null,
+    media_type: message.media_type || null,
+    media_content: message.media_content || null,
+    media_filename: message.media_filename || null,
+  });
+
+  const conv = store.conversations[conversationId];
+  conv.last_message = message.text_content || conv.last_message || "";
+  conv.updated_at = message.created_at || nowISO();
+  if (bumpUnread && message.sender_type !== "agent") {
+    conv.unread_count = (conv.unread_count || 0) + 1;
+  }
+  persist();
+  return true;
+}
+
+function extractMessagingEvents(body) {
+  const events = [];
   const entries = Array.isArray(body?.entry) ? body.entry : [];
   for (const entry of entries) {
-    const messaging = Array.isArray(entry.messaging)
-      ? entry.messaging
-      : Array.isArray(entry.standby)
-        ? entry.standby
-        : [];
-
-    for (const event of messaging) {
-      const message = event.message;
-      if (!message) continue;
-
-      const isEcho = Boolean(message.is_echo);
-      // Incoming: sender is the customer. Echo: recipient is the customer.
-      const customerId = isEcho ? event.recipient?.id : event.sender?.id;
-      const text = (message.text || "").trim();
-      const mid = message.mid || `${customerId}-${event.timestamp || Date.now()}`;
-      if (!customerId) continue;
-
-      // Skip empty non-attachment events
-      const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
-      if (!text && !hasAttachment) continue;
-
-      const convId = `ig:${customerId}`;
-      const ts = Number(event.timestamp) || Date.now();
-      const createdAt = nowISO(ts);
-
-      if (!store.conversations[convId]) {
-        store.conversations[convId] = {
-          id: convId,
-          contact_name: `Instagram · ${String(customerId).slice(-6)}`,
-          contact_photo_url: null,
-          last_message: "",
-          unread_count: 0,
-          updated_at: createdAt,
-          contact_phone: null,
-          wa_user_id: convId,
-          source: "instagram",
-          pinned: false,
-          ai_active: false,
-        };
+    if (Array.isArray(entry.messaging)) {
+      for (const event of entry.messaging) events.push(event);
+    }
+    if (Array.isArray(entry.standby)) {
+      for (const event of entry.standby) events.push(event);
+    }
+    // Algunos webhooks Instagram llegan como changes[].value
+    if (Array.isArray(entry.changes)) {
+      for (const change of entry.changes) {
+        const value = change?.value;
+        if (!value) continue;
+        if (value.message || value.sender) {
+          events.push(value);
+        } else if (Array.isArray(value.messaging)) {
+          events.push(...value.messaging);
+        }
       }
+    }
+  }
+  return events;
+}
 
-      if (!store.messages[convId]) store.messages[convId] = [];
-      if (store.messages[convId].some((m) => m.id === mid)) continue;
+/**
+ * @returns {{ added: number, customerIds: string[] }}
+ */
+export function ingestInstagramWebhook(body) {
+  const events = extractMessagingEvents(body);
+  let added = 0;
+  const customerIds = new Set();
 
-      let mediaUrl = null;
-      let mediaType = null;
-      let messageType = "text";
-      if (hasAttachment) {
-        const att = message.attachments[0];
-        messageType = att?.type || "image";
-        mediaType = att?.type || null;
-        mediaUrl = att?.payload?.url || null;
-      }
+  for (const event of events) {
+    const message = event.message;
+    if (!message) continue;
 
-      store.messages[convId].push({
-        id: mid,
-        text_content: text || (hasAttachment ? `[${messageType}]` : ""),
-        sender_type: isEcho ? "agent" : "customer",
-        created_at: createdAt,
-        message_type: messageType,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        media_content: null,
-        media_filename: null,
-      });
+    const isEcho = Boolean(message.is_echo);
+    const customerId = isEcho ? event.recipient?.id : event.sender?.id;
+    const text = (message.text || "").trim();
+    const mid = message.mid || `${customerId}-${event.timestamp || Date.now()}`;
+    if (!customerId) continue;
 
-      const conv = store.conversations[convId];
-      conv.last_message = text || `[${messageType}]`;
-      conv.updated_at = createdAt;
-      if (!isEcho) {
-        conv.unread_count = (conv.unread_count || 0) + 1;
-      }
+    const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
+    if (!text && !hasAttachment) continue;
+
+    const convId = `ig:${customerId}`;
+    const ts = Number(event.timestamp) || Date.now();
+    const createdAt = nowISO(ts);
+
+    ensureConversation(convId, { updated_at: createdAt });
+
+    let mediaUrl = null;
+    let mediaType = null;
+    let messageType = "text";
+    if (hasAttachment) {
+      const att = message.attachments[0];
+      messageType = att?.type || "image";
+      mediaType = att?.type || null;
+      mediaUrl = att?.payload?.url || null;
+    }
+
+    const inserted = upsertMessage(convId, {
+      id: mid,
+      text_content: text || (hasAttachment ? `[${messageType}]` : ""),
+      sender_type: isEcho ? "agent" : "customer",
+      created_at: createdAt,
+      message_type: messageType,
+      media_url: mediaUrl,
+      media_type: mediaType,
+    });
+    if (inserted) {
       added += 1;
+      if (!isEcho) customerIds.add(String(customerId));
     }
   }
 
-  if (added > 0) persist();
-  return added;
+  return { added, customerIds: [...customerIds] };
 }
 
 export function listConversations(limit = 100) {
@@ -143,40 +203,20 @@ export function listMessages(conversationId, limit = 100) {
   return rows.slice(-limit);
 }
 
-export function appendOutgoing(conversationId, text) {
+export function getConversation(conversationId) {
   const store = ensureLoaded();
-  if (!store.conversations[conversationId]) {
-    store.conversations[conversationId] = {
-      id: conversationId,
-      contact_name: conversationId,
-      contact_photo_url: null,
-      last_message: text,
-      unread_count: 0,
-      updated_at: nowISO(),
-      contact_phone: null,
-      wa_user_id: conversationId,
-      source: "instagram",
-      pinned: false,
-      ai_active: false,
-    };
-  }
-  if (!store.messages[conversationId]) store.messages[conversationId] = [];
+  return store.conversations[conversationId] || null;
+}
+
+export function appendOutgoing(conversationId, text) {
   const id = `out-${Date.now()}`;
-  const createdAt = nowISO();
-  store.messages[conversationId].push({
+  upsertMessage(conversationId, {
     id,
     text_content: text,
     sender_type: "agent",
-    created_at: createdAt,
+    created_at: nowISO(),
     message_type: "text",
-    media_url: null,
-    media_type: null,
-    media_content: null,
-    media_filename: null,
   });
-  store.conversations[conversationId].last_message = text;
-  store.conversations[conversationId].updated_at = createdAt;
-  persist();
   return id;
 }
 
