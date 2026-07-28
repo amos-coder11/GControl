@@ -32,6 +32,11 @@ import {
   syncInstagramInboxFromGraph,
 } from "./instagram-sync.js";
 import {
+  buildInstagramBusinessLoginUrl,
+  handleInstagramOAuthCallback,
+  instagramOAuthRedirectUri,
+} from "./instagram-oauth.js";
+import {
   buildInstallUrl,
   handleInstallCallback,
   installStatus,
@@ -157,6 +162,58 @@ app.post("/api/instagram/token", express.urlencoded({ extended: false }), (req, 
     const message = err instanceof Error ? err.message : "token_error";
     return res.status(400).send(`<p>Error: ${message}</p><p><a href="/api/instagram/connect">Volver</a></p>`);
   }
+});
+
+// Instagram Business Login — Redirect URL for Meta dashboard
+app.get("/api/instagram/oauth/callback", async (req, res) => {
+  try {
+    const result = await handleInstagramOAuthCallback({
+      code: req.query.code,
+      error: req.query.error,
+      errorReason: req.query.error_reason || req.query.error_description,
+    });
+    if (!result.ok) {
+      return res.status(400).send(`<!DOCTYPE html><html><body style="font-family:-apple-system;padding:40px">
+<h1>Login Instagram falló</h1><p>${result.message}</p>
+<p><a href="/api/instagram/connect">Volver</a></p></body></html>`);
+    }
+    return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:-apple-system;padding:40px;max-width:640px;margin:auto">
+<h1 style="color:#0a7a3e">✅ Instagram conectado</h1>
+<p>Cuenta: <strong>@${result.username || "—"}</strong></p>
+<p>IG User ID: <code>${result.igUserId || "—"}</code></p>
+<p>Token: <code>${result.tokenPreview || "—"}</code></p>
+${result.expiresIn ? `<p>Expira en ~${Math.round(Number(result.expiresIn) / 86400)} días</p>` : ""}
+<p>Ya puedes cerrar esta ventana y abrir Groo → Chat → Instagram.</p>
+<p><a href="/api/instagram/connect">Ver estado</a></p>
+</body></html>`);
+  } catch (err) {
+    console.error("[instagram/oauth]", err?.message || err);
+    return res.status(500).send(`<!DOCTYPE html><html><body style="font-family:-apple-system;padding:40px">
+<h1>Error OAuth</h1><pre>${String(err?.message || err)}</pre>
+<p>Redirect URI configurada: <code>${instagramOAuthRedirectUri()}</code></p>
+</body></html>`);
+  }
+});
+
+app.get("/api/instagram/login", (req, res) => {
+  try {
+    const url = buildInstagramBusinessLoginUrl();
+    return res.redirect(url);
+  } catch (err) {
+    return res.status(500).json({
+      error: "instagram_login_misconfigured",
+      message: err?.message || "login_error",
+      redirectUri: instagramOAuthRedirectUri(),
+    });
+  }
+});
+
+app.get("/api/instagram/oauth/redirect-uri", (req, res) => {
+  res.status(200).json({
+    redirectUri: instagramOAuthRedirectUri(),
+    pasteInMeta: instagramOAuthRedirectUri(),
+    note: "Meta → Instagram → API setup → Set up Instagram business login → Redirect URL",
+  });
 });
 
 // CRM-compatible inbox APIs (consumed by iOS CrmChatService)
