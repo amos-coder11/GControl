@@ -58,25 +58,27 @@ export function ingestInstagramWebhook(body) {
 
     for (const event of messaging) {
       const message = event.message;
-      if (!message || message.is_echo) continue;
+      if (!message) continue;
 
-      const senderId = event.sender?.id;
+      const isEcho = Boolean(message.is_echo);
+      // Incoming: sender is the customer. Echo: recipient is the customer.
+      const customerId = isEcho ? event.recipient?.id : event.sender?.id;
       const text = (message.text || "").trim();
-      const mid = message.mid || `${senderId}-${event.timestamp || Date.now()}`;
-      if (!senderId) continue;
+      const mid = message.mid || `${customerId}-${event.timestamp || Date.now()}`;
+      if (!customerId) continue;
 
       // Skip empty non-attachment events
       const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
       if (!text && !hasAttachment) continue;
 
-      const convId = `ig:${senderId}`;
+      const convId = `ig:${customerId}`;
       const ts = Number(event.timestamp) || Date.now();
       const createdAt = nowISO(ts);
 
       if (!store.conversations[convId]) {
         store.conversations[convId] = {
           id: convId,
-          contact_name: `Instagram · ${senderId.slice(-6)}`,
+          contact_name: `Instagram · ${String(customerId).slice(-6)}`,
           contact_photo_url: null,
           last_message: "",
           unread_count: 0,
@@ -105,7 +107,7 @@ export function ingestInstagramWebhook(body) {
       store.messages[convId].push({
         id: mid,
         text_content: text || (hasAttachment ? `[${messageType}]` : ""),
-        sender_type: "customer",
+        sender_type: isEcho ? "agent" : "customer",
         created_at: createdAt,
         message_type: messageType,
         media_url: mediaUrl,
@@ -117,7 +119,9 @@ export function ingestInstagramWebhook(body) {
       const conv = store.conversations[convId];
       conv.last_message = text || `[${messageType}]`;
       conv.updated_at = createdAt;
-      conv.unread_count = (conv.unread_count || 0) + 1;
+      if (!isEcho) {
+        conv.unread_count = (conv.unread_count || 0) + 1;
+      }
       added += 1;
     }
   }

@@ -33,6 +33,52 @@ export function instagramWebhookStatus() {
   };
 }
 
+export async function sendInstagramText({ igsid, text }) {
+  const { getInstagramPageAccessToken, getInstagramPageId } = await import(
+    "./instagram-token.js"
+  );
+  const pageToken = getInstagramPageAccessToken();
+  if (!pageToken) {
+    const err = new Error("instagram_page_token_missing");
+    err.code = "instagram_page_token_missing";
+    throw err;
+  }
+
+  const pageId = getInstagramPageId();
+  const path = pageId ? `${pageId}/messages` : "me/messages";
+  const url = `https://graph.facebook.com/v21.0/${path}?access_token=${encodeURIComponent(pageToken)}`;
+
+  const upstream = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient: { id: igsid },
+      messaging_type: "RESPONSE",
+      message: { text },
+    }),
+  });
+
+  const bodyText = await upstream.text();
+  let json = null;
+  try {
+    json = bodyText ? JSON.parse(bodyText) : null;
+  } catch {
+    json = { raw: bodyText.slice(0, 400) };
+  }
+
+  if (!upstream.ok) {
+    const err = new Error(
+      json?.error?.message || `instagram_send_failed_${upstream.status}`
+    );
+    err.code = "instagram_send_failed";
+    err.status = upstream.status;
+    err.details = json;
+    throw err;
+  }
+
+  return json;
+}
+
 /** Meta subscription challenge (GET). */
 export function handleInstagramVerify(req, res) {
   const mode = String(req.query["hub.mode"] || "");

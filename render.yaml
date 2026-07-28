@@ -19,5 +19,9 @@ services:
         sync: false
       - key: INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL
         sync: false
+      - key: INSTAGRAM_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: INSTAGRAM_PAGE_ID
+        sync: false
       - key: OPENAI_API_KEY
         sync: false

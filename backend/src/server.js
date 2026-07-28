@@ -11,7 +11,13 @@ import {
   handleInstagramEvent,
   handleInstagramVerify,
   instagramWebhookStatus,
+  sendInstagramText,
 } from "./instagram-webhook.js";
+import {
+  getInstagramPageAccessToken,
+  instagramSendStatus,
+  saveInstagramPageToken,
+} from "./instagram-token.js";
 import {
   appendOutgoing,
   listConversations,
@@ -80,13 +86,69 @@ app.get("/health", (req, res) => {
     ok: true,
     shopify: shopifyHealth(),
     install: installStatus(),
-    instagram: instagramWebhookStatus(),
+    instagram: {
+      ...instagramWebhookStatus(),
+      ...instagramSendStatus(),
+    },
   });
 });
 
 // Instagram / Meta webhooks (callback URL + verify token)
 app.get("/api/webhooks/instagram", handleInstagramVerify);
 app.post("/api/webhooks/instagram", handleInstagramEvent);
+
+// Pegar Page Access Token para poder responder DMs desde la app
+app.get("/api/instagram/connect", (req, res) => {
+  const status = instagramSendStatus();
+  const webhook = instagramWebhookStatus();
+  res.status(200).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Groo · Instagram Messaging</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:-apple-system,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111;line-height:1.45}
+h1{font-size:24px}.ok{color:#0a7a3e}.warn{color:#b45309}
+code{background:#f3f4f6;padding:2px 6px;border-radius:6px;word-break:break-all}
+input,textarea{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin:8px 0;box-sizing:border-box}
+button{padding:10px 16px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600}
+ol{padding-left:20px}li{margin:8px 0}
+</style></head><body>
+<h1>Conectar respuestas Instagram</h1>
+<p>Estado envío: <strong class="${status.pageTokenConfigured ? "ok" : "warn"}">${status.pageTokenConfigured ? "Listo para responder" : "Falta Page Access Token"}</strong></p>
+${status.tokenPreview ? `<p>Token: <code>${status.tokenPreview}</code></p>` : ""}
+<p>Webhook: <code>${webhook.callbackUrl || "—"}</code></p>
+<ol>
+  <li>Abre <strong>Meta for Developers</strong> → tu app <em>Smilestiudio Welnes-IG</em>.</li>
+  <li>Ve a <strong>Messenger → Instagram Settings</strong> (o API setup).</li>
+  <li>Vincula la <strong>Facebook Page</strong> de tu cuenta Instagram profesional.</li>
+  <li>Pulsa <strong>Generate token</strong> / copia el <strong>Page Access Token</strong>.</li>
+  <li>Asegúrate de tener permiso <code>instagram_manage_messages</code> y webhook field <code>messages</code>.</li>
+  <li>Pega el token abajo y guarda.</li>
+</ol>
+<form method="POST" action="/api/instagram/token">
+  <label>Page Access Token</label>
+  <textarea name="token" rows="4" placeholder="EAAB..." required></textarea>
+  <label>Page ID (opcional)</label>
+  <input name="pageId" placeholder="1234567890">
+  <button type="submit">Guardar y activar respuestas</button>
+</form>
+<p class="warn">Sin este token, los DMs llegan a la app pero no se pueden enviar respuestas a Instagram.</p>
+</body></html>`);
+});
+
+app.post("/api/instagram/token", express.urlencoded({ extended: false }), (req, res) => {
+  try {
+    const saved = saveInstagramPageToken({
+      accessToken: req.body?.token,
+      pageId: req.body?.pageId,
+    });
+    return res.redirect(
+      `/api/instagram/connect?ok=1&preview=${encodeURIComponent(saved.tokenPreview)}`
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "token_error";
+    return res.status(400).send(`<p>Error: ${message}</p><p><a href="/api/instagram/connect">Volver</a></p>`);
+  }
+});
 
 // CRM-compatible inbox APIs (consumed by iOS CrmChatService)
 app.get("/api/whatsapp/get_conversations", (req, res) => {
@@ -127,42 +189,34 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
     return res.status(400).json({ error: "conversationId_and_text_required" });
   }
 
-  appendOutgoing(conversationId, text);
-
-  // Optional: deliver via Instagram Graph if page token is configured.
-  const pageToken = (process.env.INSTAGRAM_PAGE_ACCESS_TOKEN || "").trim();
   const igsid = conversationId.startsWith("ig:")
     ? conversationId.slice(3)
     : null;
-  let graph = null;
-  if (pageToken && igsid) {
-    try {
-      const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: igsid },
-            message: { text },
-          }),
-        }
-      );
-      const bodyText = await upstream.text();
-      graph = {
-        status: upstream.status,
-        body: bodyText.slice(0, 400),
-      };
-      if (!upstream.ok) {
-        console.warn("[instagram/send] graph failed", graph);
-      }
-    } catch (err) {
-      console.warn("[instagram/send] graph error", err?.message || err);
-      graph = { error: String(err?.message || err) };
-    }
+  if (!igsid) {
+    return res.status(400).json({ error: "instagram_conversation_required" });
   }
 
-  return res.status(200).json({ ok: true, conversationId, graph });
+  if (!getInstagramPageAccessToken()) {
+    return res.status(503).json({
+      error: "instagram_page_token_missing",
+      message:
+        "Falta Page Access Token. Ábrelo en /api/instagram/connect y pégalo.",
+      setupUrl: "/api/instagram/connect",
+    });
+  }
+
+  try {
+    const graph = await sendInstagramText({ igsid, text });
+    appendOutgoing(conversationId, text);
+    return res.status(200).json({ ok: true, conversationId, graph });
+  } catch (err) {
+    console.warn("[instagram/send]", err?.message || err, err?.details || "");
+    return res.status(502).json({
+      error: err?.code || "instagram_send_failed",
+      message: err?.message || "instagram_send_failed",
+      details: err?.details || null,
+    });
+  }
 });
 
 app.get("/api/shopify/install", (req, res) => {
