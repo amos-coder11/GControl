@@ -88,14 +88,17 @@ app.use(
 );
 
 app.get("/health", (req, res) => {
+  const ig = {
+    ...instagramWebhookStatus(),
+    ...instagramSendStatus(),
+  };
+  // Never expose token fragments on a public health endpoint.
+  delete ig.tokenPreview;
   res.status(200).json({
     ok: true,
     shopify: shopifyHealth(),
     install: installStatus(),
-    instagram: {
-      ...instagramWebhookStatus(),
-      ...instagramSendStatus(),
-    },
+    instagram: ig,
   });
 });
 
