@@ -8,6 +8,11 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import {
+  handleInstagramEvent,
+  handleInstagramVerify,
+  instagramWebhookStatus,
+} from "./instagram-webhook.js";
+import {
   buildInstallUrl,
   handleInstallCallback,
   installStatus,
@@ -42,7 +47,18 @@ function logRequest(req, res, start, status) {
 }
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+
+// Preserve raw body for Meta X-Hub-Signature-256 on Instagram webhook.
+app.use(
+  express.json({
+    limit: "2mb",
+    verify: (req, _res, buf) => {
+      if (req.originalUrl?.startsWith("/api/webhooks/instagram")) {
+        req.rawBody = buf;
+      }
+    },
+  })
+);
 
 app.use(
   cors({
@@ -53,8 +69,17 @@ app.use(
 );
 
 app.get("/health", (req, res) => {
-  res.status(200).json({ ok: true, shopify: shopifyHealth(), install: installStatus() });
+  res.status(200).json({
+    ok: true,
+    shopify: shopifyHealth(),
+    install: installStatus(),
+    instagram: instagramWebhookStatus(),
+  });
 });
+
+// Instagram / Meta webhooks (callback URL + verify token)
+app.get("/api/webhooks/instagram", handleInstagramVerify);
+app.post("/api/webhooks/instagram", handleInstagramEvent);
 
 app.get("/api/shopify/install", (req, res) => {
   try {

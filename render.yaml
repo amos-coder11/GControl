@@ -1,0 +1,23 @@
+# Deploy: Render Dashboard → New → Blueprint, o Web Service apuntando a /backend
+services:
+  - type: web
+    name: smilestudio-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      - key: INSTAGRAM_VERIFY_TOKEN
+        sync: false
+      - key: INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

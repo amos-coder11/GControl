@@ -60,6 +60,36 @@ Endpoints:
 
 La app iOS llama a estos endpoints vía `SHOPIFY_BACKEND_BASE_URL` (por defecto `http://127.0.0.1:3000` en desarrollo).
 
+### Instagram / Meta webhooks
+
+Configura en `.env` (local) o en **Render → Environment**:
+
+- `INSTAGRAM_APP_ID`
+- `INSTAGRAM_APP_SECRET`
+- `INSTAGRAM_VERIFY_TOKEN` — mismo valor que pegas en Meta → **Verificar token**
+- `INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL` — `https://TU-SERVICIO.onrender.com` (sin slash final)
+
+Endpoints:
+
+- `GET /api/webhooks/instagram` — verificación Meta (`hub.challenge`)
+- `POST /api/webhooks/instagram` — eventos
+
+#### Deploy en Render
+
+1. New → **Web Service**
+2. Repo Groo, **Root Directory:** `backend`
+3. Build: `npm install` · Start: `npm start`
+4. Environment (copia de tu `.env` local de Instagram):
+   - `INSTAGRAM_APP_ID=1046896744939508`
+   - `INSTAGRAM_APP_SECRET=…`
+   - `INSTAGRAM_VERIFY_TOKEN=smilestudio_ig_verify_We2rFa7`
+   - `INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL=https://TU-SERVICIO.onrender.com`
+5. Tras el deploy, en Meta:
+   - **URL:** `https://TU-SERVICIO.onrender.com/api/webhooks/instagram`
+   - **Verificar token:** `smilestudio_ig_verify_We2rFa7`
+
+Nota: en plan free Render se duerme; abre `/health` una vez antes de verificar en Meta.
+
 ## CORS
 
 CORS is enabled with `origin: true` for local development so the simulator or a web test client can reach the server.
