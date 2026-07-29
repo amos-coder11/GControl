@@ -207,15 +207,32 @@ function describeAttachment(msg) {
     att.image_data?.preview_url ||
     null;
 
+  // La forma del adjunto varía: unas veces image_data/video_data, otras solo
+  // mime_type + file_url, y a veces la pista está en la propia URL.
+  const mime = String(att.mime_type || "").toLowerCase();
+  const name = String(att.name || "").toLowerCase();
+  const probe = `${mime} ${name} ${String(url || "").split("?")[0]}`.toLowerCase();
+
+  const isImage =
+    Boolean(att.image_data) ||
+    mime.startsWith("image") ||
+    /\.(jpe?g|png|gif|webp|heic)$/.test(probe);
+  const isVideo =
+    Boolean(att.video_data) ||
+    mime.startsWith("video") ||
+    /\.(mp4|mov|m4v|webm)$/.test(probe);
+  const isAudio =
+    mime.startsWith("audio") || /\.(mp3|m4a|ogg|wav|aac)$/.test(probe);
+
   let type = "file";
   let label = "📎 Archivo";
-  if (att.image_data) {
+  if (isImage) {
     type = "image";
     label = "📷 Foto";
-  } else if (att.video_data) {
+  } else if (isVideo) {
     type = "video";
     label = "🎥 Vídeo";
-  } else if (att.mime_type?.startsWith("audio")) {
+  } else if (isAudio) {
     type = "audio";
     label = "🎤 Audio";
   }
