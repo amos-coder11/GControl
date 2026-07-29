@@ -1261,10 +1261,10 @@ final class GrooAppStore: ObservableObject {
         }
 
         sessions[idx].messages.append(GrooChatMessage(isUser: true, text: text))
-        sessions[idx].updatedAt = Date()
         if sessions[idx].patientId == nil, sessions[idx].title.hasPrefix("Session") {
             sessions[idx].title = String(text.prefix(42))
         }
+        bumpSessionToTop(at: idx)
         if countsAgainstTrial, subscription == .trial {
             trialMessagesRemaining = max(0, trialMessagesRemaining - 1)
         }
@@ -1289,10 +1289,10 @@ final class GrooAppStore: ObservableObject {
             imageJPEGBase64: jpeg.base64EncodedString()
         )
         sessions[idx].messages.append(message)
-        sessions[idx].updatedAt = Date()
         if sessions[idx].patientId == nil, sessions[idx].title.hasPrefix("Session") {
             sessions[idx].title = "Sonrisa mejorada"
         }
+        bumpSessionToTop(at: idx)
         activeSessionId = sessionId
         save()
         prepareChatNavigation(to: sessionId)
@@ -1330,18 +1330,31 @@ final class GrooAppStore: ObservableObject {
         guard let id = activeSessionId,
               let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions[idx].messages.append(GrooChatMessage(isUser: false, text: text))
-        sessions[idx].updatedAt = Date()
+        bumpSessionToTop(at: idx)
         save()
     }
 
     func filteredSessions(query: String) -> [GrooChatSession] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return sessions }
-        return sessions.filter {
-            $0.title.lowercased().contains(q)
-                || $0.preview.lowercased().contains(q)
-                || $0.messages.contains { $0.text.lowercased().contains(q) }
+        let base: [GrooChatSession]
+        if q.isEmpty {
+            base = sessions
+        } else {
+            base = sessions.filter {
+                $0.title.lowercased().contains(q)
+                    || $0.preview.lowercased().contains(q)
+                    || $0.messages.contains { $0.text.lowercased().contains(q) }
+            }
         }
+        return base.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Mueve la conversación al tope de la lista (estilo WhatsApp).
+    private func bumpSessionToTop(at idx: Int) {
+        guard sessions.indices.contains(idx) else { return }
+        sessions[idx].updatedAt = Date()
+        let session = sessions.remove(at: idx)
+        sessions.insert(session, at: 0)
     }
 
     // MARK: - Reminders

@@ -48,6 +48,8 @@ struct ChatThread: Identifiable, Hashable {
 
     let readReceipt: ReadReceipt
     let showOpenButton: Bool
+    /// Última actividad (orden estilo WhatsApp en la bandeja).
+    let lastActivityAt: Date?
 
     var avatarColor: Color {
         Color(red: avatarR, green: avatarG, blue: avatarB)
@@ -73,7 +75,38 @@ struct ChatThread: Identifiable, Hashable {
             kind: kind,
             peerUserId: peerUserId,
             readReceipt: readReceipt,
-            showOpenButton: showOpenButton
+            showOpenButton: showOpenButton,
+            lastActivityAt: lastActivityAt
+        )
+    }
+
+    /// Vista previa, hora, no leídos y actividad para hilos CRM (Instagram/WhatsApp).
+    func withCrmInboxPreview(
+        _ preview: String,
+        time: String,
+        unread: Int?,
+        lastActivityAt: Date?
+    ) -> ChatThread {
+        ChatThread(
+            id: id,
+            title: title,
+            preview: preview,
+            time: time,
+            unread: unread,
+            avatarInitial: avatarInitial,
+            avatarIcon: avatarIcon,
+            avatarR: avatarR,
+            avatarG: avatarG,
+            avatarB: avatarB,
+            avatarCarURL: avatarCarURL,
+            socialSource: socialSource,
+            isVerified: isVerified,
+            isPinned: isPinned,
+            kind: kind,
+            peerUserId: peerUserId,
+            readReceipt: readReceipt,
+            showOpenButton: showOpenButton,
+            lastActivityAt: lastActivityAt
         )
     }
 
@@ -97,7 +130,8 @@ struct ChatThread: Identifiable, Hashable {
             kind: kind,
             peerUserId: peerUserId,
             readReceipt: readReceipt,
-            showOpenButton: showOpenButton
+            showOpenButton: showOpenButton,
+            lastActivityAt: Date()
         )
     }
 
@@ -121,7 +155,8 @@ struct ChatThread: Identifiable, Hashable {
             kind: kind,
             peerUserId: peerUserId,
             readReceipt: readReceipt,
-            showOpenButton: showOpenButton
+            showOpenButton: showOpenButton,
+            lastActivityAt: Date()
         )
     }
 
@@ -145,7 +180,8 @@ struct ChatThread: Identifiable, Hashable {
             kind: kind,
             peerUserId: peerUserId,
             readReceipt: readReceipt,
-            showOpenButton: showOpenButton
+            showOpenButton: showOpenButton,
+            lastActivityAt: Date()
         )
     }
 
@@ -173,7 +209,8 @@ struct ChatThread: Identifiable, Hashable {
             kind: .teamGroup,
             peerUserId: nil,
             readReceipt: .none,
-            showOpenButton: false
+            showOpenButton: false,
+            lastActivityAt: nil
         )
     }
 
@@ -204,154 +241,10 @@ struct ChatThread: Identifiable, Hashable {
             kind: .teamDirect,
             peerUserId: row.userId,
             readReceipt: .read,
-            showOpenButton: false
+            showOpenButton: false,
+            lastActivityAt: Date()
         )
     }
 
-    static let samples: [ChatThread] = [
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!,
-            title: "TikTok Shop · jorgedelgado_9",
-            preview: "Pedido: NAD + y Energy Focus — $116",
-            time: "Hoy, 12:30",
-            unread: 2,
-            avatarInitial: "J",
-            avatarIcon: nil,
-            avatarR: 0.2, avatarG: 0.55, avatarB: 0.95,
-            avatarCarURL: nil,
-            socialSource: nil,
-            isVerified: false,
-            isPinned: true,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .none,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000002")!,
-            title: "Instagram · camivillalba",
-            preview: "Traders Recovery Sleep & Wellness — $67",
-            time: "Ayer",
-            unread: nil,
-            avatarInitial: "C",
-            avatarIcon: nil,
-            avatarR: 0.95, avatarG: 0.35, avatarB: 0.55,
-            avatarCarURL: nil,
-            socialSource: .instagram,
-            isVerified: false,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .read,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000003")!,
-            title: "WhatsApp · raquelonodri",
-            preview: "Consulta envío de 3 productos — $132.40",
-            time: "Hoy, 10:15",
-            unread: nil,
-            avatarInitial: "R",
-            avatarIcon: nil,
-            avatarR: 0.95, avatarG: 0.62, avatarB: 0.18,
-            avatarCarURL: nil,
-            socialSource: .whatsApp,
-            isVerified: false,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .sent,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000004")!,
-            title: "En vivo · mariagomez",
-            preview: "Compra NAD + completada — $49",
-            time: "Hoy, 09:02",
-            unread: 1,
-            avatarInitial: "M",
-            avatarIcon: nil,
-            avatarR: 0.35, avatarG: 0.78, avatarB: 0.62,
-            avatarCarURL: nil,
-            socialSource: nil,
-            isVerified: true,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .none,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000005")!,
-            title: "TikTok Shop · carlosfit23",
-            preview: "Pendiente pago Energy Focus — $67",
-            time: "Ayer, 18:40",
-            unread: nil,
-            avatarInitial: "C",
-            avatarIcon: nil,
-            avatarR: 0.45, avatarG: 0.45, avatarB: 0.5,
-            avatarCarURL: nil,
-            socialSource: nil,
-            isVerified: true,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .none,
-            showOpenButton: true
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000006")!,
-            title: "Instagram · anaperez",
-            preview: "¿Tienen stock de NAD+ para envío hoy?",
-            time: "4:23",
-            unread: nil,
-            avatarInitial: "A",
-            avatarIcon: nil,
-            avatarR: 0.25, avatarG: 0.45, avatarB: 0.85,
-            avatarCarURL: nil,
-            socialSource: .instagram,
-            isVerified: false,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .read,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000007")!,
-            title: "WhatsApp · luisamartinez",
-            preview: "Bundle Recovery + NAD — comisión afiliado",
-            time: "mar",
-            unread: 3,
-            avatarInitial: "L",
-            avatarIcon: nil,
-            avatarR: 0.5, avatarG: 0.5, avatarB: 0.52,
-            avatarCarURL: nil,
-            socialSource: .whatsApp,
-            isVerified: false,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .sent,
-            showOpenButton: false
-        ),
-        ChatThread(
-            id: UUID(uuidString: "10000000-0000-0000-0000-000000000008")!,
-            title: "En vivo · sofiarivera",
-            preview: "Pedido confirmado: Energy Focus x2",
-            time: "lun",
-            unread: nil,
-            avatarInitial: "S",
-            avatarIcon: nil,
-            avatarR: 0.55, avatarG: 0.6, avatarB: 0.65,
-            avatarCarURL: nil,
-            socialSource: nil,
-            isVerified: false,
-            isPinned: false,
-            kind: .lead,
-            peerUserId: nil,
-            readReceipt: .read,
-            showOpenButton: false
-        )
-    ]
+    static let samples: [ChatThread] = []
 }

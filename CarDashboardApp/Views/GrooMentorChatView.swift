@@ -11,15 +11,8 @@ struct GrooMentorChatView: View {
     @State private var streaming = ""
     @State private var showScheduleSheet = false
     @State private var showBudgetSheet = false
+    @State private var imageLightboxItem: GrooChatImageLightboxItem?
     @FocusState private var focused: Bool
-
-    private let quickChips: [(icon: String, title: String)] = [
-        ("calendar", "Citas de hoy"),
-        ("person.2.fill", "Seguimiento paciente"),
-        ("dollarsign.circle", "Cobros pendientes"),
-        ("bell.fill", "Recordatorio en 1 hora"),
-        ("chart.bar.fill", "Resumen semanal"),
-    ]
 
     private var messages: [GrooChatMessage] {
         groo.activeSession?.messages ?? []
@@ -30,23 +23,9 @@ struct GrooMentorChatView: View {
         return groo.patient(withId: patientId)
     }
 
-    private var patientQuickChips: [(icon: String, title: String)] {
-        guard let patient = linkedPatient else { return quickChips }
-        return [
-            ("calendar.badge.plus", "Agendar cita mañana a las 10"),
-            ("clock.arrow.circlepath", "Recordar control en 1 semana"),
-            ("doc.text.fill", "Resumen historial de \(patient.fullName.split(separator: " ").first.map(String.init) ?? patient.fullName)"),
-            ("bell.fill", "Recordatorio \(patient.treatment)"),
-        ]
-    }
-
     private var firstName: String {
         let n = groo.profile.firstName.trimmingCharacters(in: .whitespaces)
         return n.isEmpty ? "there" : n
-    }
-
-    private var showChips: Bool {
-        !isSending && streaming.isEmpty && messages.filter(\.isUser).count <= 1
     }
 
     private var sessionTitle: String {
@@ -64,10 +43,6 @@ struct GrooMentorChatView: View {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 VStack(spacing: 0) {
-                    if showChips && linkedPatient == nil {
-                        quickRepliesBar
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
                     if let patient = linkedPatient {
                         GrooPatientChatContextPanel(
                             patient: patient,
@@ -101,7 +76,6 @@ struct GrooMentorChatView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbarVisibility(.hidden, for: .tabBar)
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: showChips)
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: linkedPatient?.id)
         .sheet(isPresented: $groo.showPaywall) {
             GrooPremiumPaywallView()
@@ -121,13 +95,15 @@ struct GrooMentorChatView: View {
                     .environmentObject(groo)
             }
         }
+        .fullScreenCover(item: $imageLightboxItem) { item in
+            GrooChatImageLightbox(item: item)
+        }
     }
 
-    /// Espacio reservado para compositor (+ panel paciente / chips).
+    /// Espacio reservado para compositor (+ panel paciente).
     private var bottomChromeHeight: CGFloat {
         var h: CGFloat = 72
         if linkedPatient != nil { h += 96 }
-        if showChips && linkedPatient == nil { h += 56 }
         return h
     }
 
@@ -307,7 +283,10 @@ struct GrooMentorChatView: View {
                         isOutgoing: true,
                         isLastInGroup: isLastInGroup,
                         delivery: .read,
-                        image: msg.uiImage
+                        image: msg.uiImage,
+                        onImageTap: msg.uiImage.map { image in
+                            { imageLightboxItem = .local(image) }
+                        }
                     )
                 }
             } else {
@@ -324,7 +303,10 @@ struct GrooMentorChatView: View {
                 isOutgoing: false,
                 isLastInGroup: isLast,
                 isStreaming: streaming,
-                image: image
+                image: image,
+                onImageTap: image.map { img in
+                    { imageLightboxItem = .local(img) }
+                }
             )
             Spacer(minLength: 56)
         }
@@ -336,42 +318,6 @@ struct GrooMentorChatView: View {
             Spacer(minLength: 56)
         }
         .padding(.top, 8)
-    }
-
-    // MARK: - Quick replies
-
-    private var quickRepliesBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(patientQuickChips, id: \.title) { chip in
-                    Button {
-                        Task { await send(chip.title) }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: chip.icon)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(GrooBrand.primary)
-                                .frame(width: 28, height: 28)
-                                .background(Circle().fill(GrooBrand.primarySoft.opacity(0.85)))
-                            Text(chip.title)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.black.opacity(0.78))
-                                .lineLimit(1)
-                        }
-                        .padding(.leading, 6)
-                        .padding(.trailing, 14)
-                        .padding(.vertical, 6)
-                        .background { GrooChatTheme.glassPillBackground() }
-                    }
-                    .buttonStyle(GrooChatPressStyle())
-                    .disabled(isSending)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-        }
-        .scrollIndicators(.hidden)
     }
 
     // MARK: - Helpers

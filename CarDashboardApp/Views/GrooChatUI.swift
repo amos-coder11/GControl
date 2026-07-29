@@ -52,9 +52,9 @@ enum GrooChatTheme {
     static let wallpaperTop = Color(red: 0.86, green: 0.94, blue: 0.97)
     static let wallpaperBottom = Color(red: 0.78, green: 0.90, blue: 0.97)
 
-    /// Burbujas Telegram
-    static let outgoingBubble = Color(red: 0.90, green: 0.97, blue: 1.0)
-    static let outgoingBubbleEdge = Color(red: 0.72, green: 0.88, blue: 0.96)
+    /// Burbujas Telegram: salientes azul claro, entrantes blancas.
+    static let outgoingBubble = Color(red: 0.82, green: 0.93, blue: 0.99)
+    static let outgoingBubbleEdge = Color(red: 0.68, green: 0.84, blue: 0.95)
     static let incomingBubble = Color.white
     static let sendButton = telegramBlue
     static let outgoingText = Color(red: 0.05, green: 0.08, blue: 0.16)
@@ -526,7 +526,6 @@ struct GrooMessageBubbleShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         let r: CGFloat = 16
-        // Cola Telegram: esquina inferior hacia el lado del remitente más aguda
         let tail: CGFloat = isLastInGroup ? 4 : r
         var corners = RectangleCornerRadii(
             topLeading: r,
@@ -538,6 +537,226 @@ struct GrooMessageBubbleShape: Shape {
     }
 }
 
+struct GrooChatImageLightboxItem: Identifiable {
+    let id = UUID()
+    let uiImage: UIImage?
+    let remoteURL: URL?
+
+    static func local(_ image: UIImage) -> GrooChatImageLightboxItem {
+        GrooChatImageLightboxItem(uiImage: image, remoteURL: nil)
+    }
+
+    static func remote(_ url: URL) -> GrooChatImageLightboxItem {
+        GrooChatImageLightboxItem(uiImage: nil, remoteURL: url)
+    }
+}
+
+struct GrooChatImageLightbox: View {
+    let item: GrooChatImageLightboxItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var loadedImage: UIImage?
+    @State private var loadFailed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+                .onTapGesture {
+                    if scale <= 1.05 { dismiss() }
+                }
+
+            Group {
+                if let image = item.uiImage ?? loadedImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(scale)
+                        .offset(offset)
+                        .gesture(zoomGesture.simultaneously(with: panGesture))
+                        .onTapGesture(count: 2) { toggleZoom() }
+                } else if loadFailed {
+                    VStack(spacing: 12) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text("No se pudo cargar la imagen")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                } else {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.2)
+                }
+            }
+            .padding(.horizontal, 8)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Color.white.opacity(0.25))
+                            .padding(16)
+                    }
+                    .accessibilityLabel("Cerrar")
+                }
+                Spacer()
+            }
+        }
+        .task(id: item.id) {
+            await loadRemoteImageIfNeeded()
+        }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                scale = min(max(lastScale * value, 1), 5)
+            }
+            .onEnded { _ in
+                if scale <= 1.05 {
+                    scale = 1
+                    lastScale = 1
+                    offset = .zero
+                    lastOffset = .zero
+                } else {
+                    lastScale = scale
+                }
+            }
+    }
+
+    private var panGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard scale > 1 else { return }
+                offset = CGSize(
+                    width: lastOffset.width + value.translation.width,
+                    height: lastOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                lastOffset = offset
+            }
+    }
+
+    private func toggleZoom() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            if scale > 1.05 {
+                scale = 1
+                lastScale = 1
+                offset = .zero
+                lastOffset = .zero
+            } else {
+                scale = 2.5
+                lastScale = 2.5
+            }
+        }
+    }
+
+    @MainActor
+    private func loadRemoteImageIfNeeded() async {
+        guard item.uiImage == nil, let url = item.remoteURL else { return }
+        loadedImage = nil
+        loadFailed = false
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let image = UIImage(data: data) else {
+                loadFailed = true
+                return
+            }
+            loadedImage = image
+        } catch {
+            loadFailed = true
+        }
+    }
+}
+
+/// Onda de voz estilo WhatsApp / iOS: barras reales en lo reproducido, puntos en lo pendiente.
+struct VoiceMessageWaveformStrip: View {
+    let bars: [CGFloat]
+    let progress: CGFloat
+    var isLoading: Bool = false
+    var accentColor: Color = GrooChatTheme.telegramBlue
+    var stripHeight: CGFloat = 28
+    var onSeek: ((CGFloat) -> Void)? = nil
+
+    private var displayBars: [CGFloat] {
+        if bars.isEmpty {
+            return (0 ..< 28).map { i in
+                0.18 + 0.42 * (0.5 + 0.5 * sin(Double(i) * 0.41))
+            }
+        }
+        return bars
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+            let count = displayBars.count
+            let gap: CGFloat = 2.5
+            let totalGaps = CGFloat(max(0, count - 1)) * gap
+            let barW = max(2, (width - totalGaps) / CGFloat(count))
+            let clampedProgress = min(1, max(0, progress))
+
+            ZStack(alignment: .leading) {
+                HStack(alignment: .center, spacing: gap) {
+                    ForEach(Array(displayBars.enumerated()), id: \.offset) { index, amplitude in
+                        let segment = count > 1 ? CGFloat(index) / CGFloat(count - 1) : 0
+                        let played = segment <= clampedProgress
+
+                        if played {
+                            RoundedRectangle(cornerRadius: min(2, barW * 0.5), style: .continuous)
+                                .fill(accentColor.opacity(0.35 + 0.55 * Double(amplitude)))
+                                .frame(
+                                    width: barW,
+                                    height: max(3, amplitude * height)
+                                )
+                                .frame(height: height, alignment: .center)
+                        } else {
+                            Circle()
+                                .fill(Color.black.opacity(isLoading ? 0.12 : 0.2))
+                                .frame(width: min(3.5, barW), height: min(3.5, barW))
+                                .frame(width: barW, height: height, alignment: .center)
+                        }
+                    }
+                }
+                .frame(width: width, height: height, alignment: .center)
+
+                if clampedProgress > 0.01, !isLoading {
+                    Circle()
+                        .fill(accentColor)
+                        .frame(width: 8, height: 8)
+                        .shadow(color: accentColor.opacity(0.35), radius: 2, y: 1)
+                        .offset(x: scrubberX(width: width, progress: clampedProgress))
+                }
+            }
+            .frame(width: width, height: height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        guard let onSeek else { return }
+                        let fraction = min(1, max(0, value.location.x / max(width, 1)))
+                        onSeek(fraction)
+                    }
+            )
+        }
+        .frame(height: stripHeight)
+    }
+
+    private func scrubberX(width: CGFloat, progress: CGFloat) -> CGFloat {
+        min(max(0, progress * width - 4), max(0, width - 8))
+    }
+}
+
 struct GrooMessageBubbleView: View {
     let text: String
     let time: Date
@@ -546,6 +765,7 @@ struct GrooMessageBubbleView: View {
     var delivery: GrooMessageDeliveryStatus = .none
     var isStreaming: Bool = false
     var image: UIImage? = nil
+    var onImageTap: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -557,6 +777,10 @@ struct GrooMessageBubbleView: View {
                     .frame(height: 200)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .onTapGesture {
+                        onImageTap?()
+                    }
             }
 
             if !trimmedText.isEmpty {
@@ -699,32 +923,18 @@ struct GrooInboxConversationRow: View {
     var avatarURL: URL? = nil
     var avatarAccessToken: String? = nil
     var avatarInitial: String? = nil
-    var showsInstagramBadge: Bool = false
+    var socialSource: ChatSocialPlatform? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                if let avatarURL {
-                    ChatAsyncContactPhoto(
-                        url: avatarURL,
-                        accessToken: avatarAccessToken,
-                        fallbackInitial: avatarInitial ?? GrooAvatarPalette.initial(from: title),
-                        fallbackColor: GrooAvatarPalette.color(for: title),
-                        diameter: 54
-                    )
-                } else {
-                    GrooLetterAvatar(
-                        name: title,
-                        size: 54,
-                        initialOverride: avatarInitial
-                    )
-                }
-                if showsInstagramBadge {
-                    ChatSocialBadgeView(platform: .instagram)
-                        .frame(width: 18, height: 18)
-                        .offset(x: 2, y: 2)
-                }
-            }
+            GrooInboxAvatarView(
+                title: title,
+                avatarURL: avatarURL,
+                avatarAccessToken: avatarAccessToken,
+                avatarInitial: avatarInitial,
+                socialSource: socialSource,
+                size: 54
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -775,6 +985,139 @@ struct GrooInboxConversationRow: View {
             return date.formatted(.dateTime.weekday(.abbreviated))
         }
         return date.formatted(.dateTime.day().month(.twoDigits).year(.twoDigits))
+    }
+}
+
+// MARK: - Respuestas rápidas CRM (Instagram / WhatsApp)
+
+struct GrooCrmQuickReply: Identifiable {
+    let id: String
+    let icon: String
+    let label: String
+    let message: String
+
+    static func templates(for contactTitle: String) -> [GrooCrmQuickReply] {
+        let name = Self.contactFirstName(from: contactTitle)
+        return [
+            GrooCrmQuickReply(
+                id: "appointment-today",
+                icon: "calendar",
+                label: "Cita hoy",
+                message: """
+                ¡Hola\(name.isEmpty ? "" : ", \(name)")! 👋 Tenemos disponibilidad para agendar tu consulta gratuita hoy. \
+                Cuéntanos tu nombre completo, el servicio que te interesa y el horario que prefieres (mañana o tarde). \
+                Uno de nuestros especialistas te confirmará la cita muy pronto 😊
+                """
+            ),
+            GrooCrmQuickReply(
+                id: "follow-up",
+                icon: "person.2.fill",
+                label: "Seguimiento",
+                message: """
+                Hola\(name.isEmpty ? "" : ", \(name)")! ¿Cómo te has sentido después de tu última visita? \
+                Cuéntanos si necesitas algo más o si quieres que revisemos tu plan de tratamiento.
+                """
+            ),
+            GrooCrmQuickReply(
+                id: "products",
+                icon: "bag.fill",
+                label: "Productos",
+                message: """
+                Hola\(name.isEmpty ? "" : ", \(name)")! Te comparto nuestros productos recomendados:
+                • NAD+ Recovery
+                • Energy Focus
+                • Sleep Wellness
+                ¿Cuál te interesa? Te enviamos precio y disponibilidad al momento 🙌
+                """
+            ),
+            GrooCrmQuickReply(
+                id: "payment",
+                icon: "dollarsign.circle",
+                label: "Enlaces pago",
+                message: """
+                Hola\(name.isEmpty ? "" : ", \(name)")! Puedes pagar en línea con el enlace de tu servicio:
+
+                ⭐ VIP Concierge
+                https://checkout.square.site/merchant/EJG2FZH297AY2/checkout/LVPNZ7VVI3FA6T7RVBNVZLPU?src=sheet
+
+                🦷 Consulta Ortho
+                https://checkout.square.site/merchant/EJG2FZH297AY2/checkout/UD6FUVSIYJXPZLYPBB6IRNK5?src=sheet
+
+                ✨ Limited Concierge — Smile Studio Doral
+                https://checkout.square.site/merchant/EJG2FZH297AY2/checkout/SKC5GROJTH56NQPLVEYY5EAZ?src=sheet
+
+                También aceptamos Zelle: drgprivate@drgsmile.com
+
+                Cuando pagues, envíanos el comprobante por aquí para verificarlo 🙏
+                """
+            ),
+            GrooCrmQuickReply(
+                id: "reminder",
+                icon: "bell.fill",
+                label: "Recordatorio",
+                message: """
+                Hola\(name.isEmpty ? "" : ", \(name)")! Te recordamos tu cita programada con nosotros. \
+                Si necesitas cambiarla, avísanos con gusto y te proponemos otro horario 🙏
+                """
+            ),
+        ]
+    }
+
+    private static func contactFirstName(from title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("@") {
+            return String(trimmed.dropFirst())
+        }
+        if let segment = trimmed.split(separator: "·").last {
+            let part = segment.trimmingCharacters(in: .whitespaces)
+            if part.hasPrefix("@") { return String(part.dropFirst()) }
+            return part
+        }
+        return trimmed.split(separator: " ").first.map(String.init) ?? trimmed
+    }
+}
+
+struct GrooCrmQuickRepliesBar: View {
+    let contactTitle: String
+    var isDisabled: Bool = false
+    var onSelect: (GrooCrmQuickReply) -> Void
+
+    private var replies: [GrooCrmQuickReply] {
+        GrooCrmQuickReply.templates(for: contactTitle)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(replies) { reply in
+                    Button {
+                        onSelect(reply)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: reply.icon)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(GrooBrand.primary)
+                                .frame(width: 28, height: 28)
+                                .background(Circle().fill(GrooBrand.primarySoft.opacity(0.85)))
+                            Text(reply.label)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.78))
+                                .lineLimit(1)
+                        }
+                        .padding(.leading, 6)
+                        .padding(.trailing, 14)
+                        .padding(.vertical, 6)
+                        .background { GrooChatTheme.glassPillBackground() }
+                    }
+                    .buttonStyle(GrooChatPressStyle())
+                    .disabled(isDisabled)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+        }
+        .scrollIndicators(.hidden)
     }
 }
 

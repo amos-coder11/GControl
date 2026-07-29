@@ -68,7 +68,7 @@ struct CoordinatorOutboundTask: Identifiable, Equatable {
 
 /// Estado compartido de la bandeja de chats: lista, overrides y total para el badge de la pestaña.
 final class ChatInboxStore: ObservableObject {
-    @Published var liveThreads: [ChatThread] = Array(ChatThread.samples)
+    @Published var liveThreads: [ChatThread] = []
     /// Grupo «Mi equipo» y DMs del directorio (se actualizan con el listado de comunidad).
     @Published var teamGroupChatThread: ChatThread?
     @Published var teamDirectChatThreads: [ChatThread] = []
@@ -85,6 +85,8 @@ final class ChatInboxStore: ObservableObject {
     @Published var activeLeadThreadId: UUID?
     /// El chat grupal «Mi equipo» está en primer plano.
     @Published var activeTeamGroupChatOpen: Bool = false
+    /// Abrir hilo CRM tras pulsar una notificación push (UUID estable del hilo).
+    @Published var pendingOpenLeadThreadId: UUID?
     /// Vista previa CRM anterior por hilo (detectar mensajes nuevos → notificación).
     private var crmLeadSnapshot: [UUID: CrmLeadSnapshot] = [:]
     /// Vista previa / hora por `peerUserId` para hilos `teamDirect` (mensajería real).
@@ -210,13 +212,24 @@ final class ChatInboxStore: ObservableObject {
                     waMap[uuid] = phoneRaw
                 }
                 aiMap[uuid] = row.aiActive ?? true
-                return Self.thread(fromCrm: row, uuid: uuid)
+                var thread = Self.thread(fromCrm: row, uuid: uuid)
+                if unreadOverride[uuid] == 0 {
+                    thread = thread.withCrmInboxPreview(
+                        thread.preview,
+                        time: thread.time,
+                        unread: nil,
+                        lastActivityAt: thread.lastActivityAt
+                    )
+                }
+                return thread
             }
             crmConversationIdByThread = map
             crmWaUserIdByThread = waMap
             crmAiActiveByThread = aiMap
             phoneScannedThreadIds = []
-            liveThreads = threads
+            liveThreads = threads.sorted {
+                ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast)
+            }
             crmLeadSnapshot = Dictionary(
                 uniqueKeysWithValues: threads
                     .filter { $0.kind == .lead }
@@ -228,7 +241,8 @@ final class ChatInboxStore: ObservableObject {
                 MessageNotificationService.notifyNewCrmMessages(
                     previous: previousSnapshot,
                     current: threads.filter { $0.kind == .lead },
-                    activeThreadId: activeLeadThreadId
+                    activeThreadId: activeLeadThreadId,
+                    accessToken: accessToken
                 )
             }
 
@@ -306,7 +320,8 @@ final class ChatInboxStore: ObservableObject {
             kind: .lead,
             peerUserId: nil,
             readReceipt: .none,
-            showOpenButton: false
+            showOpenButton: false,
+            lastActivityAt: CrmChatService.parseISO(row.updatedAt)
         )
     }
 
@@ -649,7 +664,7 @@ final class ChatInboxStore: ObservableObject {
     }
 
     func effectiveUnread(_ thread: ChatThread) -> Int? {
-        if let o = unreadOverride[thread.id] { return o }
+        if let o = unreadOverride[thread.id] { return o > 0 ? o : nil }
         return thread.unread
     }
 
@@ -657,6 +672,51 @@ final class ChatInboxStore: ObservableObject {
         var copy = unreadOverride
         copy[id] = 0
         unreadOverride = copy
+        if let idx = liveThreads.firstIndex(where: { $0.id == id }) {
+            let thread = liveThreads[idx]
+            liveThreads[idx] = thread.withCrmInboxPreview(
+                thread.preview,
+                time: thread.time,
+                unread: nil,
+                lastActivityAt: thread.lastActivityAt
+            )
+        }
+        if let snap = crmLeadSnapshot[id] {
+            crmLeadSnapshot[id] = CrmLeadSnapshot(preview: snap.preview, unread: 0)
+        }
+    }
+
+    /// Marca como leída en servidor y bandeja (Instagram/WhatsApp CRM).
+    @MainActor
+    func markCrmThreadAsRead(threadId: UUID, accessToken: String?) async {
+        markThreadAsRead(threadId)
+        guard let convId = crmConversationIdByThread[threadId],
+              let token = accessToken, !token.isEmpty
+        else { return }
+        try? await CrmChatService.markRead(token: token, conversationId: convId)
+    }
+
+    /// Actualiza la vista previa del hilo CRM tras enviar o recibir mensajes.
+    @MainActor
+    func applyCrmLeadPreview(threadId: UUID, preview: String, date: Date) {
+        let body = Self.truncatePreview(preview)
+        let time = Self.formatShortListTime(date)
+        if let idx = liveThreads.firstIndex(where: { $0.id == threadId }) {
+            let thread = liveThreads[idx]
+            liveThreads[idx] = thread.withCrmInboxPreview(
+                body,
+                time: time,
+                unread: thread.unread,
+                lastActivityAt: date
+            )
+            liveThreads.sort {
+                ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast)
+            }
+        }
+        if var snap = crmLeadSnapshot[threadId] {
+            snap = CrmLeadSnapshot(preview: body, unread: snap.unread)
+            crmLeadSnapshot[threadId] = snap
+        }
     }
 
     func archiveThread(_ thread: ChatThread) {
@@ -1128,6 +1188,15 @@ enum CrmChatService {
         }
     }
 
+    /// Marca la conversación CRM como leída en el servidor y en la bandeja local.
+    static func markRead(token: String, conversationId: String) async throws {
+        try await postJSON(
+            path: "/api/whatsapp/mark_read",
+            token: token,
+            body: ["conversationId": conversationId]
+        )
+    }
+
     /// Envía un mensaje de texto al cliente (WhatsApp o Instagram, según la conversación).
     static func send(token: String, conversationId: String, text: String) async throws {
         try await postJSON(
@@ -1136,6 +1205,32 @@ enum CrmChatService {
             body: [
                 "conversationId": conversationId,
                 "textContent": text,
+            ]
+        )
+    }
+
+    /// Envía una imagen al cliente por Instagram CRM.
+    static func sendImage(
+        token: String,
+        conversationId: String,
+        image: UIImage,
+        caption: String = ""
+    ) async throws {
+        let prepared = image.preparedForCrmUpload(maxEdge: 1600)
+        guard let data = prepared.jpegData(compressionQuality: 0.82) else {
+            throw ServiceError.badResponse
+        }
+        guard data.count > 800 else { throw ServiceError.badResponse }
+        let b64 = data.base64EncodedString()
+        try await postJSON(
+            path: "/api/whatsapp/send_message",
+            token: token,
+            body: [
+                "conversationId": conversationId,
+                "textContent": caption,
+                "messageType": "image",
+                "mediaType": "image/jpeg",
+                "mediaContent": b64,
             ]
         )
     }
@@ -1183,6 +1278,43 @@ enum CrmChatService {
         throw lastError
     }
 
+    /// Mensaje del cliente/contacto (burbuja izquierda). Agente, IA y equipo van a la derecha.
+    static func messageIsFromContact(_ senderType: String?) -> Bool {
+        let type = (senderType ?? "customer")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch type {
+        case "agent", "user", "staff", "business", "bot", "ai", "assistant", "system":
+            return false
+        case "contact", "customer", "client", "lead":
+            return true
+        default:
+            return true
+        }
+    }
+
+    /// Texto y fecha del último mensaje del hilo (para la bandeja).
+    static func latestInboxPreview(from rows: [Message]) -> (text: String, date: Date)? {
+        guard let last = rows.max(by: {
+            (parseISO($0.createdAt) ?? .distantPast) < (parseISO($1.createdAt) ?? .distantPast)
+        }) else { return nil }
+        let raw = (last.textContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text: String
+        if !raw.isEmpty {
+            text = raw
+        } else if isAudioMessage(last) {
+            text = "Nota de voz"
+        } else if isImageMessage(last) {
+            text = "📷 Foto"
+        } else if last.mediaUrl != nil || last.mediaContent != nil {
+            text = "📎 Archivo adjunto"
+        } else {
+            text = ""
+        }
+        let date = parseISO(last.createdAt) ?? Date()
+        return (text, date)
+    }
+
     /// ¿Es un mensaje de audio / nota de voz?
     static func isAudioMessage(_ row: Message) -> Bool {
         let type = combinedMediaType(row).lowercased()
@@ -1196,6 +1328,18 @@ enum CrmChatService {
         if row.mediaContent != nil, type.contains("ogg") || type.contains("opus") || type.contains("mpeg") {
             return true
         }
+        return false
+    }
+
+    /// ¿Es un mensaje de imagen?
+    static func isImageMessage(_ row: Message) -> Bool {
+        if isAudioMessage(row) { return false }
+        let type = combinedMediaType(row).lowercased()
+        if type.contains("image") || type.hasPrefix("img") { return true }
+        if let url = row.mediaUrl?.lowercased() {
+            return [".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif"].contains { url.contains($0) }
+        }
+        if row.mediaContent != nil, type.contains("image") { return true }
         return false
     }
 
@@ -1516,5 +1660,19 @@ enum PhoneCallLauncher {
             object: nil,
             userInfo: ["number": dial, "reason": reason]
         )
+    }
+}
+
+extension UIImage {
+    func preparedForCrmUpload(maxEdge: CGFloat) -> UIImage {
+        let maxSide = max(size.width, size.height)
+        guard maxSide > maxEdge else { return self }
+        let scale = maxEdge / maxSide
+        let target = CGSize(width: size.width * scale, height: size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: target))
+        }
     }
 }

@@ -68,6 +68,7 @@ struct MainTabView: View {
     @StateObject private var tabRouter = MainTabRouter()
     @EnvironmentObject var auth: AuthViewModel
     @EnvironmentObject var groo: GrooAppStore
+    @EnvironmentObject private var chatInbox: ChatInboxStore
 
     var body: some View {
         TabView(selection: $tabRouter.selected) {
@@ -111,6 +112,19 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
             tabRouter.selected = .reminders
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
+            tabRouter.openChat()
+            if let idStr = note.userInfo?["thread_id"] as? String,
+               let threadId = UUID(uuidString: idStr) {
+                chatInbox.pendingOpenLeadThreadId = threadId
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshInboxFromPush)) { _ in
+            Task {
+                guard let token = auth.session?.accessToken, !token.isEmpty else { return }
+                await chatInbox.refreshCrmConversations(accessToken: token)
+            }
         }
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(Color.white, for: .tabBar)

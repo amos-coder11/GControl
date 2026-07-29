@@ -7,12 +7,20 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import fs from "fs";
 import {
   handleInstagramEvent,
   handleInstagramVerify,
   instagramWebhookStatus,
+  sendInstagramImage,
   sendInstagramText,
 } from "./instagram-webhook.js";
+import {
+  publicMediaBaseUrl,
+  resolveOutgoingMediaPath,
+  mimeTypeForFilename,
+  saveOutgoingImageBase64,
+} from "./instagram-media.js";
 import {
   exportInstagramToken,
   getInstagramPageAccessToken,
@@ -21,13 +29,16 @@ import {
 } from "./instagram-token.js";
 import {
   appendOutgoing,
+  appendOutgoingMedia,
   getConversation,
   listConversations,
   listMessages,
+  markConversationRead,
   resetInstagramStore,
   setAiActive,
   setAllAiActive,
 } from "./instagram-store.js";
+import { notifyInstagramIncomingMessage } from "./crm-push.js";
 import {
   enrichConversationProfile,
   getRecentWebhookEvents,
@@ -83,7 +94,7 @@ const app = express();
 // Preserve raw body for Meta X-Hub-Signature-256 on Instagram webhook.
 app.use(
   express.json({
-    limit: "2mb",
+    limit: "16mb",
     verify: (req, _res, buf) => {
       if (req.originalUrl?.startsWith("/api/webhooks/instagram")) {
         req.rawBody = buf;
@@ -407,10 +418,25 @@ app.get("/api/instagram/debug", (req, res) => {
     health: {
       ...instagramWebhookStatus(),
       ...instagramSendStatus(),
+      pushConfigured: Boolean(
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.PUSH_WEBHOOK_SECRET
+      ),
+      pushUrl: process.env.SUPABASE_PUSH_FUNCTION_URL || "default",
     },
     conversations: listConversations(20),
     recentWebhooks: getRecentWebhookEvents(),
   });
+});
+
+/** Prueba manual de push APNs (mensaje Instagram simulado). */
+app.post("/api/instagram/test-push", async (req, res) => {
+  const conversationId = String(req.body?.conversationId || "ig:test");
+  const result = await notifyInstagramIncomingMessage({
+    conversationId,
+    text: String(req.body?.text || "Prueba de notificación GControl"),
+    contactName: String(req.body?.contactName || "@test"),
+  });
+  return res.status(result.ok ? 200 : 502).json(result);
 });
 
 app.get("/api/whatsapp/get_messages", (req, res) => {
@@ -420,6 +446,15 @@ app.get("/api/whatsapp/get_messages", (req, res) => {
   }
   const limit = Number(req.query.limit) || 100;
   return res.status(200).json({ data: listMessages(conversationId, limit) });
+});
+
+app.post("/api/whatsapp/mark_read", (req, res) => {
+  const conversationId = String(req.body?.conversationId || "");
+  if (!conversationId) {
+    return res.status(400).json({ error: "conversationId_required" });
+  }
+  markConversationRead(conversationId);
+  return res.status(200).json({ ok: true, conversationId });
 });
 
 function sendContactPhoto(req, res) {
@@ -472,8 +507,13 @@ app.post("/api/whatsapp/ai_toggle_all", (req, res) => {
 app.post("/api/whatsapp/send_message", async (req, res) => {
   const conversationId = String(req.body?.conversationId || "");
   const text = String(req.body?.textContent || req.body?.text || "").trim();
-  if (!conversationId || !text) {
-    return res.status(400).json({ error: "conversationId_and_text_required" });
+  const mediaContent = req.body?.mediaContent || req.body?.media_content || null;
+  const mediaType = String(req.body?.mediaType || req.body?.media_type || "image/jpeg");
+  const messageType = String(req.body?.messageType || req.body?.message_type || "").toLowerCase();
+  const directMediaUrl = String(req.body?.mediaUrl || req.body?.imageUrl || "").trim();
+
+  if (!conversationId) {
+    return res.status(400).json({ error: "conversationId_required" });
   }
 
   const igsid = conversationId.startsWith("ig:")
@@ -492,9 +532,61 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
     });
   }
 
+  const isImage =
+    messageType.includes("image") ||
+    mediaType.startsWith("image/") ||
+    Boolean(directMediaUrl && !mediaType.startsWith("audio/"));
+
   try {
+    if (isImage) {
+      let publicUrl = directMediaUrl || null;
+      let storedContent = null;
+
+      if (mediaContent) {
+        const saved = saveOutgoingImageBase64(mediaContent, mediaType);
+        const base = publicMediaBaseUrl(req);
+        if (!base) {
+          return res.status(500).json({
+            error: "public_base_url_missing",
+            message:
+              "Configura INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL en Render para enviar imágenes.",
+          });
+        }
+        publicUrl = `${base}/${saved.filename}`;
+        storedContent = String(mediaContent).slice(0, 500_000);
+      }
+
+      if (!publicUrl) {
+        return res.status(400).json({ error: "image_required" });
+      }
+
+      const graph = await sendInstagramImage({ igsid, imageUrl: publicUrl });
+      const messageId =
+        graph?.message_id || graph?.messageId || graph?.id || null;
+      appendOutgoingMedia(conversationId, {
+        text,
+        messageId,
+        mediaUrl: publicUrl,
+        mediaType,
+        mediaContent: storedContent,
+        messageType: "image",
+      });
+      return res.status(200).json({
+        ok: true,
+        conversationId,
+        mediaUrl: publicUrl,
+        graph,
+      });
+    }
+
+    if (!text) {
+      return res.status(400).json({ error: "conversationId_and_text_required" });
+    }
+
     const graph = await sendInstagramText({ igsid, text });
-    appendOutgoing(conversationId, text);
+    const messageId =
+      graph?.message_id || graph?.messageId || graph?.id || null;
+    appendOutgoing(conversationId, text, messageId);
     return res.status(200).json({ ok: true, conversationId, graph });
   } catch (err) {
     console.warn("[instagram/send]", err?.message || err, err?.details || "");
@@ -504,6 +596,16 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
       details: err?.details || null,
     });
   }
+});
+
+app.get("/api/media/outgoing/:filename", (req, res) => {
+  const filePath = resolveOutgoingMediaPath(req.params.filename);
+  if (!filePath) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  res.setHeader("Content-Type", mimeTypeForFilename(req.params.filename));
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  fs.createReadStream(filePath).pipe(res);
 });
 
 app.get("/api/shopify/install", (req, res) => {

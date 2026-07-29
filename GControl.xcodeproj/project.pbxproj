@@ -7,25 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0GRO0A /* GrooClinicBudgetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO0A /* GrooClinicBudgetService.swift */; };
-		AA0EM001 /* GControlEmployeeManualCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0EM001 /* GControlEmployeeManualCatalog.swift */; };
-		AA0EM002 /* GControlEmployeeManualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0EM002 /* GControlEmployeeManualView.swift */; };
-		AA0SMS01 /* GrooSmileStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS01 /* GrooSmileStudioView.swift */; };
-		AA0SMS02 /* GeminiSmileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS02 /* GeminiSmileClient.swift */; };
-		AA0SMS03 /* GrooImageProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS03 /* GrooImageProcessing.swift */; };
-		AA0SMS04 /* GrooDentalArch3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS04 /* GrooDentalArch3DView.swift */; };
-		AA0EM000 /* EmployeeManual in Resources */ = {isa = PBXBuildFile; fileRef = AB0EM000 /* EmployeeManual */; };
-		AA0GRO08 /* GrooReminderNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO08 /* GrooReminderNotificationService.swift */; };
-		AA0GRO0B /* GrooHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO0B /* GrooHomeView.swift */; };
-		AA0GRO06 /* GrooMainScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO06 /* GrooMainScreens.swift */; };
-		AA0GRO05 /* GrooMentorChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO05 /* GrooMentorChatView.swift */; };
-		AA0GRO09 /* GrooChatUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO09 /* GrooChatUI.swift */; };
-		AA0GRO04 /* GrooCareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO04 /* GrooCareViews.swift */; };
-		AA0GRO03 /* GrooProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO03 /* GrooProfileSetupView.swift */; };
-		AA0GRO02 /* GrooOnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO02 /* GrooOnboardingFlow.swift */; };
-		AA0GRO01 /* GrooAppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO01 /* GrooAppStore.swift */; };
-		AA0GRO00 /* GrooCareCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO00 /* GrooCareCatalog.swift */; };
-		AA00OAI1 /* OpenAIChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00OAI1 /* OpenAIChatClient.swift */; };
 		A1B2C3D401234567 /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D401234568 /* ImageCacheService.swift */; };
 		AA000001 /* CarDashboardAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000001 /* CarDashboardAppApp.swift */; };
 		AA000007 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000007 /* SettingsViewModel.swift */; };
@@ -47,7 +28,6 @@
 		AA000033 /* ChatInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000033 /* ChatInboxStore.swift */; };
 		AA000034 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = AG000002 /* Supabase */; };
 		AA000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000034 /* SupabaseClientProvider.swift */; };
-		AA00ORG1 /* OrgMembershipService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00ORG1 /* OrgMembershipService.swift */; };
 		AA000036 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000035 /* AuthViewModel.swift */; };
 		AA000037 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000036 /* LoginView.swift */; };
 		AA000038 /* AuthRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000037 /* AuthRootView.swift */; };
@@ -118,28 +98,29 @@
 		AA000141 /* DrflowProductMetricsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000141 /* DrflowProductMetricsCatalog.swift */; };
 		AA000142 /* ProductMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000142 /* ProductMetricsView.swift */; };
 		AA000143 /* ShopifyOrdersService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000143 /* ShopifyOrdersService.swift */; };
+		AA00OAI1 /* OpenAIChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00OAI1 /* OpenAIChatClient.swift */; };
+		AA00ORG1 /* OrgMembershipService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00ORG1 /* OrgMembershipService.swift */; };
+		AA0EM000 /* EmployeeManual in Resources */ = {isa = PBXBuildFile; fileRef = AB0EM000 /* EmployeeManual */; };
+		AA0EM001 /* GControlEmployeeManualCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0EM001 /* GControlEmployeeManualCatalog.swift */; };
+		AA0EM002 /* GControlEmployeeManualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0EM002 /* GControlEmployeeManualView.swift */; };
+		AA0GRO00 /* GrooCareCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO00 /* GrooCareCatalog.swift */; };
+		AA0GRO01 /* GrooAppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO01 /* GrooAppStore.swift */; };
+		AA0GRO02 /* GrooOnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO02 /* GrooOnboardingFlow.swift */; };
+		AA0GRO03 /* GrooProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO03 /* GrooProfileSetupView.swift */; };
+		AA0GRO04 /* GrooCareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO04 /* GrooCareViews.swift */; };
+		AA0GRO05 /* GrooMentorChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO05 /* GrooMentorChatView.swift */; };
+		AA0GRO06 /* GrooMainScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO06 /* GrooMainScreens.swift */; };
+		AA0GRO08 /* GrooReminderNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO08 /* GrooReminderNotificationService.swift */; };
+		AA0GRO09 /* GrooChatUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO09 /* GrooChatUI.swift */; };
+		AA0GRO0A /* GrooClinicBudgetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO0A /* GrooClinicBudgetService.swift */; };
+		AA0GRO0B /* GrooHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO0B /* GrooHomeView.swift */; };
+		AA0SMS01 /* GrooSmileStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS01 /* GrooSmileStudioView.swift */; };
+		AA0SMS02 /* GeminiSmileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS02 /* GeminiSmileClient.swift */; };
+		AA0SMS03 /* GrooImageProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS03 /* GrooImageProcessing.swift */; };
+		AA0SMS04 /* GrooDentalArch3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0SMS04 /* GrooDentalArch3DView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AB0GRO0A /* GrooClinicBudgetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooClinicBudgetService.swift; sourceTree = "<group>"; };
-		AB0EM000 /* EmployeeManual */ = {isa = PBXFileReference; lastKnownFileType = folder; path = EmployeeManual; sourceTree = "<group>"; };
-		AB0EM001 /* GControlEmployeeManualCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GControlEmployeeManualCatalog.swift; sourceTree = "<group>"; };
-		AB0EM002 /* GControlEmployeeManualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GControlEmployeeManualView.swift; sourceTree = "<group>"; };
-		AB0SMS01 /* GrooSmileStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooSmileStudioView.swift; sourceTree = "<group>"; };
-		AB0SMS02 /* GeminiSmileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiSmileClient.swift; sourceTree = "<group>"; };
-		AB0SMS03 /* GrooImageProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooImageProcessing.swift; sourceTree = "<group>"; };
-		AB0SMS04 /* GrooDentalArch3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooDentalArch3DView.swift; sourceTree = "<group>"; };
-		AB0GRO08 /* GrooReminderNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooReminderNotificationService.swift; sourceTree = "<group>"; };
-		AB0GRO0B /* GrooHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooHomeView.swift; sourceTree = "<group>"; };
-		AB0GRO06 /* GrooMainScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooMainScreens.swift; sourceTree = "<group>"; };
-		AB0GRO05 /* GrooMentorChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooMentorChatView.swift; sourceTree = "<group>"; };
-		AB0GRO09 /* GrooChatUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooChatUI.swift; sourceTree = "<group>"; };
-		AB0GRO04 /* GrooCareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareViews.swift; sourceTree = "<group>"; };
-		AB0GRO03 /* GrooProfileSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooProfileSetupView.swift; sourceTree = "<group>"; };
-		AB0GRO02 /* GrooOnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooOnboardingFlow.swift; sourceTree = "<group>"; };
-		AB0GRO01 /* GrooAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooAppStore.swift; sourceTree = "<group>"; };
-		AB0GRO00 /* GrooCareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareCatalog.swift; sourceTree = "<group>"; };
-		AB00OAI1 /* OpenAIChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIChatClient.swift; sourceTree = "<group>"; };
 		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
 		AB000000 /* GControl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GControl.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000001 /* CarDashboardAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarDashboardAppApp.swift; sourceTree = "<group>"; };
@@ -161,7 +142,6 @@
 		AB000032 /* ChatAvatarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAvatarViews.swift; sourceTree = "<group>"; };
 		AB000033 /* ChatInboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInboxStore.swift; sourceTree = "<group>"; };
 		AB000034 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
-		AB00ORG1 /* OrgMembershipService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrgMembershipService.swift; sourceTree = "<group>"; };
 		AB000035 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		AB000036 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		AB000037 /* AuthRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRootView.swift; sourceTree = "<group>"; };
@@ -236,6 +216,26 @@
 		AB000141 /* DrflowProductMetricsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrflowProductMetricsCatalog.swift; sourceTree = "<group>"; };
 		AB000142 /* ProductMetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductMetricsView.swift; sourceTree = "<group>"; };
 		AB000143 /* ShopifyOrdersService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShopifyOrdersService.swift; sourceTree = "<group>"; };
+		AB00OAI1 /* OpenAIChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIChatClient.swift; sourceTree = "<group>"; };
+		AB00ORG1 /* OrgMembershipService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrgMembershipService.swift; sourceTree = "<group>"; };
+		AB0EM000 /* EmployeeManual */ = {isa = PBXFileReference; lastKnownFileType = folder; path = EmployeeManual; sourceTree = "<group>"; };
+		AB0EM001 /* GControlEmployeeManualCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GControlEmployeeManualCatalog.swift; sourceTree = "<group>"; };
+		AB0EM002 /* GControlEmployeeManualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GControlEmployeeManualView.swift; sourceTree = "<group>"; };
+		AB0GRO00 /* GrooCareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareCatalog.swift; sourceTree = "<group>"; };
+		AB0GRO01 /* GrooAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooAppStore.swift; sourceTree = "<group>"; };
+		AB0GRO02 /* GrooOnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooOnboardingFlow.swift; sourceTree = "<group>"; };
+		AB0GRO03 /* GrooProfileSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooProfileSetupView.swift; sourceTree = "<group>"; };
+		AB0GRO04 /* GrooCareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareViews.swift; sourceTree = "<group>"; };
+		AB0GRO05 /* GrooMentorChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooMentorChatView.swift; sourceTree = "<group>"; };
+		AB0GRO06 /* GrooMainScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooMainScreens.swift; sourceTree = "<group>"; };
+		AB0GRO08 /* GrooReminderNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooReminderNotificationService.swift; sourceTree = "<group>"; };
+		AB0GRO09 /* GrooChatUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooChatUI.swift; sourceTree = "<group>"; };
+		AB0GRO0A /* GrooClinicBudgetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooClinicBudgetService.swift; sourceTree = "<group>"; };
+		AB0GRO0B /* GrooHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooHomeView.swift; sourceTree = "<group>"; };
+		AB0SMS01 /* GrooSmileStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooSmileStudioView.swift; sourceTree = "<group>"; };
+		AB0SMS02 /* GeminiSmileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiSmileClient.swift; sourceTree = "<group>"; };
+		AB0SMS03 /* GrooImageProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooImageProcessing.swift; sourceTree = "<group>"; };
+		AB0SMS04 /* GrooDentalArch3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooDentalArch3DView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -782,9 +782,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T6PX988URP;
+				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GControl;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "GControl uses Face ID to protect access to your clinic account.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GControl may use your location for clinic-related features when enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
@@ -813,12 +815,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GControl;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "GControl uses Face ID to protect access to your clinic account.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GControl may use your location for clinic-related features when enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;

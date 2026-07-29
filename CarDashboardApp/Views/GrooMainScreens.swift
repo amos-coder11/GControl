@@ -76,6 +76,46 @@ struct GrooChatRootView: View {
             groo.selectSession(sessionId)
             destination = .mentor(sessionId)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
+            handleOpenChatPush(note.userInfo)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshInboxFromPush)) { _ in
+            Task { await refreshInstagramInbox() }
+        }
+        .onChange(of: chatInbox.pendingOpenLeadThreadId) { _, threadId in
+            guard let threadId else { return }
+            openLeadThreadIfPossible(threadId)
+        }
+        .onChange(of: chatInbox.liveThreads.count) { _, _ in
+            if let pending = chatInbox.pendingOpenLeadThreadId {
+                openLeadThreadIfPossible(pending)
+            }
+        }
+    }
+
+    private func handleOpenChatPush(_ userInfo: [AnyHashable: Any]?) {
+        guard let userInfo,
+              let kind = userInfo["kind"] as? String,
+              kind == "crm_lead",
+              let idStr = userInfo["thread_id"] as? String,
+              let threadId = UUID(uuidString: idStr)
+        else { return }
+        Task {
+            await refreshInstagramInbox()
+            await MainActor.run {
+                chatInbox.pendingOpenLeadThreadId = threadId
+            }
+        }
+    }
+
+    private func openLeadThreadIfPossible(_ threadId: UUID) {
+        guard let thread = chatInbox.liveThreads.first(where: { $0.id == threadId }) else {
+            chatInbox.pendingOpenLeadThreadId = threadId
+            return
+        }
+        chatInbox.pendingOpenLeadThreadId = nil
+        chatInbox.activeLeadThreadId = thread.id
+        destination = .instagram(thread)
     }
 
     private func refreshInstagramInbox() async {
@@ -152,7 +192,7 @@ struct GrooChatInboxView: View {
         case .instagram, .all:
             return filtered
         case .unread:
-            return filtered.filter { ($0.unread ?? 0) > 0 }
+            return filtered.filter { effectiveInstagramUnread(for: $0) > 0 }
         case .assistant:
             return []
         }
@@ -176,14 +216,22 @@ struct GrooChatInboxView: View {
         var sortDate: Date {
             switch self {
             case .session(let s): return s.updatedAt
-            case .instagram: return Date()
+            case .instagram(let t): return t.lastActivityAt ?? .distantPast
             }
         }
     }
 
+    private var sortedSessions: [GrooChatSession] {
+        sessions.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var sortedInstagramThreads: [ChatThread] {
+        instagramThreads.sorted { ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast) }
+    }
+
     private var inboxEntries: [InboxEntry] {
-        let ig = instagramThreads.map(InboxEntry.instagram)
-        let asst = sessions.map(InboxEntry.session)
+        let ig = sortedInstagramThreads.map(InboxEntry.instagram)
+        let asst = sortedSessions.map(InboxEntry.session)
         switch filter {
         case .instagram:
             return ig
@@ -211,13 +259,13 @@ struct GrooChatInboxView: View {
                                 GrooInboxConversationRow(
                                     title: thread.title,
                                     preview: thread.preview.isEmpty ? "Mensaje de Instagram" : thread.preview,
-                                    date: Date(),
+                                    date: thread.lastActivityAt ?? Date(),
                                     timeLabel: thread.time.isEmpty ? nil : thread.time,
-                                    unreadCount: thread.unread ?? 0,
+                                    unreadCount: effectiveInstagramUnread(for: thread),
                                     avatarURL: thread.avatarCarURL,
                                     avatarAccessToken: auth.session?.accessToken,
                                     avatarInitial: thread.avatarInitial,
-                                    showsInstagramBadge: true
+                                    socialSource: thread.socialSource ?? .instagram
                                 )
                             }
                             .buttonStyle(.plain)
@@ -477,6 +525,10 @@ struct GrooChatInboxView: View {
 
     private func unreadCount(for session: GrooChatSession) -> Int {
         GrooAppStore.unreadCount(in: session)
+    }
+
+    private func effectiveInstagramUnread(for thread: ChatThread) -> Int {
+        chatInbox.effectiveUnread(thread) ?? 0
     }
 }
 

@@ -5,24 +5,83 @@ import UIKit
 
 struct ChatSocialBadgeView: View {
     let platform: ChatSocialPlatform
+    var iconSize: CGFloat = 11
 
     var body: some View {
         Group {
             switch platform {
             case .instagram:
-                DrflowSocialIcon(platform: .instagram, size: 9)
+                DrflowSocialIcon(platform: .instagram, size: iconSize)
             case .whatsApp:
                 ZStack {
                     Circle()
                         .fill(Color(red: 0.15, green: 0.78, blue: 0.41))
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: iconSize, weight: .bold))
                         .foregroundStyle(.white)
                 }
             case .facebook:
-                DrflowSocialIcon(platform: .facebook, size: 9)
+                DrflowSocialIcon(platform: .facebook, size: iconSize)
             }
         }
+    }
+}
+
+/// Insignia circular (blanco + borde rosa) como Telegram / Instagram DM.
+struct GrooSocialAvatarBadge: View {
+    let platform: ChatSocialPlatform
+    var diameter: CGFloat = 22
+
+    private var iconSize: CGFloat { max(10, diameter * 0.52) }
+
+    var body: some View {
+        ChatSocialBadgeView(platform: platform, iconSize: iconSize)
+            .frame(width: iconSize, height: iconSize)
+            .frame(width: diameter, height: diameter)
+            .background(Circle().fill(Color.white))
+            .overlay {
+                Circle()
+                    .strokeBorder(GrooAvatarPalette.vividPink.opacity(0.95), lineWidth: 1.5)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+    }
+}
+
+/// Avatar de bandeja: inicial / foto + insignia de red.
+struct GrooInboxAvatarView: View {
+    let title: String
+    var avatarURL: URL? = nil
+    var avatarAccessToken: String? = nil
+    var avatarInitial: String? = nil
+    var socialSource: ChatSocialPlatform? = nil
+    var size: CGFloat = 54
+
+    private var badgeSize: CGFloat { max(20, size * 0.40) }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let avatarURL {
+                ChatAsyncContactPhoto(
+                    url: avatarURL,
+                    accessToken: avatarAccessToken,
+                    fallbackInitial: avatarInitial ?? GrooAvatarPalette.initial(from: title),
+                    fallbackColor: GrooAvatarPalette.color(for: title),
+                    diameter: size
+                )
+            } else {
+                GrooLetterAvatar(
+                    name: title,
+                    size: size,
+                    initialOverride: avatarInitial
+                )
+            }
+
+            if let socialSource {
+                GrooSocialAvatarBadge(platform: socialSource, diameter: badgeSize)
+                    .offset(x: size * 0.04, y: size * 0.04)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 
@@ -43,53 +102,30 @@ struct ChatThreadAvatarView: View {
                         url: url,
                         accessToken: accessToken,
                         fallbackInitial: thread.avatarInitial,
-                        fallbackColor: thread.avatarColor,
+                        fallbackColor: GrooAvatarPalette.color(for: thread.title),
                         diameter: diameter
                     )
-                } else {
+                } else if let icon = thread.avatarIcon {
                     ZStack {
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        thread.avatarColor.opacity(0.95),
-                                        thread.avatarColor.opacity(0.62),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay {
-                                Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                            }
+                            .fill(GrooAvatarPalette.color(for: thread.title))
                             .frame(width: diameter, height: diameter)
-                            .shadow(color: thread.avatarColor.opacity(0.45), radius: diameter * 0.10, x: 0, y: 1)
-                        if let initial = thread.avatarInitial, let ch = initial.first {
-                            Text(String(ch).uppercased())
-                                .font(.system(size: diameter * 0.40, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                        } else if let icon = thread.avatarIcon {
-                            Image(systemName: icon)
-                                .font(.system(size: diameter * 0.42, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
+                        Image(systemName: icon)
+                            .font(.system(size: diameter * 0.38, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
                     }
+                } else {
+                    GrooLetterAvatar(
+                        name: thread.title,
+                        size: diameter,
+                        initialOverride: thread.avatarInitial
+                    )
                 }
             }
 
-            // La insignia de la red (WhatsApp / Instagram…) se muestra SIEMPRE que el
-            // hilo tenga red de origen, haya foto o solo inicial.
             if let platform = thread.socialSource {
-                ChatSocialBadgeView(platform: platform)
-                    .frame(width: badgeSize - 4, height: badgeSize - 4)
-                    .padding(2)
-                    .background(Circle().fill(Color.white))
-                    .clipShape(Circle())
-                    .overlay {
-                        Circle()
-                            .strokeBorder(Color.white, lineWidth: 1.5)
-                    }
-                    .offset(x: diameter * 0.06, y: diameter * 0.06)
+                GrooSocialAvatarBadge(platform: platform, diameter: badgeSize)
+                    .offset(x: diameter * 0.04, y: diameter * 0.04)
             }
         }
         .frame(width: diameter, height: diameter)

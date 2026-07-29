@@ -25,6 +25,7 @@ private struct AppShellRoot: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var appLock: AppLockManager
     @EnvironmentObject var moderationStore: UserModerationStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var phoneCallAlertMessage: String?
 
     var body: some View {
@@ -65,6 +66,12 @@ private struct AppShellRoot: View {
                 guard authVM.isAuthenticated else { return }
                 await RemotePushRegistration.requestAuthorizationAndRegister()
                 await RemotePushRegistration.syncPendingTokenToSupabase()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active, authVM.isAuthenticated else { return }
+                Task {
+                    await RemotePushRegistration.refreshIfAuthorized()
+                }
             }
     }
 
