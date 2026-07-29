@@ -144,6 +144,25 @@ export async function runInstagramDiagnostics() {
       explain: msgs.ok ? null : explainGraphError(msgs.error),
       sample: msgs.ok ? msgs.json?.messages?.data?.slice(0, 3) || null : null,
     });
+
+    // La expansión anidada omite los adjuntos; el nodo individual sí los trae.
+    const firstMsgId = msgs.json?.messages?.data?.[0]?.id;
+    if (firstMsgId) {
+      for (const fields of [
+        "id,created_time,from,message,attachments",
+        "id,created_time,from,message,shares,story",
+        "id,message,attachments{id,name,mime_type,size,file_url,image_data,video_data,audio_data}",
+      ]) {
+        const one = await graphRequest(firstMsgId, { query: { fields }, host });
+        checks.push({
+          check: `single_message[${fields.split(",").pop()}]`,
+          ok: one.ok,
+          status: one.status,
+          error: one.ok ? null : one.error,
+          sample: one.ok ? one.json : null,
+        });
+      }
+    }
   }
 
   // 5. Suscripción a webhooks
