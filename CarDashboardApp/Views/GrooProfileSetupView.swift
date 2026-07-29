@@ -48,7 +48,7 @@ struct GrooProfileSetupView: View {
                             .foregroundStyle(DrflowTheme.textSecondary)
                     }
                     Spacer()
-                    Button(step == totalSteps - 1 ? "Go to diagnostic" : "Next") {
+                    Button(step == totalSteps - 1 ? "Go to assessment" : "Next") {
                         if step < totalSteps - 1 {
                             step += 1
                             groo.save()
@@ -98,7 +98,7 @@ struct GrooProfileSetupView: View {
                 field("Last name", text: $groo.profile.lastName)
             }
         case 1:
-            titled("Phone (optional)", subtitle: "For SMS/WhatsApp reminders.") {
+            titled("Clinic phone (optional)", subtitle: "For SMS/WhatsApp appointment reminders.") {
                 field("Phone", text: $groo.profile.phone, keyboard: .phonePad)
             }
         case 2:
@@ -118,13 +118,13 @@ struct GrooProfileSetupView: View {
                 field("URL or username", text: $groo.profile.linkedIn)
             }
         default:
-            titled("Resume (optional)", subtitle: "PDF/DOC/DOCX, max 10 MB.") {
+            titled("Clinic documents (optional)", subtitle: "PDF/DOC/DOCX, max 10 MB.") {
                 Button {
                     showImporter = true
                 } label: {
                     HStack {
                         Image(systemName: "doc.badge.plus")
-                        Text(groo.profile.cvFileName.isEmpty ? "Upload resume" : groo.profile.cvFileName)
+                        Text(groo.profile.cvFileName.isEmpty ? "Upload clinic file" : groo.profile.cvFileName)
                             .lineLimit(1)
                         Spacer()
                     }

@@ -1,13 +1,13 @@
 default_platform(:ios)
 
 platform :ios do
-  desc "Archive Groo and upload to App Store Connect"
+  desc "Archive GControl and upload to App Store Connect"
   lane :release do
     api_key = asc_api_key
 
     build_app(
-      scheme: "Groo",
-      project: "Groo.xcodeproj",
+      scheme: "GControl",
+      project: "GControl.xcodeproj",
       export_method: "app-store",
       export_options: {
         method: "app-store",
@@ -34,8 +34,8 @@ platform :ios do
   lane :build do
     asc_api_key
     build_app(
-      scheme: "Groo",
-      project: "Groo.xcodeproj",
+      scheme: "GControl",
+      project: "GControl.xcodeproj",
       export_method: "app-store",
       export_options: {
         method: "app-store",
@@ -45,7 +45,7 @@ platform :ios do
       xcargs: "-allowProvisioningUpdates",
       clean: true,
       output_directory: "./build",
-      output_name: "Groo.ipa"
+      output_name: "GControl.ipa"
     )
   end
 
@@ -55,7 +55,7 @@ platform :ios do
     upload_to_testflight(
       api_key: api_key,
       app_identifier: "com.grooapp.app",
-      ipa: "./build/Groo.ipa",
+      ipa: "./build/GControl.ipa",
       skip_waiting_for_build_processing: true
     )
   end

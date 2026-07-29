@@ -41,7 +41,7 @@ enum GrooReminderTimeParser {
         if matchesWord("entrevista", "interview", in: lower) { return "Interview" }
         if matchesWord("cita", "appointment", in: lower) { return "Appointment" }
         if matchesWord("revisión", "revision", "review", in: lower) { return "Review" }
-        return "GROO reminder"
+        return "Clinic reminder"
     }
 
     static func relativeSpanDescription(from text: String) -> String? {
@@ -224,7 +224,7 @@ enum GrooReminderNotificationService {
 
         let content = UNMutableNotificationContent()
         content.title = reminder.title
-        content.body = reminder.note.isEmpty ? "It's time for your reminder." : reminder.note
+        content.body = reminder.note.isEmpty ? "It's time for your clinic reminder." : reminder.note
         content.sound = .default
         content.userInfo = ["grooReminderId": reminder.id.uuidString]
 

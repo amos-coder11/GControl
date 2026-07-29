@@ -19,6 +19,8 @@
 	<string>Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Para elegir fotos de perfil y adjuntos en el chat.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Para capturar la foto del paciente en el estudio de sonrisa con IA.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>tel</string>
@@ -44,5 +46,11 @@
 	<string>$(OPENAI_API_KEY)</string>
 	<key>OPENAI_MODEL</key>
 	<string>$(OPENAI_MODEL)</string>
+	<key>GEMINI_API_KEY</key>
+	<string>$(GEMINI_API_KEY)</string>
+	<key>GEMINI_IMAGE_API_KEY</key>
+	<string>$(GEMINI_IMAGE_API_KEY)</string>
+	<key>GEMINI_MODEL</key>
+	<string>$(GEMINI_MODEL)</string>
 </dict>
 </plist>

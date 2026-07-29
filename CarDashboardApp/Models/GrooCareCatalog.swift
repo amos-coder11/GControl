@@ -12,11 +12,11 @@ enum GrooCarePillar: String, CaseIterable, Identifiable, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .communication: return "Communication"
-        case .attitude: return "Attitude"
-        case .relationships: return "Relationships"
-        case .execution: return "Execution"
-        case .foundation: return "YOU"
+        case .communication: return "Patients"
+        case .attitude: return "Operations"
+        case .relationships: return "Team"
+        case .execution: return "Billing"
+        case .foundation: return "Practice"
         }
     }
 
@@ -32,21 +32,21 @@ enum GrooCarePillar: String, CaseIterable, Identifiable, Codable, Hashable {
 
     var subtitle: String {
         switch self {
-        case .communication: return "Clarity and influence in decisions"
-        case .attitude: return "Mindset under pressure and setbacks"
-        case .relationships: return "Trust network and reputation"
-        case .execution: return "Decide and deliver with incomplete information"
-        case .foundation: return "Discipline, purpose, and balance"
+        case .communication: return "Patient experience and chair-side communication"
+        case .attitude: return "Daily workflows, scheduling, and efficiency"
+        case .relationships: return "Team coordination and internal culture"
+        case .execution: return "Collections, insurance, and revenue rhythm"
+        case .foundation: return "Practice vision, compliance, and sustainability"
         }
     }
 
     var growthHint: String {
         switch self {
-        case .communication: return "Practice saying what you need clearly in your next important conversation."
-        case .attitude: return "When a setback appears, name the fact and the next small step."
-        case .relationships: return "Invest in a key relationship before you need it."
-        case .execution: return "Pick a pending decision and close it with a concrete deadline."
-        case .foundation: return "Protect a short block of energy (sleep, focus, or purpose) this week."
+        case .communication: return "Confirm tomorrow's patients with a short reminder message."
+        case .attitude: return "Block 15 minutes to review chair utilization for the week."
+        case .relationships: return "Align the front desk and clinical team on one daily priority."
+        case .execution: return "Review outstanding balances and plan two follow-up calls."
+        case .foundation: return "Protect time for compliance checks or equipment maintenance this week."
         }
     }
 
@@ -134,7 +134,7 @@ struct GrooDiagnosticResult: Hashable, Codable {
 
     var recommendedAction: String {
         guard let weakest = pillars.min(by: { $0.average < $1.average }) else {
-            return "Talk to GROO and define a concrete plan for this week."
+            return "Talk to \(GrooBrand.appName) and define a concrete plan for this week."
         }
         return weakest.pillar.growthHint
     }
@@ -169,37 +169,37 @@ enum GrooCareScoring {
 
     private static func nickname(for overall: Double, pillars: [GrooPillarScore]) -> String {
         let strongest = pillars.max(by: { $0.average < $1.average })?.pillar
-        if overall < 2.6 { return "Emerging Foundation" }
+        if overall < 2.6 { return "Building Foundations" }
         if overall < 3.4 {
             switch strongest {
-            case .communication: return "Quiet Communicator"
-            case .attitude: return "Steady Baseline"
-            case .relationships: return "Relational Builder"
-            case .execution: return "Quiet Executor"
-            default: return "Steady Baseline"
+            case .communication: return "Patient-Centered Start"
+            case .attitude: return "Steady Operations"
+            case .relationships: return "Team Builder"
+            case .execution: return "Revenue Watcher"
+            default: return "Steady Practice"
             }
         }
         if overall < 4.2 {
             switch strongest {
-            case .communication: return "Rising Communicator"
-            case .attitude: return "Resilient Climber"
-            case .relationships: return "Trusted Connector"
-            case .execution: return "Decisive Operator"
-            default: return "Balanced Professional"
+            case .communication: return "Trusted Chairside"
+            case .attitude: return "Efficient Operator"
+            case .relationships: return "Aligned Team"
+            case .execution: return "Strong Collections"
+            default: return "Balanced Clinic"
             }
         }
-        return "CARE Momentum"
+        return "Clinic Momentum"
     }
 
     private static func summary(for overall: Double, pillars: [GrooPillarScore]) -> String {
         let weak = pillars.min(by: { $0.average < $1.average })
         let strong = pillars.max(by: { $0.average < $1.average })
-        let weakTitle = weak?.pillar.title ?? "YOU"
-        let strongTitle = strong?.pillar.title ?? "Execution"
+        let weakTitle = weak?.pillar.title ?? "Practice"
+        let strongTitle = strong?.pillar.title ?? "Billing"
         let trait = weak?.lowestTrait ?? "growth"
-        return "Your overall profile is \(String(format: "%.1f", overall))/5 (\(nickname(for: overall, pillars: pillars))). " +
-            "You stand out in \(strongTitle), and your biggest area of professional friction is in \(weakTitle) " +
-            "(especially \(trait)). GROO will help you turn that friction into a concrete plan — " +
-            "not therapy or clinical advice: career mentorship and human skills."
+        return "Your overall clinic profile is \(String(format: "%.1f", overall))/5 (\(nickname(for: overall, pillars: pillars))). " +
+            "You stand out in \(strongTitle), and your biggest opportunity is in \(weakTitle) " +
+            "(especially \(trait)). \(GrooBrand.appName) will help you turn that into a concrete clinic action plan — " +
+            "operational guidance only, not clinical treatment advice."
     }
 }

@@ -274,7 +274,7 @@ struct SettingsView: View {
                             Text(isDeletingAccount ? "Deleting account..." : "Delete account")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DrflowTheme.textPrimary)
-                            Text("Permanently deletes your Groo account.")
+                            Text("Permanently deletes your \(GrooBrand.appName) account.")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundStyle(DrflowTheme.textSecondary)
                         }

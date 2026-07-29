@@ -10,8 +10,9 @@ import UniformTypeIdentifiers
 
 enum GrooMainTab: Hashable {
     case home
+    case patients
+    case calendar
     case chat
-    case sessions
     case reminders
 }
 
@@ -31,6 +32,28 @@ final class MainTabRouter: ObservableObject {
             selected = .chat
         }
     }
+
+    func openPatients(animated: Bool = true) {
+        guard selected != .patients else { return }
+        if animated {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                selected = .patients
+            }
+        } else {
+            selected = .patients
+        }
+    }
+
+    func openCalendar(animated: Bool = true) {
+        guard selected != .calendar else { return }
+        if animated {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                selected = .calendar
+            }
+        } else {
+            selected = .calendar
+        }
+    }
 }
 
 /// Abre un hilo concreto (legacy CRM); en GROO redirige al chat mentor.
@@ -39,7 +62,7 @@ final class ChatNavigationCoordinator: ObservableObject {
     @Published var threadToOpen: ChatThread?
 }
 
-// MARK: - Pestañas GROO (Home · Chat · Sessions · Reminders)
+// MARK: - Pestañas GROO (Home · Calendar · Chat · Reminders)
 
 struct MainTabView: View {
     @StateObject private var tabRouter = MainTabRouter()
@@ -48,19 +71,24 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $tabRouter.selected) {
-            Tab("Home", systemImage: "house.fill", value: GrooMainTab.home) {
+            Tab("Inicio", systemImage: "house.fill", value: GrooMainTab.home) {
                 GrooHomeView()
             }
 
-            Tab("Chat", systemImage: "ellipsis.bubble", value: GrooMainTab.chat) {
-                GrooMentorChatView()
+            Tab("Pacientes", systemImage: "person.2.fill", value: GrooMainTab.patients) {
+                GrooPatientsView()
             }
 
-            Tab("Sessions", systemImage: "doc.text", value: GrooMainTab.sessions) {
-                GrooSessionsView()
+            Tab("Agenda", systemImage: "calendar", value: GrooMainTab.calendar) {
+                GrooCalendarView()
             }
 
-            Tab("Reminders", systemImage: "bell", value: GrooMainTab.reminders) {
+            Tab("Chat", systemImage: "message.fill", value: GrooMainTab.chat) {
+                GrooChatRootView()
+            }
+            .badge(groo.unreadChatCount)
+
+            Tab("Avisos", systemImage: "bell", value: GrooMainTab.reminders) {
                 GrooRemindersView()
             }
             .badge(groo.activeRemindersCount)
@@ -78,6 +106,9 @@ struct MainTabView: View {
         .onChange(of: groo.shouldOpenChatOnMain) { _, _ in
             openPendingChatIfNeeded()
         }
+        .onChange(of: groo.shouldOpenCalendarWithDraft) { _, open in
+            if open { tabRouter.selected = .calendar }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
             tabRouter.selected = .reminders
         }
@@ -85,6 +116,7 @@ struct MainTabView: View {
         .toolbarBackground(Color.white, for: .tabBar)
         .toolbarColorScheme(.light, for: .tabBar)
         .tabBarMinimizeBehavior(.never)
+        .background(DrflowTheme.background.ignoresSafeArea())
     }
 
     private func openPendingChatIfNeeded() {
@@ -1502,7 +1534,7 @@ private struct TeamAIPlusMenuSheet: View {
                     plusFeatureRow(
                         icon: "paintbrush.pointed",
                         title: "Crea una imagen",
-                        subtitle: "Próximamente en Groo"
+                        subtitle: "Próximamente en GControl"
                     )
                     plusFeatureRow(
                         icon: "text.bubble",
@@ -1606,12 +1638,12 @@ private struct TeamAIPlusMenuSheet: View {
     }
 }
 
-// MARK: - UITabBar (icono + título violeta Groo al seleccionar; gris al inactivo)
+// MARK: - UITabBar (icono + título azul Groo al seleccionar; gris al inactivo)
 
 private enum MainTabBarAppearance {
     static func applyLightSelection() {
         let normal = UIColor(red: 0.58, green: 0.61, blue: 0.66, alpha: 1)
-        let selected = UIColor(red: 141 / 255, green: 46 / 255, blue: 181 / 255, alpha: 1)
+        let selected = UIColor(red: 0.35, green: 0.55, blue: 0.98, alpha: 1)
         let badgeBlue = UIColor(red: 0.22, green: 0.55, blue: 0.95, alpha: 1)
 
         let item = UITabBarItemAppearance()
