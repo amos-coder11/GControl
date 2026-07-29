@@ -44,6 +44,14 @@ function nowISO(ms = Date.now()) {
   return new Date(ms).toISOString();
 }
 
+/** Vacía la bandeja local (para rehacer un sync desde cero). */
+export function resetInstagramStore() {
+  const before = Object.keys(ensureLoaded().conversations).length;
+  globalThis.__igStore = emptyStore();
+  persist();
+  return { cleared: before };
+}
+
 export function ensureConversation(convId, patch = {}) {
   const store = ensureLoaded();
   if (!store.conversations[convId]) {

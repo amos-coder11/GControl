@@ -24,6 +24,7 @@ import {
   getConversation,
   listConversations,
   listMessages,
+  resetInstagramStore,
   setAiActive,
   setAllAiActive,
 } from "./instagram-store.js";
@@ -341,10 +342,11 @@ app.get("/api/whatsapp/get_conversations", async (req, res) => {
 
 app.post("/api/instagram/sync", async (req, res) => {
   try {
+    const reset = req.body?.reset ? resetInstagramStore() : null;
     const result = await syncInstagramInboxFromGraph({
       limit: Number(req.body?.limit) || 25,
     });
-    return res.status(200).json({ ok: true, ...result });
+    return res.status(200).json({ ok: true, reset, ...result });
   } catch (err) {
     return res.status(502).json({
       error: "instagram_sync_failed",

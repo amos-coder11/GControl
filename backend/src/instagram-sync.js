@@ -9,6 +9,7 @@ import {
 import {
   getInstagramIgUserId,
   getInstagramPageAccessToken,
+  getInstagramUsername,
 } from "./instagram-token.js";
 import {
   ensureConversation,
@@ -128,6 +129,54 @@ async function fetchConversationMessages(conversationId) {
   return flat.ok ? flat.json?.data || [] : [];
 }
 
+/**
+ * La misma cuenta aparece con dos IDs distintos: `me.id` devuelve el ID
+ * app-scoped, mientras que `participants` y `from` usan el IG Business account
+ * ID. Comparar contra uno solo hace que el negocio se tome por el cliente y
+ * todas las conversaciones colapsen en una.
+ */
+function buildSelfIdentity(meId) {
+  const ids = new Set(
+    [meId, getInstagramIgUserId()].filter(Boolean).map(String)
+  );
+  const username = (getInstagramUsername() || "").trim().toLowerCase();
+  return {
+    isSelf(participant) {
+      if (!participant) return false;
+      if (participant.id && ids.has(String(participant.id))) return true;
+      const name = String(participant.username || "").toLowerCase();
+      return Boolean(username && name && name === username);
+    },
+    /** Aprende IDs nuevos de la cuenta al reconocerla por username. */
+    learn(participant) {
+      if (participant?.id) ids.add(String(participant.id));
+    },
+  };
+}
+
+/** Rellena el texto de mensajes que la expansión anidada devolvió vacío. */
+async function backfillMessageText(messages, cap = 12) {
+  const missing = messages.filter((m) => m.id && !(m.message || "").trim());
+  if (missing.length === 0) return;
+
+  // Los más recientes primero: son los que se ven en la bandeja.
+  const targets = missing.slice(-cap);
+  await Promise.all(
+    targets.map(async (msg) => {
+      const res = await graphRequest(msg.id, {
+        query: { fields: "id,created_time,from,to,message" },
+      });
+      if (res.ok && res.json) {
+        if (res.json.message) msg.message = res.json.message;
+        if (!msg.from && res.json.from) msg.from = res.json.from;
+        if (!msg.created_time && res.json.created_time) {
+          msg.created_time = res.json.created_time;
+        }
+      }
+    })
+  );
+}
+
 /** Participantes de una conversación cuando no vinieron en la lista. */
 async function fetchConversationParticipants(conversationId) {
   const res = await graphRequest(conversationId, { query: { fields: "participants" } });
@@ -160,18 +209,23 @@ export async function syncInstagramInboxFromGraph({ limit = 25 } = {}) {
   const rows = Array.isArray(page?.data) ? page.data : [];
   const nestedMessages = Boolean(usedFields && usedFields.includes("messages"));
   const nestedParticipants = Boolean(usedFields && usedFields.includes("participants"));
+  const self = buildSelfIdentity(igUserId);
 
   let synced = 0;
+  let skipped = 0;
   for (const conv of rows) {
     let participants = conv.participants?.data || conv.participants || [];
     if (!nestedParticipants || !Array.isArray(participants) || participants.length === 0) {
       participants = await fetchConversationParticipants(conv.id);
     }
     const participantList = Array.isArray(participants) ? participants : [];
-    const other =
-      participantList.find((p) => String(p.id) !== String(igUserId)) ||
-      participantList[0];
-    if (!other?.id) continue;
+    participantList.filter((p) => self.isSelf(p)).forEach((p) => self.learn(p));
+
+    const other = participantList.find((p) => !self.isSelf(p));
+    if (!other?.id) {
+      skipped += 1;
+      continue;
+    }
 
     const customerId = String(other.id);
     const convId = `ig:${customerId}`;
@@ -189,17 +243,17 @@ export async function syncInstagramInboxFromGraph({ limit = 25 } = {}) {
     if (!nestedMessages || messages.length === 0) {
       messages = await fetchConversationMessages(conv.id);
     }
+    await backfillMessageText(messages);
 
     for (const msg of messages) {
-      const fromId = String(msg.from?.id || "");
-      const isOutgoing = fromId && fromId === String(igUserId);
+      const isOutgoing = self.isSelf(msg.from);
       const text = (msg.message || "").trim();
       if (!text && !msg.id) continue;
       const added = upsertMessage(
         convId,
         {
           id: msg.id || `${convId}-${msg.created_time}`,
-          text_content: text || "[message]",
+          text_content: text || "[archivo adjunto]",
           sender_type: isOutgoing ? "agent" : "customer",
           created_at: msg.created_time || new Date().toISOString(),
           message_type: "text",
@@ -209,7 +263,8 @@ export async function syncInstagramInboxFromGraph({ limit = 25 } = {}) {
       if (added) synced += 1;
     }
 
-    // Profile photo enrichment
+    // La foto de perfil no viene en participants; el username sí, así que el
+    // nombre ya es correcto aunque esta llamada falle.
     await enrichConversationProfile(convId, customerId);
   }
 
@@ -218,6 +273,7 @@ export async function syncInstagramInboxFromGraph({ limit = 25 } = {}) {
     conversations: listConversations(limit).length,
     igUserId,
     graphCount: rows.length,
+    skipped,
     usedFields,
   };
 }
