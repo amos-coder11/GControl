@@ -199,7 +199,23 @@ function buildSelfIdentity(meId) {
 function describeAttachment(msg) {
   const raw = msg?.attachments;
   const att = raw?.data?.[0] || (Array.isArray(raw) ? raw[0] : null);
-  if (!att) return null;
+  if (!att) {
+    // Buena parte de esta bandeja son menciones y respuestas a historias:
+    // llegan sin `attachments`, con el enlace colgando de `story`.
+    const storyLink =
+      msg?.story?.mention?.link ||
+      msg?.story?.reply_to?.link ||
+      msg?.story?.link ||
+      null;
+    if (storyLink) {
+      return { url: storyLink, type: "image", label: "📷 Historia" };
+    }
+    const shareLink = msg?.shares?.data?.[0]?.link || null;
+    if (shareLink) {
+      return { url: shareLink, type: "share", label: "🔗 Publicación" };
+    }
+    return null;
+  }
 
   const url =
     att.image_data?.url ||
@@ -278,6 +294,7 @@ async function backfillMessageText(messages, cap = 12) {
     .slice(0, cap);
 
   const fieldSets = [
+    "id,created_time,from,to,message,attachments,story,shares",
     "id,created_time,from,to,message,attachments",
     "id,created_time,from,to,message",
   ];
@@ -290,6 +307,8 @@ async function backfillMessageText(messages, cap = 12) {
         const json = res.json || {};
         if (json.message) msg.message = json.message;
         if (json.attachments) msg.attachments = json.attachments;
+        if (json.story) msg.story = json.story;
+        if (json.shares) msg.shares = json.shares;
         if (!msg.from && json.from) msg.from = json.from;
         if (!msg.created_time && json.created_time) {
           msg.created_time = json.created_time;
