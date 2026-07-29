@@ -32,6 +32,43 @@ export function getRecentWebhookEvents() {
   return recentWebhookEvents.slice(0, 20);
 }
 
+const SYNC_MIN_INTERVAL_MS = 60_000;
+let lastSyncAt = 0;
+let inFlightSync = null;
+
+/**
+ * Sync pensado para el polling de la app: un ciclo completo tarda ~2 min
+ * (cientos de llamadas a Graph) y iOS pregunta cada 8 s, así que hacerlo en
+ * cada petición dejaba la bandeja inservible.
+ *
+ * Solo espera cuando no hay nada que enseñar todavía; el resto de las veces
+ * devuelve lo que ya hay y refresca por detrás.
+ */
+export async function syncInstagramInboxThrottled({ limit = 50 } = {}) {
+  const hasData = listConversations(1).length > 0;
+  const fresh = Date.now() - lastSyncAt < SYNC_MIN_INTERVAL_MS;
+
+  if (hasData && (fresh || inFlightSync)) {
+    return { skipped: true, reason: fresh ? "recently_synced" : "in_flight" };
+  }
+
+  if (!inFlightSync) {
+    inFlightSync = syncInstagramInboxFromGraph({ limit })
+      .catch((err) => {
+        console.warn("[instagram/sync]", err?.message || err);
+        return { synced: 0, error: err?.message || "sync_failed" };
+      })
+      .finally(() => {
+        lastSyncAt = Date.now();
+        inFlightSync = null;
+      });
+  }
+
+  // Primera carga: sin datos que devolver, merece la pena esperar.
+  if (!hasData) return await inFlightSync;
+  return { skipped: true, reason: "background" };
+}
+
 async function graphGet(path, query = {}) {
   const res = await graphRequest(path, { query });
   if (!res.ok) {
@@ -159,8 +196,13 @@ async function backfillMessageText(messages, cap = 12) {
   const missing = messages.filter((m) => m.id && !(m.message || "").trim());
   if (missing.length === 0) return;
 
-  // Los más recientes primero: son los que se ven en la bandeja.
-  const targets = missing.slice(-cap);
+  // Prioriza los más recientes: son los que se ven como preview en la bandeja.
+  const targets = missing
+    .slice()
+    .sort((a, b) =>
+      String(b.created_time || "").localeCompare(String(a.created_time || ""))
+    )
+    .slice(0, cap);
   await Promise.all(
     targets.map(async (msg) => {
       const res = await graphRequest(msg.id, {

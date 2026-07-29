@@ -32,6 +32,7 @@ import {
   enrichConversationProfile,
   getRecentWebhookEvents,
   syncInstagramInboxFromGraph,
+  syncInstagramInboxThrottled,
 } from "./instagram-sync.js";
 import {
   getInstagramSubscriptions,
@@ -330,9 +331,10 @@ app.get("/api/instagram/data-deletion/status", (req, res) => {
 // CRM-compatible inbox APIs (consumed by iOS CrmChatService)
 app.get("/api/whatsapp/get_conversations", async (req, res) => {
   const limit = Number(req.query.limit) || 100;
-  // Pull from Graph when local store is empty / stale so the app sees real DMs.
+  // Refresca desde Graph, pero con throttle: la app consulta cada 8 s y un
+  // ciclo completo tarda minutos.
   try {
-    await syncInstagramInboxFromGraph({ limit });
+    await syncInstagramInboxThrottled({ limit });
   } catch (err) {
     console.warn("[instagram/sync]", err?.message || err);
   }
