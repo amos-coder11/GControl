@@ -32,6 +32,11 @@ import {
   syncInstagramInboxFromGraph,
 } from "./instagram-sync.js";
 import {
+  getInstagramSubscriptions,
+  runInstagramDiagnostics,
+  subscribeInstagramWebhooks,
+} from "./instagram-diagnose.js";
+import {
   buildInstagramBusinessLoginUrl,
   handleInstagramOAuthCallback,
   instagramOAuthRedirectUri,
@@ -337,6 +342,44 @@ app.post("/api/instagram/sync", async (req, res) => {
     return res.status(502).json({
       error: "instagram_sync_failed",
       message: err?.message || "sync_failed",
+      details: err?.details || null,
+      explain: err?.explain || null,
+    });
+  }
+});
+
+// Por qué no llegan mensajes: sondea Graph y devuelve los bloqueos concretos.
+app.get("/api/instagram/diagnose", async (req, res) => {
+  try {
+    return res.status(200).json(await runInstagramDiagnostics());
+  } catch (err) {
+    return res.status(500).json({
+      error: "instagram_diagnose_failed",
+      message: err?.message || "diagnose_failed",
+    });
+  }
+});
+
+// Suscribe la app a los webhooks de la cuenta (sin esto no llega ningún DM).
+app.all("/api/instagram/subscribe", async (req, res) => {
+  try {
+    const result = await subscribeInstagramWebhooks();
+    return res.status(result.ok ? 200 : 502).json(result);
+  } catch (err) {
+    return res.status(500).json({
+      error: "instagram_subscribe_failed",
+      message: err?.message || "subscribe_failed",
+    });
+  }
+});
+
+app.get("/api/instagram/subscriptions", async (req, res) => {
+  try {
+    return res.status(200).json(await getInstagramSubscriptions());
+  } catch (err) {
+    return res.status(500).json({
+      error: "instagram_subscriptions_failed",
+      message: err?.message || "subscriptions_failed",
     });
   }
 });
