@@ -455,7 +455,7 @@ struct GrooMentorChatView: View {
                                     .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
                             }
                         }
-                        .buttonStyle(GrooChatPressStyle())
+                        .buttonStyle(GrooMentorChatPressStyle())
                         .disabled(isSending)
                     }
                 }
@@ -531,7 +531,7 @@ struct GrooMentorChatView: View {
                     }
             }
             .disabled(!canSend || isSending)
-            .buttonStyle(GrooChatPressStyle())
+            .buttonStyle(GrooMentorChatPressStyle())
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -678,7 +678,7 @@ struct GrooMentorChatView: View {
     }
 }
 
-private struct GrooChatPressStyle: ButtonStyle {
+private struct GrooMentorChatPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)

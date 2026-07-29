@@ -14,6 +14,11 @@
 		AA0GRO04 /* GrooCareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO04 /* GrooCareViews.swift */; };
 		AA0GRO03 /* GrooProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO03 /* GrooProfileSetupView.swift */; };
 		AA0GRO02 /* GrooOnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO02 /* GrooOnboardingFlow.swift */; };
+		AA0CLN01 /* GrooClinicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CLN01 /* GrooClinicModels.swift */; };
+		AA0CLN02 /* GrooClinicStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CLN02 /* GrooClinicStore.swift */; };
+		AA0CLN03 /* GrooChatUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CLN03 /* GrooChatUI.swift */; };
+		AA0CLN04 /* GrooClinicBudgetPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CLN04 /* GrooClinicBudgetPDF.swift */; };
+		AA0CLN05 /* GrooSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CLN05 /* GrooSessionsView.swift */; };
 		AA0GRO01 /* GrooAppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO01 /* GrooAppStore.swift */; };
 		AA0GRO00 /* GrooCareCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0GRO00 /* GrooCareCatalog.swift */; };
 		AA00OAI1 /* OpenAIChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00OAI1 /* OpenAIChatClient.swift */; };
@@ -119,6 +124,11 @@
 		AB0GRO04 /* GrooCareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareViews.swift; sourceTree = "<group>"; };
 		AB0GRO03 /* GrooProfileSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooProfileSetupView.swift; sourceTree = "<group>"; };
 		AB0GRO02 /* GrooOnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooOnboardingFlow.swift; sourceTree = "<group>"; };
+		AB0CLN01 /* GrooClinicModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooClinicModels.swift; sourceTree = "<group>"; };
+		AB0CLN02 /* GrooClinicStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooClinicStore.swift; sourceTree = "<group>"; };
+		AB0CLN03 /* GrooChatUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooChatUI.swift; sourceTree = "<group>"; };
+		AB0CLN04 /* GrooClinicBudgetPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooClinicBudgetPDF.swift; sourceTree = "<group>"; };
+		AB0CLN05 /* GrooSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooSessionsView.swift; sourceTree = "<group>"; };
 		AB0GRO01 /* GrooAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooAppStore.swift; sourceTree = "<group>"; };
 		AB0GRO00 /* GrooCareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrooCareCatalog.swift; sourceTree = "<group>"; };
 		AB00OAI1 /* OpenAIChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIChatClient.swift; sourceTree = "<group>"; };
@@ -265,6 +275,8 @@
 		AD000003 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				AB0CLN02 /* GrooClinicStore.swift */,
+				AB0CLN01 /* GrooClinicModels.swift */,
 				AB0GRO00 /* GrooCareCatalog.swift */,
 				AB0GRO01 /* GrooAppStore.swift */,
 				AB000042 /* LeadCrm.swift */,
@@ -328,6 +340,9 @@
 		AD000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				AB0CLN05 /* GrooSessionsView.swift */,
+				AB0CLN04 /* GrooClinicBudgetPDF.swift */,
+				AB0CLN03 /* GrooChatUI.swift */,
 				AB0GRO07 /* GrooHomeView.swift */,
 				AB0GRO02 /* GrooOnboardingFlow.swift */,
 				AB0GRO03 /* GrooProfileSetupView.swift */,
@@ -524,6 +539,11 @@
 				AA0GRO04 /* GrooCareViews.swift in Sources */,
 				AA0GRO03 /* GrooProfileSetupView.swift in Sources */,
 				AA0GRO02 /* GrooOnboardingFlow.swift in Sources */,
+				AA0CLN01 /* GrooClinicModels.swift in Sources */,
+				AA0CLN02 /* GrooClinicStore.swift in Sources */,
+				AA0CLN03 /* GrooChatUI.swift in Sources */,
+				AA0CLN04 /* GrooClinicBudgetPDF.swift in Sources */,
+				AA0CLN05 /* GrooSessionsView.swift in Sources */,
 				AA0GRO01 /* GrooAppStore.swift in Sources */,
 				AA0GRO00 /* GrooCareCatalog.swift in Sources */,
 				AA00OAI1 /* OpenAIChatClient.swift in Sources */,

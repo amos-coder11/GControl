@@ -72,6 +72,11 @@ struct GrooReminder: Identifiable, Codable, Equatable {
     var dueAt: Date
     var createdAt: Date
     var isDone: Bool
+    // Opcionales: solo los llevan los recordatorios creados como cita clínica,
+    // y los guardados anteriores siguen decodificando.
+    var revenue: Double?
+    var patientId: UUID?
+    var consultationType: GrooConsultationType?
 }
 
 enum GrooSubscriptionTier: String, Codable {
@@ -98,6 +103,19 @@ final class GrooAppStore: ObservableObject {
     @Published var hasDismissedPaywallOnce = false
     /// Navega al chat al entrar en la pestaña principal (no persistido).
     @Published var shouldOpenChatOnMain = false
+
+    // MARK: Clínica (pacientes, historias y presupuestos)
+
+    @Published var patients: [GrooPatient] = []
+    @Published var clinicalRecords: [GrooClinicalRecord] = []
+    /// Fotos de perfil de pacientes, en JPEG, indexadas por paciente.
+    @Published var patientPhotos: [UUID: Data] = [:]
+    /// Cita preparada desde la ficha del paciente, pendiente de abrir en el calendario.
+    @Published var pendingAppointmentDraft: GrooAppointmentDraft?
+    @Published var shouldOpenCalendarWithDraft = false
+    /// Navegación diferida (no persistida).
+    @Published var pendingPatientNavigation: UUID?
+    @Published var pendingChatNavigation: UUID?
 
     private let storageKey = "Groo.appStore.v1"
 
@@ -371,6 +389,10 @@ final class GrooAppStore: ObservableObject {
         var subscription: GrooSubscriptionTier
         var trialMessagesRemaining: Int
         var hasDismissedPaywallOnce: Bool
+        // Opcionales: los guardados anteriores a la clínica siguen decodificando.
+        var patients: [GrooPatient]?
+        var clinicalRecords: [GrooClinicalRecord]?
+        var patientPhotos: [String: Data]?
     }
 
     func save() {
@@ -385,7 +407,12 @@ final class GrooAppStore: ObservableObject {
             reminders: reminders,
             subscription: subscription,
             trialMessagesRemaining: trialMessagesRemaining,
-            hasDismissedPaywallOnce: hasDismissedPaywallOnce
+            hasDismissedPaywallOnce: hasDismissedPaywallOnce,
+            patients: patients,
+            clinicalRecords: clinicalRecords,
+            patientPhotos: Dictionary(
+                uniqueKeysWithValues: patientPhotos.map { ($0.key.uuidString, $0.value) }
+            )
         )
         if let data = try? JSONEncoder().encode(snap) {
             UserDefaults.standard.set(data, forKey: storageKey)
@@ -405,6 +432,13 @@ final class GrooAppStore: ObservableObject {
         sessions = snap.sessions
         activeSessionId = snap.activeSessionId
         reminders = snap.reminders
+        patients = snap.patients ?? []
+        clinicalRecords = snap.clinicalRecords ?? []
+        patientPhotos = Dictionary(
+            uniqueKeysWithValues: (snap.patientPhotos ?? [:]).compactMap { key, value in
+                UUID(uuidString: key).map { ($0, value) }
+            }
+        )
         subscription = snap.subscription
         trialMessagesRemaining = snap.trialMessagesRemaining
         hasDismissedPaywallOnce = snap.hasDismissedPaywallOnce

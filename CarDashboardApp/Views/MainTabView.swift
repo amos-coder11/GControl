@@ -12,6 +12,7 @@ enum GrooMainTab: Hashable {
     case home
     case chat
     case sessions
+    case calendar
     case reminders
 }
 
@@ -58,6 +59,10 @@ struct MainTabView: View {
 
             Tab("Sessions", systemImage: "doc.text", value: GrooMainTab.sessions) {
                 GrooSessionsView()
+            }
+
+            Tab("Agenda", systemImage: "calendar", value: GrooMainTab.calendar) {
+                GrooCalendarView()
             }
 
             Tab("Reminders", systemImage: "bell", value: GrooMainTab.reminders) {
