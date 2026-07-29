@@ -2,6 +2,7 @@
  * Token de Instagram Messaging (Page Access Token EAAB… o Instagram User Token IGAA…).
  * Persistido en disco o vía env.
  */
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -85,6 +86,45 @@ export function saveInstagramPageToken({
     igUserId: payload.igUserId,
     username: payload.username,
     tokenPreview: `${token.slice(0, 8)}…${token.slice(-4)}`,
+  };
+}
+
+/**
+ * Devuelve el token completo solo si `secret` coincide con INSTAGRAM_ADMIN_SECRET.
+ *
+ * El disco de Render free es efímero: el token que guarda el OAuth se pierde en
+ * cada reinicio. Esto permite recuperarlo una vez y fijarlo como variable de
+ * entorno, que sí sobrevive. Deja INSTAGRAM_ADMIN_SECRET sin definir para
+ * desactivar el endpoint por completo.
+ */
+export function exportInstagramToken(secret) {
+  const expected = (process.env.INSTAGRAM_ADMIN_SECRET || "").trim();
+  if (!expected) {
+    return { ok: false, status: 404, error: "export_disabled" };
+  }
+
+  const given = String(secret || "");
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!match) {
+    console.warn("[instagram/export-token] rejected");
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+
+  const token = getInstagramPageAccessToken();
+  if (!token) {
+    return { ok: false, status: 404, error: "token_missing" };
+  }
+
+  console.info("[instagram/export-token] token exported");
+  return {
+    ok: true,
+    status: 200,
+    accessToken: token,
+    igUserId: getInstagramIgUserId(),
+    username: getInstagramUsername(),
+    note: "Guárdalo como INSTAGRAM_PAGE_ACCESS_TOKEN y borra INSTAGRAM_ADMIN_SECRET.",
   };
 }
 

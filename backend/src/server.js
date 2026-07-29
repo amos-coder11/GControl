@@ -14,6 +14,7 @@ import {
   sendInstagramText,
 } from "./instagram-webhook.js";
 import {
+  exportInstagramToken,
   getInstagramPageAccessToken,
   instagramSendStatus,
   saveInstagramPageToken,
@@ -352,6 +353,13 @@ app.post("/api/instagram/sync", async (req, res) => {
       explain: err?.explain || null,
     });
   }
+});
+
+// Recupera el token guardado en disco para fijarlo como env var (disco efímero).
+app.get("/api/instagram/export-token", (req, res) => {
+  const result = exportInstagramToken(req.query.secret);
+  const { status, ...body } = result;
+  return res.status(status).json(body);
 });
 
 // Por qué no llegan mensajes: sondea Graph y devuelve los bloqueos concretos.
