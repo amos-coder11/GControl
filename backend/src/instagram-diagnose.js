@@ -126,6 +126,26 @@ export async function runInstagramDiagnostics() {
   });
   checks.push(summarize("conversations_platform_param", convPlatform));
 
+  // 4b. Forma cruda de un mensaje con adjunto: sin esto hay que adivinar cómo
+  // viene el audio, y Meta usa varios formatos según el tipo de mensaje.
+  const firstConvId = convFields.json?.data?.[0]?.id;
+  if (firstConvId) {
+    const msgs = await graphRequest(firstConvId, {
+      query: {
+        fields: "messages.limit(5){id,created_time,from,message,attachments}",
+      },
+      host,
+    });
+    checks.push({
+      check: "message_shape_sample",
+      ok: msgs.ok,
+      status: msgs.status,
+      error: msgs.ok ? null : msgs.error,
+      explain: msgs.ok ? null : explainGraphError(msgs.error),
+      sample: msgs.ok ? msgs.json?.messages?.data?.slice(0, 3) || null : null,
+    });
+  }
+
   // 5. Suscripción a webhooks
   const subs = await graphRequest(`${igLogin ? "me" : getInstagramPageId() || node}/subscribed_apps`, {
     host,

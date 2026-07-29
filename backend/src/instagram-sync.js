@@ -197,15 +197,39 @@ function buildSelfIdentity(meId) {
  * en vez de un marcador genérico, y para que la app pueda pintar la imagen.
  */
 function describeAttachment(msg) {
-  const att = msg?.attachments?.data?.[0];
+  const raw = msg?.attachments;
+  const att = raw?.data?.[0] || (Array.isArray(raw) ? raw[0] : null);
   if (!att) return null;
 
   const url =
     att.image_data?.url ||
     att.video_data?.url ||
+    att.audio_data?.url ||
+    att.payload?.url ||
     att.file_url ||
+    att.url ||
     att.image_data?.preview_url ||
     null;
+
+  // Forma Messenger: { type: "audio" | "image" | ..., payload: { url } }
+  const declared = String(att.type || "").toLowerCase();
+  if (declared) {
+    if (declared.includes("audio") || declared.includes("voice")) {
+      return { url, type: "audio", label: "🎤 Audio" };
+    }
+    if (declared.includes("video") || declared.includes("reel")) {
+      return { url, type: "video", label: "🎥 Vídeo" };
+    }
+    if (declared.includes("image") || declared.includes("photo")) {
+      return { url, type: "image", label: "📷 Foto" };
+    }
+    if (declared.includes("story")) {
+      return { url, type: "image", label: "📷 Historia" };
+    }
+    if (declared.includes("share")) {
+      return { url, type: "share", label: "🔗 Publicación" };
+    }
+  }
 
   // La forma del adjunto varía: unas veces image_data/video_data, otras solo
   // mime_type + file_url, y a veces la pista está en la propia URL.
