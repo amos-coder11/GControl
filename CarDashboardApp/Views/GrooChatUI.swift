@@ -43,19 +43,127 @@ enum GrooChatTheme {
         }
     }
 
-    static let listBackground = DrflowTheme.background
-    static let wallpaperTop = Color(red: 0.94, green: 0.97, blue: 1.0)
-    static let wallpaperBottom = Color(red: 0.90, green: 0.94, blue: 0.99)
+    /// Lista estilo Telegram
+    static let listBackground = Color(red: 0.97, green: 0.97, blue: 0.98)
+    static let telegramBlue = Color(red: 0.20, green: 0.55, blue: 0.91)
+    static let unreadBadge = Color(red: 0.20, green: 0.55, blue: 0.91)
 
-    static let outgoingBubble = Color(red: 0.78, green: 0.88, blue: 1.0)
-    static let outgoingBubbleEdge = Color(red: 0.62, green: 0.76, blue: 0.98)
+    /// Wallpaper conversación (mint → sky)
+    static let wallpaperTop = Color(red: 0.86, green: 0.94, blue: 0.97)
+    static let wallpaperBottom = Color(red: 0.78, green: 0.90, blue: 0.97)
+
+    /// Burbujas Telegram
+    static let outgoingBubble = Color(red: 0.90, green: 0.97, blue: 1.0)
+    static let outgoingBubbleEdge = Color(red: 0.72, green: 0.88, blue: 0.96)
     static let incomingBubble = Color.white
-    static let sendButton = GrooBrand.primary
-    static let outgoingText = Color(red: 0.07, green: 0.10, blue: 0.20)
-    static let incomingText = Color(red: 0.07, green: 0.10, blue: 0.20)
-    static let metaText = Color.black.opacity(0.38)
-    static let composerBar = Color.white
-    static let separator = Color.black.opacity(0.06)
+    static let sendButton = telegramBlue
+    static let outgoingText = Color(red: 0.05, green: 0.08, blue: 0.16)
+    static let incomingText = Color(red: 0.05, green: 0.08, blue: 0.16)
+    static let metaText = Color.black.opacity(0.32)
+    static let outgoingMeta = Color(red: 0.40, green: 0.58, blue: 0.72)
+    static let readChecks = Color(red: 0.35, green: 0.65, blue: 0.95)
+    static let composerBar = Color.clear
+    static let separator = Color.black.opacity(0.08)
+
+    /// Pill flotante estilo Telegram / iOS
+    static func glassPillBackground() -> some View {
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.55))
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.75), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+    }
+
+    static func glassCircleBackground() -> some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .overlay(Circle().fill(Color.white.opacity(0.72)))
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: 0.8))
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+    }
+
+    /// Campo con texto: esquinas suaves si crece.
+    static func composerFieldBackground(isExpanded: Bool) -> some View {
+        let radius: CGFloat = isExpanded ? 20 : 22
+        return RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.white.opacity(isExpanded ? 0.72 : 0.88))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.95), lineWidth: isExpanded ? 0.6 : 1)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+    }
+
+    /// Difuminado Apple que se desvanece (no header sólido).
+    static func floatingBlurChrome() -> some View {
+        ZStack(alignment: .top) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.18),
+                    Color.white.opacity(0.05),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .mask {
+            LinearGradient(
+                colors: [
+                    Color.black,
+                    Color.black.opacity(0.85),
+                    Color.black.opacity(0.35),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Difuminado inferior (composer + chips) que se desvanece hacia arriba.
+    static func floatingBlurChromeBottom() -> some View {
+        ZStack(alignment: .bottom) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+            LinearGradient(
+                colors: [
+                    Color.clear,
+                    Color.white.opacity(0.08),
+                    Color.white.opacity(0.22)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .mask {
+            LinearGradient(
+                colors: [
+                    Color.clear,
+                    Color.black.opacity(0.25),
+                    Color.black.opacity(0.7),
+                    Color.black.opacity(0.95),
+                    Color.black
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .allowsHitTesting(false)
+    }
 }
 
 // MARK: - Diseño clínico (UI profesional unificada)
@@ -283,27 +391,86 @@ extension View {
 
 struct GrooChatWallpaper: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [GrooChatTheme.wallpaperTop, GrooChatTheme.wallpaperBottom],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            Canvas { context, size in
-                let step: CGFloat = 28
-                for x in stride(from: 0, through: size.width, by: step) {
-                    for y in stride(from: 0, through: size.height, by: step) {
-                        let rect = CGRect(x: x, y: y, width: 2, height: 2)
-                        context.fill(Path(ellipseIn: rect), with: .color(Color.black.opacity(0.025)))
-                    }
-                }
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                Image("ChatBackdropBase")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+
+                Image("ChatBackdropPattern")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .opacity(0.3)
+                    .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
         }
     }
 }
 
 // MARK: - Avatar
+
+/// Paleta de avatares: dos rosas fuertes alternados por nombre.
+enum GrooAvatarPalette {
+    /// #FAC1FF
+    static let softPink = Color(red: 250 / 255, green: 193 / 255, blue: 255 / 255)
+    /// #FC97FF
+    static let vividPink = Color(red: 252 / 255, green: 151 / 255, blue: 255 / 255)
+
+    static let colors: [Color] = [softPink, vividPink]
+
+    static func color(for seed: String) -> Color {
+        let key = seed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else { return colors[0] }
+        let hash = key.unicodeScalars.reduce(into: 0) { partial, scalar in
+            partial = partial &* 31 &+ Int(scalar.value)
+        }
+        return colors[abs(hash) % colors.count]
+    }
+
+    static func initial(from name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "?" }
+        return String(first).uppercased()
+    }
+}
+
+/// Avatar circular con la letra principal del nombre (colores variados).
+struct GrooLetterAvatar: View {
+    let name: String
+    var size: CGFloat = 54
+    var initialOverride: String? = nil
+
+    private var letter: String {
+        if let initialOverride {
+            let t = initialOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let ch = t.first { return String(ch).uppercased() }
+        }
+        return GrooAvatarPalette.initial(from: name)
+    }
+
+    private var fill: Color {
+        GrooAvatarPalette.color(for: name)
+    }
+
+    var body: some View {
+        Circle()
+            .fill(fill)
+            .frame(width: size, height: size)
+            .overlay {
+                Text(letter)
+                    .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
+            }
+            .accessibilityLabel(name)
+    }
+}
 
 struct GrooChatAvatar: View {
     var imageName: String = "GrooCharacter"
@@ -347,23 +514,7 @@ struct GrooChatAvatar: View {
 
 // MARK: - Inbox contact (clínica)
 
-struct GrooClinicChatContact: Identifiable {
-    let id: String
-    let name: String
-    let role: String
-    let symbol: String
-    let tint: Color
-}
-
-enum GrooClinicContacts {
-    static let pinned: [GrooClinicChatContact] = [
-        .init(id: "groo", name: "\(GrooBrand.appName) Assistant", role: "AI · Clinic ops", symbol: "sparkles", tint: GrooBrand.primary),
-        .init(id: "front", name: "Front Desk", role: "Appointments", symbol: "calendar", tint: Color(red: 0.2, green: 0.55, blue: 0.95)),
-        .init(id: "billing", name: "Billing", role: "Collections", symbol: "dollarsign.circle", tint: Color(red: 0.15, green: 0.65, blue: 0.55)),
-    ]
-}
-
-// MARK: - Bubble shape
+// MARK: - Bubble shape (Telegram: cola en la esquina inferior)
 
 enum GrooMessageDeliveryStatus {
     case none, sent, delivered, read
@@ -374,14 +525,15 @@ struct GrooMessageBubbleShape: Shape {
     var isLastInGroup: Bool
 
     func path(in rect: CGRect) -> Path {
-        let r: CGFloat = 18
-        let tail: CGFloat = isLastInGroup ? 5 : r
-        var corners = RectangleCornerRadii(topLeading: r, bottomLeading: r, bottomTrailing: r, topTrailing: r)
-        if isOutgoing {
-            corners.bottomTrailing = tail
-        } else {
-            corners.bottomLeading = tail
-        }
+        let r: CGFloat = 16
+        // Cola Telegram: esquina inferior hacia el lado del remitente más aguda
+        let tail: CGFloat = isLastInGroup ? 4 : r
+        var corners = RectangleCornerRadii(
+            topLeading: r,
+            bottomLeading: isOutgoing ? r : tail,
+            bottomTrailing: isOutgoing ? tail : r,
+            topTrailing: r
+        )
         return UnevenRoundedRectangle(cornerRadii: corners, style: .continuous).path(in: rect)
     }
 }
@@ -396,77 +548,94 @@ struct GrooMessageBubbleView: View {
     var image: UIImage? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 220)
+                    .frame(height: 200)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
             }
 
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(text)
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(isOutgoing ? GrooChatTheme.outgoingText : GrooChatTheme.incomingText)
-                    .lineSpacing(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.top, image == nil ? 9 : 8)
-                    .padding(.bottom, 22)
-            } else {
-                Color.clear.frame(height: 22)
+            if !trimmedText.isEmpty {
+                textWithInlineMeta
+            } else if image != nil {
+                metaRow
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-
-            HStack(spacing: 4) {
-                if isStreaming {
-                    ProgressView().scaleEffect(0.55)
-                }
-                Spacer(minLength: 0)
-                Text(time.formatted(date: .omitted, time: .shortened))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(GrooChatTheme.metaText)
-                if isOutgoing { deliveryIcon }
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background {
             GrooMessageBubbleShape(isOutgoing: isOutgoing, isLastInGroup: isLastInGroup)
-                .fill(bubbleFill)
-                .shadow(color: .black.opacity(isOutgoing ? 0.04 : 0.07), radius: 8, y: 3)
-                .overlay {
-                    if isOutgoing {
-                        GrooMessageBubbleShape(isOutgoing: true, isLastInGroup: isLastInGroup)
-                            .stroke(GrooChatTheme.outgoingBubbleEdge.opacity(0.35), lineWidth: 0.5)
-                    }
-                }
+                .fill(isOutgoing ? GrooChatTheme.outgoingBubble : GrooChatTheme.incomingBubble)
+                .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
         }
-        .frame(maxWidth: min(UIScreen.main.bounds.width * 0.76, 340), alignment: isOutgoing ? .trailing : .leading)
+        .frame(maxWidth: min(UIScreen.main.bounds.width * 0.78, 320), alignment: isOutgoing ? .trailing : .leading)
     }
 
-    private var bubbleFill: some ShapeStyle {
-        isOutgoing ? AnyShapeStyle(GrooChatTheme.outgoingBubble) : AnyShapeStyle(GrooChatTheme.incomingBubble)
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Texto + hora/checks al estilo Telegram (meta abajo a la derecha dentro de la burbuja).
+    private var textWithInlineMeta: some View {
+        Text(trimmedText)
+            .font(.system(size: 16, weight: .regular))
+            .foregroundStyle(isOutgoing ? GrooChatTheme.outgoingText : GrooChatTheme.incomingText)
+            .lineSpacing(2)
+            .multilineTextAlignment(.leading)
+            .padding(.trailing, metaReserveWidth)
+            .padding(.bottom, 2)
+            .overlay(alignment: .bottomTrailing) {
+                metaRow
+            }
+            .overlay(alignment: .trailing) {
+                if isStreaming {
+                    ProgressView().scaleEffect(0.55).padding(.trailing, 2)
+                }
+            }
+    }
+
+    private var metaReserveWidth: CGFloat {
+        // Reserva espacio para que el texto no choque con la hora/checks
+        isOutgoing ? 72 : 52
+    }
+
+    private var metaRow: some View {
+        HStack(spacing: 3) {
+            Text(time.formatted(date: .omitted, time: .shortened))
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(isOutgoing ? GrooChatTheme.outgoingMeta : GrooChatTheme.metaText)
+            if isOutgoing { deliveryIcon }
+        }
     }
 
     @ViewBuilder
     private var deliveryIcon: some View {
         switch delivery {
-        case .none: EmptyView()
+        case .none:
+            EmptyView()
         case .sent:
-            Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(GrooChatTheme.metaText)
-        case .delivered, .read:
-            HStack(spacing: -5) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(GrooChatTheme.outgoingMeta)
+        case .delivered:
+            HStack(spacing: -4) {
                 Image(systemName: "checkmark")
                 Image(systemName: "checkmark")
             }
             .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(delivery == .read ? GrooBrand.primary : GrooChatTheme.metaText)
+            .foregroundStyle(GrooChatTheme.outgoingMeta)
+        case .read:
+            HStack(spacing: -4) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(GrooChatTheme.readChecks)
         }
     }
 }
@@ -524,6 +693,7 @@ struct GrooInboxConversationRow: View {
     let title: String
     let preview: String
     let date: Date
+    var timeLabel: String? = nil
     var unreadCount: Int = 0
     var isPinned: Bool = false
     var avatarURL: URL? = nil
@@ -532,18 +702,22 @@ struct GrooInboxConversationRow: View {
     var showsInstagramBadge: Bool = false
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 if let avatarURL {
                     ChatAsyncContactPhoto(
                         url: avatarURL,
                         accessToken: avatarAccessToken,
-                        fallbackInitial: avatarInitial ?? String(title.prefix(1)),
-                        fallbackColor: Color(red: 0.69, green: 0.32, blue: 0.87),
+                        fallbackInitial: avatarInitial ?? GrooAvatarPalette.initial(from: title),
+                        fallbackColor: GrooAvatarPalette.color(for: title),
                         diameter: 54
                     )
                 } else {
-                    GrooChatAvatar(size: 54, showsOnlineRing: isPinned)
+                    GrooLetterAvatar(
+                        name: title,
+                        size: 54,
+                        initialOverride: avatarInitial
+                    )
                 }
                 if showsInstagramBadge {
                     ChatSocialBadgeView(platform: .instagram)
@@ -552,49 +726,55 @@ struct GrooInboxConversationRow: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title)
-                        .font(.system(size: 16, weight: unreadCount > 0 ? .bold : .semibold))
-                        .foregroundStyle(Color.black.opacity(0.88))
+                        .font(.system(size: 17, weight: unreadCount > 0 ? .semibold : .regular))
+                        .foregroundStyle(Color.black.opacity(0.92))
                         .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(relativeDate(date))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(unreadCount > 0 ? GrooBrand.primary : GrooChatTheme.metaText)
+                    Spacer(minLength: 6)
+                    Text(timeLabel ?? relativeDate(date))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(unreadCount > 0 ? GrooChatTheme.telegramBlue : Color.black.opacity(0.35))
                 }
 
                 HStack(alignment: .center, spacing: 8) {
-                    Text(preview)
-                        .font(.system(size: 14, weight: unreadCount > 0 ? .medium : .regular))
-                        .foregroundStyle(Color.black.opacity(unreadCount > 0 ? 0.55 : 0.42))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Spacer(minLength: 0)
-                    if unreadCount > 0 {
-                        Text("\(min(unreadCount, 99))")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 22, minHeight: 22)
-                            .background(Circle().fill(GrooBrand.primary))
-                    } else if isPinned {
+                    if isPinned && unreadCount == 0 {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 11))
-                            .foregroundStyle(GrooBrand.primary.opacity(0.7))
+                            .foregroundStyle(Color.black.opacity(0.28))
+                    }
+                    Text(preview.isEmpty ? " " : preview)
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.4))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if unreadCount > 0 {
+                        Text("\(min(unreadCount, 99))")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .frame(minWidth: 22, minHeight: 22)
+                            .background(Capsule().fill(GrooChatTheme.unreadBadge))
                     }
                 }
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        .padding(.vertical, 7)
+        .frame(minHeight: 70)
         .contentShape(Rectangle())
     }
 
     private func relativeDate(_ date: Date) -> String {
         let cal = Calendar.current
         if cal.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
-        if cal.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.month(.abbreviated).day())
+        if cal.isDateInYesterday(date) { return "Ayer" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: Date())).day ?? 99
+        if days < 7 {
+            return date.formatted(.dateTime.weekday(.abbreviated))
+        }
+        return date.formatted(.dateTime.day().month(.twoDigits).year(.twoDigits))
     }
 }
 
@@ -603,57 +783,118 @@ struct GrooChatComposerBar: View {
     var isSending: Bool
     var focused: FocusState<Bool>.Binding
     var onSend: () -> Void
+    var showsBlurBackground: Bool = true
 
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            Button {} label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 28))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(GrooBrand.primary)
-            }
-            .buttonStyle(.plain)
+    private var isEmpty: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message", text: $text, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused(focused)
-                    .font(.system(size: 16))
-                    .submitLabel(.send)
-                    .onSubmit { if canSend { onSend() } }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(red: 0.96, green: 0.97, blue: 0.99))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(GrooChatTheme.separator, lineWidth: 0.5)
-                    }
-            }
-
-            Button(action: onSend) {
-                Image(systemName: canSend ? "arrow.up.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 34))
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, canSend ? GrooBrand.primary : Color.black.opacity(0.25))
-            }
-            .buttonStyle(GrooChatPressStyle())
-            .disabled(isSending)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-        .background {
-            GrooChatTheme.composerBar
-                .shadow(color: .black.opacity(0.06), radius: 12, y: -4)
-                .ignoresSafeArea(edges: .bottom)
-        }
+    private var isMultiline: Bool {
+        text.contains(where: \.isNewline) || text.count > 36
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+        !isEmpty && !isSending
+    }
+
+    var body: some View {
+        HStack(alignment: isMultiline ? .bottom : .center, spacing: 8) {
+            attachmentButton
+            messageField
+            sendOrMicButton
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, showsBlurBackground ? 10 : 4)
+        .padding(.bottom, 8)
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            if showsBlurBackground {
+                GrooChatTheme.floatingBlurChromeBottom()
+                    .ignoresSafeArea(edges: .bottom)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isMultiline)
+        .animation(.easeInOut(duration: 0.15), value: isEmpty)
+    }
+
+    private var attachmentButton: some View {
+        Button {} label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.65))
+                .frame(width: 40, height: 40)
+                .background { GrooChatTheme.glassCircleBackground() }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var messageField: some View {
+        HStack(alignment: isMultiline ? .bottom : .center, spacing: 8) {
+            TextField("Mensaje", text: $text, axis: .vertical)
+                .lineLimit(1...6)
+                .focused(focused)
+                .font(.system(size: 16))
+                .submitLabel(.send)
+                .onSubmit { if canSend { onSend() } }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {} label: {
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.35))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
+        .padding(.vertical, isMultiline ? 10 : 8)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 40, maxHeight: isEmpty ? 40 : 160, alignment: isMultiline ? .bottom : .center)
+        .background { fieldBackground }
+    }
+
+    @ViewBuilder
+    private var fieldBackground: some View {
+        if isEmpty || !isMultiline {
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(Capsule().fill(Color.white.opacity(0.88)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.98), lineWidth: 1))
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+        } else {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.white.opacity(0.88))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.98), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+        }
+    }
+
+    private var sendOrMicButton: some View {
+        Button(action: onSend) {
+            Image(systemName: canSend ? "arrow.up" : "mic.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(canSend ? Color.white : Color.black.opacity(0.65))
+                .frame(width: 40, height: 40)
+                .background {
+                    if canSend {
+                        Circle()
+                            .fill(GrooChatTheme.telegramBlue)
+                            .shadow(color: GrooChatTheme.telegramBlue.opacity(0.3), radius: 8, y: 2)
+                    } else {
+                        GrooChatTheme.glassCircleBackground()
+                    }
+                }
+        }
+        .buttonStyle(GrooChatPressStyle())
+        .disabled(isSending)
     }
 }
 
@@ -754,11 +995,20 @@ struct GrooPatientChatContextPanel: View {
         .padding(.vertical, 7)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.95))
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.72))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.85), lineWidth: 0.6)
+                }
                 .shadow(color: .black.opacity(0.05), radius: 6, y: -1)
         }
         .padding(.horizontal, 10)
-        .padding(.bottom, 2)
+        .padding(.top, 4)
+        .padding(.bottom, 0)
         .sheet(isPresented: $showDetails) {
             GrooPatientChatDetailSheet(
                 patient: patient,

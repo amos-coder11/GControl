@@ -305,22 +305,15 @@ struct ChatAsyncContactPhoto: View {
     }
 
     private var fallbackCircle: some View {
-        Circle()
-            .fill(
-                LinearGradient(
-                    colors: [
-                        fallbackColor.opacity(0.95),
-                        fallbackColor.opacity(0.62),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+        let seed = fallbackInitial ?? "?"
+        let color = GrooAvatarPalette.color(for: seed)
+        return Circle()
+            .fill(color)
             .overlay {
                 if let initial = fallbackInitial?.first {
                     Text(String(initial).uppercased())
-                        .font(.system(size: diameter * 0.40, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(.system(size: diameter * 0.42, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
                 } else {
                     Image(systemName: "person.fill")
                         .font(.system(size: diameter * 0.38, weight: .medium))
