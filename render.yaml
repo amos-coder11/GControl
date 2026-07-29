@@ -1,7 +1,7 @@
 # Deploy: Render Dashboard → New → Blueprint, o Web Service apuntando a /backend
 services:
   - type: web
-    name: smilestudio-backend
+    name: groo-ig-backend
     runtime: node
     rootDir: backend
     plan: free

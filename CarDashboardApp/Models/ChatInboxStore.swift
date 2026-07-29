@@ -917,7 +917,7 @@ enum CrmChatService {
                 return url
             }
         }
-        return URL(string: "https://smilestudio-backend.onrender.com")!
+        return URL(string: "https://groo-ig-backend.onrender.com")!
     }
 
     enum ServiceError: Error {
@@ -1367,7 +1367,10 @@ enum CrmContactPhotoLoader {
         guard let host = url.host?.lowercased() else {
             return url.path.hasPrefix("/api/")
         }
-        return host.contains("drflowbackend") || host.contains("drflow") || host.contains("smilestudio-backend")
+        return host.contains("drflowbackend")
+            || host.contains("drflow")
+            || host.contains("smilestudio-backend")
+            || host.contains("groo-ig-backend")
     }
 }
 

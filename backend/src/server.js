@@ -296,7 +296,13 @@ app.all("/api/instagram/data-deletion", express.urlencoded({ extended: false }),
     req.query?.signed_request ||
     null;
   const confirmationCode = `groo-ig-del-${Date.now()}`;
-  const statusUrl = `https://smilestudio-backend.onrender.com/api/instagram/data-deletion/status?code=${encodeURIComponent(confirmationCode)}`;
+  const publicBase = (
+    process.env.INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL ||
+    "https://groo-ig-backend.onrender.com"
+  )
+    .trim()
+    .replace(/\/$/, "");
+  const statusUrl = `${publicBase}/api/instagram/data-deletion/status?code=${encodeURIComponent(confirmationCode)}`;
   console.info("[instagram/data-deletion]", {
     method: req.method,
     hasSignedRequest: Boolean(signed),

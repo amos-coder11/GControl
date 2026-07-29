@@ -11,7 +11,7 @@ export function instagramOAuthRedirectUri() {
   if (fromEnv) return fromEnv;
   const base = (
     process.env.INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL ||
-    "https://smilestudio-backend.onrender.com"
+    "https://groo-ig-backend.onrender.com"
   )
     .trim()
     .replace(/\/$/, "");
