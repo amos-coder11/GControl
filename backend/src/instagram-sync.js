@@ -191,7 +191,39 @@ function buildSelfIdentity(meId) {
   };
 }
 
-/** Rellena el texto de mensajes que la expansión anidada devolvió vacío. */
+/**
+ * Muchos DMs de un negocio no llevan texto: son respuestas a historias, fotos
+ * o reacciones. Pedimos los adjuntos para poder etiquetarlos con algo legible
+ * en vez de un marcador genérico, y para que la app pueda pintar la imagen.
+ */
+function describeAttachment(msg) {
+  const att = msg?.attachments?.data?.[0];
+  if (!att) return null;
+
+  const url =
+    att.image_data?.url ||
+    att.video_data?.url ||
+    att.file_url ||
+    att.image_data?.preview_url ||
+    null;
+
+  let type = "file";
+  let label = "📎 Archivo";
+  if (att.image_data) {
+    type = "image";
+    label = "📷 Foto";
+  } else if (att.video_data) {
+    type = "video";
+    label = "🎥 Vídeo";
+  } else if (att.mime_type?.startsWith("audio")) {
+    type = "audio";
+    label = "🎤 Audio";
+  }
+
+  return { url, type, label };
+}
+
+/** Rellena texto y adjuntos de los mensajes que vinieron vacíos. */
 async function backfillMessageText(messages, cap = 12) {
   const missing = messages.filter((m) => m.id && !(m.message || "").trim());
   if (missing.length === 0) return;
@@ -203,17 +235,25 @@ async function backfillMessageText(messages, cap = 12) {
       String(b.created_time || "").localeCompare(String(a.created_time || ""))
     )
     .slice(0, cap);
+
+  const fieldSets = [
+    "id,created_time,from,to,message,attachments",
+    "id,created_time,from,to,message",
+  ];
+
   await Promise.all(
     targets.map(async (msg) => {
-      const res = await graphRequest(msg.id, {
-        query: { fields: "id,created_time,from,to,message" },
-      });
-      if (res.ok && res.json) {
-        if (res.json.message) msg.message = res.json.message;
-        if (!msg.from && res.json.from) msg.from = res.json.from;
-        if (!msg.created_time && res.json.created_time) {
-          msg.created_time = res.json.created_time;
+      for (const fields of fieldSets) {
+        const res = await graphRequest(msg.id, { query: { fields } });
+        if (!res.ok) continue;
+        const json = res.json || {};
+        if (json.message) msg.message = json.message;
+        if (json.attachments) msg.attachments = json.attachments;
+        if (!msg.from && json.from) msg.from = json.from;
+        if (!msg.created_time && json.created_time) {
+          msg.created_time = json.created_time;
         }
+        break;
       }
     })
   );
@@ -291,14 +331,17 @@ export async function syncInstagramInboxFromGraph({ limit = 25 } = {}) {
       const isOutgoing = self.isSelf(msg.from);
       const text = (msg.message || "").trim();
       if (!text && !msg.id) continue;
+      const media = text ? null : describeAttachment(msg);
       const added = upsertMessage(
         convId,
         {
           id: msg.id || `${convId}-${msg.created_time}`,
-          text_content: text || "[archivo adjunto]",
+          text_content: text || media?.label || "📎 Adjunto",
           sender_type: isOutgoing ? "agent" : "customer",
           created_at: msg.created_time || new Date().toISOString(),
-          message_type: "text",
+          message_type: media ? media.type : "text",
+          media_url: media?.url || null,
+          media_type: media?.type || null,
         },
         { bumpUnread: false }
       );
