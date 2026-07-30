@@ -13,7 +13,7 @@ enum GrooMainTab: Hashable {
     case patients
     case calendar
     case chat
-    case reminders
+    case settings
 }
 
 @MainActor
@@ -62,7 +62,7 @@ final class ChatNavigationCoordinator: ObservableObject {
     @Published var threadToOpen: ChatThread?
 }
 
-// MARK: - Pestañas GROO (Home · Calendar · Chat · Reminders)
+// MARK: - Pestañas GROO (Home · Pacientes · Agenda · Chat · Tú)
 
 struct MainTabView: View {
     @StateObject private var tabRouter = MainTabRouter()
@@ -89,10 +89,18 @@ struct MainTabView: View {
             }
             .badge(groo.unreadChatCount)
 
-            Tab("Avisos", systemImage: "bell", value: GrooMainTab.reminders) {
-                GrooRemindersView()
+            Tab(value: GrooMainTab.settings) {
+                SettingsView()
+            } label: {
+                Label {
+                    Text("Tú")
+                } icon: {
+                    Image(uiImage: Self.profileTabIcon(
+                        image: auth.profileAvatarImage,
+                        initial: profileTabInitial
+                    ))
+                }
             }
-            .badge(groo.activeRemindersCount)
         }
         .environmentObject(tabRouter)
         .environmentObject(groo)
@@ -111,7 +119,7 @@ struct MainTabView: View {
             if open { tabRouter.selected = .calendar }
         }
         .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
-            tabRouter.selected = .reminders
+            tabRouter.selected = .calendar
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
             tabRouter.openChat()
@@ -131,6 +139,50 @@ struct MainTabView: View {
         .toolbarColorScheme(.light, for: .tabBar)
         .tabBarMinimizeBehavior(.never)
         .background(DrflowTheme.background.ignoresSafeArea())
+    }
+
+    private var profileTabInitial: String {
+        let fromGroo = groo.profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let c = fromGroo.first { return String(c).uppercased() }
+        let fromAuth = auth.userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let c = fromAuth.first { return String(c).uppercased() }
+        return "T"
+    }
+
+    /// Icono circular listo para UITabBar (tamaño fijo + alwaysOriginal).
+    private static func profileTabIcon(image: UIImage?, initial: String, side: CGFloat = 26) -> UIImage {
+        let size = CGSize(width: side, height: side)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = UIScreen.main.scale
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let rect = CGRect(origin: .zero, size: size)
+            UIBezierPath(ovalIn: rect).addClip()
+
+            if let image {
+                let scale = max(side / max(image.size.width, 1), side / max(image.size.height, 1))
+                let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                let origin = CGPoint(
+                    x: (side - drawSize.width) / 2,
+                    y: (side - drawSize.height) / 2
+                )
+                image.draw(in: CGRect(origin: origin, size: drawSize))
+            } else {
+                UIColor(red: 0.35, green: 0.55, blue: 0.98, alpha: 1).setFill()
+                ctx.cgContext.fill(rect)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: side * 0.42, weight: .bold),
+                    .foregroundColor: UIColor.white,
+                ]
+                let text = NSString(string: initial)
+                let textSize = text.size(withAttributes: attrs)
+                text.draw(
+                    at: CGPoint(x: (side - textSize.width) / 2, y: (side - textSize.height) / 2),
+                    withAttributes: attrs
+                )
+            }
+        }
+        return rendered.withRenderingMode(.alwaysOriginal)
     }
 
     private func openPendingChatIfNeeded() {

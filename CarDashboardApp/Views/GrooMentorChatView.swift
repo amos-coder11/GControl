@@ -42,6 +42,7 @@ struct GrooMentorChatView: View {
 
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
+                    .allowsHitTesting(false)
                 VStack(spacing: 0) {
                     if let patient = linkedPatient {
                         GrooPatientChatContextPanel(
@@ -68,7 +69,6 @@ struct GrooMentorChatView: View {
                         .ignoresSafeArea(edges: .bottom)
                 }
             }
-            .allowsHitTesting(true)
         }
         .background {
             GrooChatWallpaper().ignoresSafeArea()

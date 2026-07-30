@@ -6,7 +6,7 @@ enum ContentModerationFilter {
     static let currentTermsVersion = "2026-06-05"
 
     private static let blockedTerms: [String] = [
-        "puta", "puto", "mierda", "cabron", "cabrón", "joder", "coño", "cono",
+        "puta", "puto", "mierda", "cabron", "cabrón", "joder", "coño",
         "maricon", "maricón", "subnormal", "imbecil", "imbécil", "idiota",
         "fuck", "fucking", "shit", "bitch", "asshole", "cunt", "nigger", "nazi",
         "pedo", "porn", "porno", "xxx", "kill yourself", "suicid",
@@ -16,8 +16,17 @@ enum ContentModerationFilter {
     static func containsObjectionableContent(_ text: String) -> Bool {
         let normalized = normalize(text)
         guard !normalized.isEmpty else { return false }
+        let tokens = Set(normalized.split(separator: " ").map(String.init))
         return blockedTerms.contains { term in
-            normalized.contains(normalize(term))
+            let normalizedTerm = normalize(term)
+            guard !normalizedTerm.isEmpty else { return false }
+            // Frases de varias palabras: búsqueda acotada por límites de token.
+            if normalizedTerm.contains(" ") {
+                return normalized.contains(normalizedTerm)
+            }
+            // Una sola palabra: solo coincide si es un token completo
+            // (evita bloquear "pedido", "computadora", "conocer", etc.).
+            return tokens.contains(normalizedTerm)
         }
     }
 

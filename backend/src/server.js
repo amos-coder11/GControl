@@ -510,9 +510,11 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
   const conversationId = String(req.body?.conversationId || "");
   const text = String(req.body?.textContent || req.body?.text || "").trim();
   const mediaContent = req.body?.mediaContent || req.body?.media_content || null;
-  const mediaType = String(req.body?.mediaType || req.body?.media_type || "image/jpeg");
+  const mediaType = String(req.body?.mediaType || req.body?.media_type || "").toLowerCase();
   const messageType = String(req.body?.messageType || req.body?.message_type || "").toLowerCase();
   const directMediaUrl = String(req.body?.mediaUrl || req.body?.imageUrl || "").trim();
+  const audioBase64 = req.body?.audioBase64 || null;
+  const hasMediaPayload = Boolean(mediaContent || audioBase64 || directMediaUrl);
 
   if (!conversationId) {
     return res.status(400).json({ error: "conversationId_required" });
@@ -534,35 +536,46 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
     });
   }
 
+  // Solo marcar audio/imagen si hay payload de media o un tipo explícito.
+  // Antes mediaType default "image/jpeg" hacía que TODO texto fallara con image_required.
   const isAudio =
-    messageType.includes("audio") ||
-    messageType.includes("voice") ||
-    messageType.includes("ptt") ||
-    mediaType.startsWith("audio/");
+    hasMediaPayload &&
+    (messageType.includes("audio") ||
+      messageType.includes("ptt") ||
+      messageType.includes("voice") ||
+      mediaType.startsWith("audio/") ||
+      Boolean(audioBase64));
 
   const isImage =
     !isAudio &&
+    hasMediaPayload &&
     (messageType.includes("image") ||
       mediaType.startsWith("image/") ||
-      Boolean(directMediaUrl));
+      Boolean(directMediaUrl) ||
+      Boolean(mediaContent));
 
   try {
     if (isAudio) {
-      // Meta descarga el fichero desde nuestra URL pública, así que la nota de
-      // voz se guarda primero en disco y luego se manda el enlace.
+      const audioB64 = mediaContent || audioBase64 || null;
       let publicUrl = directMediaUrl || null;
+      let storedContent = null;
+      const audioMime =
+        mediaType.startsWith("audio/") || mediaType.includes("ogg")
+          ? mediaType
+          : String(req.body?.mimeType || "audio/mp4");
 
-      if (mediaContent) {
-        const saved = saveOutgoingAudioBase64(mediaContent, mediaType);
+      if (audioB64) {
+        const saved = saveOutgoingAudioBase64(audioB64, audioMime);
         const base = publicMediaBaseUrl(req);
         if (!base) {
           return res.status(500).json({
             error: "public_base_url_missing",
             message:
-              "Configura INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL en Render para enviar audios.",
+              "Configura INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL en Render para enviar notas de voz.",
           });
         }
         publicUrl = `${base}/${saved.filename}`;
+        storedContent = String(audioB64).slice(0, 800_000);
       }
 
       if (!publicUrl) {
@@ -573,11 +586,11 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
       const messageId =
         graph?.message_id || graph?.messageId || graph?.id || null;
       appendOutgoingMedia(conversationId, {
-        text,
+        text: text || "Nota de voz",
         messageId,
         mediaUrl: publicUrl,
-        mediaType,
-        mediaContent: null,
+        mediaType: audioMime,
+        mediaContent: storedContent,
         messageType: "audio",
       });
       return res.status(200).json({
@@ -593,7 +606,7 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
       let storedContent = null;
 
       if (mediaContent) {
-        const saved = saveOutgoingImageBase64(mediaContent, mediaType);
+        const saved = saveOutgoingImageBase64(mediaContent, mediaType || "image/jpeg");
         const base = publicMediaBaseUrl(req);
         if (!base) {
           return res.status(500).json({
@@ -617,7 +630,7 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
         text,
         messageId,
         mediaUrl: publicUrl,
-        mediaType,
+        mediaType: mediaType || "image/jpeg",
         mediaContent: storedContent,
         messageType: "image",
       });

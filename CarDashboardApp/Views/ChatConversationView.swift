@@ -612,7 +612,7 @@ struct ChatConversationView: View {
                 await runCrmSessionIfNeeded()
             }
         }
-        .alert("Nota de voz", isPresented: Binding(
+        .alert("No se pudo enviar", isPresented: Binding(
             get: { teamVoiceError != nil },
             set: { if !$0 { teamVoiceError = nil } }
         )) {
@@ -1730,6 +1730,7 @@ struct ChatConversationView: View {
                     isSendingCrmMessage = false
                     liveMessages.removeAll { $0.text == trimmed && $0.isOutgoing }
                     if draft.isEmpty { draft = trimmed }
+                    teamVoiceError = "No se pudo enviar el mensaje. \(error.localizedDescription)"
                 }
             }
         }
