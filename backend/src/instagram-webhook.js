@@ -270,6 +270,130 @@ export async function sendInstagramImage({ igsid, imageUrl }) {
   throw err;
 }
 
+/** Envía un audio / nota de voz por Instagram Messaging (URL pública HTTPS). */
+export async function sendInstagramAudio({ igsid, audioUrl }) {
+  const {
+    getInstagramPageAccessToken,
+    getInstagramPageId,
+    getInstagramIgUserId,
+  } = await import("./instagram-token.js");
+
+  const accessToken = getInstagramPageAccessToken();
+  if (!accessToken) {
+    const err = new Error("instagram_page_token_missing");
+    err.code = "instagram_page_token_missing";
+    throw err;
+  }
+
+  const url = String(audioUrl || "").trim();
+  if (!url) {
+    const err = new Error("audio_url_required");
+    err.code = "audio_url_required";
+    throw err;
+  }
+
+  const isIgUserToken = accessToken.startsWith("IGAA");
+  const igUserId = getInstagramIgUserId();
+  const pageId = getInstagramPageId();
+
+  const attachmentPayload = JSON.stringify({
+    recipient: { id: igsid },
+    message: {
+      attachment: {
+        type: "audio",
+        payload: { url, is_reusable: true },
+      },
+    },
+  });
+  const attachmentPayloadWithType = JSON.stringify({
+    recipient: { id: igsid },
+    messaging_type: "RESPONSE",
+    message: {
+      attachment: {
+        type: "audio",
+        payload: { url, is_reusable: true },
+      },
+    },
+  });
+
+  /** @type {{ url: string, headers: Record<string, string>, body: string }[]} */
+  const attempts = [];
+
+  if (isIgUserToken || igUserId) {
+    let resolvedIgUserId = igUserId;
+    if (!resolvedIgUserId || isIgUserToken) {
+      try {
+        const { resolveInstagramBusinessId } = await import("./instagram-sync.js");
+        resolvedIgUserId = (await resolveInstagramBusinessId()) || igUserId;
+      } catch {
+        // keep configured id
+      }
+    }
+    if (!resolvedIgUserId) {
+      const err = new Error("instagram_ig_user_id_missing");
+      err.code = "instagram_ig_user_id_missing";
+      throw err;
+    }
+    attempts.push({
+      url: `https://graph.instagram.com/v21.0/${resolvedIgUserId}/messages`,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: attachmentPayload,
+    });
+    attempts.push({
+      url: `https://graph.facebook.com/v21.0/${resolvedIgUserId}/messages?access_token=${encodeURIComponent(accessToken)}`,
+      headers: { "Content-Type": "application/json" },
+      body: attachmentPayload,
+    });
+  }
+
+  const messengerPath = pageId ? `${pageId}/messages` : "me/messages";
+  attempts.push({
+    url: `https://graph.facebook.com/v21.0/${messengerPath}?access_token=${encodeURIComponent(accessToken)}`,
+    headers: { "Content-Type": "application/json" },
+    body: attachmentPayloadWithType,
+  });
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const upstream = await fetch(attempt.url, {
+        method: "POST",
+        headers: attempt.headers,
+        body: attempt.body,
+      });
+      const bodyText = await upstream.text();
+      let json = null;
+      try {
+        json = bodyText ? JSON.parse(bodyText) : null;
+      } catch {
+        json = { raw: bodyText.slice(0, 400) };
+      }
+      if (upstream.ok) return json;
+      lastError = {
+        status: upstream.status,
+        details: json,
+        message: json?.error?.message || `instagram_send_failed_${upstream.status}`,
+      };
+      console.warn("[instagram/send-audio] attempt failed", lastError.message);
+    } catch (err) {
+      lastError = {
+        status: 0,
+        details: null,
+        message: String(err?.message || err),
+      };
+    }
+  }
+
+  const err = new Error(lastError?.message || "instagram_send_failed");
+  err.code = "instagram_send_failed";
+  err.status = lastError?.status || 502;
+  err.details = lastError?.details || null;
+  throw err;
+}
+
 /** Meta subscription challenge (GET). */
 export function handleInstagramVerify(req, res) {
   const mode = String(req.query["hub.mode"] || "");

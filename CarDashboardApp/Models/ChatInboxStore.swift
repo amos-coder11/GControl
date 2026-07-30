@@ -1235,47 +1235,24 @@ enum CrmChatService {
         )
     }
 
-    /// Envía una nota de voz al cliente por WhatsApp/Instagram.
+    /// Envía una nota de voz al cliente por Instagram CRM.
     static func sendAudio(token: String, conversationId: String, fileURL: URL) async throws {
         let data = try Data(contentsOf: fileURL)
         guard data.count > 400 else { throw ServiceError.badResponse }
         let b64 = data.base64EncodedString()
         let filename = fileURL.lastPathComponent.isEmpty ? "voice.m4a" : fileURL.lastPathComponent
-
-        let payloads: [[String: Any]] = [
-            [
+        try await postJSON(
+            path: "/api/whatsapp/send_message",
+            token: token,
+            body: [
                 "conversationId": conversationId,
                 "textContent": "",
                 "messageType": "audio",
                 "mediaType": "audio/mp4",
                 "mediaContent": b64,
                 "mediaFilename": filename,
-            ],
-            [
-                "conversationId": conversationId,
-                "textContent": "",
-                "messageType": "ptt",
-                "mediaType": "audio/ogg; codecs=opus",
-                "mediaContent": b64,
-                "mediaFilename": filename,
-            ],
-            [
-                "conversationId": conversationId,
-                "audioBase64": b64,
-                "mimeType": "audio/mp4",
-            ],
-        ]
-
-        var lastError: Error = ServiceError.badResponse
-        for body in payloads {
-            do {
-                try await postJSON(path: "/api/whatsapp/send_message", token: token, body: body)
-                return
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError
+            ]
+        )
     }
 
     /// Mensaje del cliente/contacto (burbuja izquierda). Agente, IA y equipo van a la derecha.

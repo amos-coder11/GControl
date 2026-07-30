@@ -4,7 +4,7 @@ enum TabItem: Int, CaseIterable, Identifiable {
     case home = 0
     case chat = 1
     case sessions = 2
-    case reminders = 3
+    case settings = 3
     case account = 4
 
     var id: Int { rawValue }
@@ -14,7 +14,7 @@ enum TabItem: Int, CaseIterable, Identifiable {
         case .home: return "Home"
         case .chat: return "Chat"
         case .sessions: return "Sessions"
-        case .reminders: return "Reminders"
+        case .settings: return "Tú"
         case .account: return "Account"
         }
     }
@@ -24,7 +24,7 @@ enum TabItem: Int, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .chat: return "ellipsis.bubble"
         case .sessions: return "doc.text"
-        case .reminders: return "bell"
+        case .settings: return "person.crop.circle"
         case .account: return "person"
         }
     }
@@ -34,13 +34,13 @@ enum TabItem: Int, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .chat: return "ellipsis.bubble.fill"
         case .sessions: return "doc.text.fill"
-        case .reminders: return "bell.fill"
+        case .settings: return "person.crop.circle.fill"
         case .account: return "person.fill"
         }
     }
 }
 
-/// Barra flotante alineada con GROO (Home · Chat · Sessions · Reminders · Account).
+/// Barra flotante alineada con GROO (Home · Chat · Sessions · Tú · Account).
 struct LiquidGlassTabBar: View {
     @Binding var selectedTab: TabItem
     var onAuxiliaryTap: () -> Void = {}
