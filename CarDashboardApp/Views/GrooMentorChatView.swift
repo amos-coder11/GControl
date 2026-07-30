@@ -1,26 +1,26 @@
 import SwiftUI
 
-/// Chat mentor GROO — liquid glass, burbujas agrupadas, avatares y animaciones.
+/// Conversación moderna — burbujas, streaming y compositor unificados.
 struct GrooMentorChatView: View {
     @EnvironmentObject private var groo: GrooAppStore
-    @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
+    @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
     @State private var isSending = false
     @State private var streaming = ""
-    @State private var chatAppeared = false
+    @State private var showScheduleSheet = false
+    @State private var showBudgetSheet = false
+    @State private var imageLightboxItem: GrooChatImageLightboxItem?
     @FocusState private var focused: Bool
-
-    private let quickChips: [(icon: String, title: String)] = [
-        ("sparkles", "Next career step"),
-        ("bubble.left.and.bubble.right.fill", "Hard conversation"),
-        ("hand.raised.fill", "Ask for what I need"),
-        ("target", "Focus this week"),
-        ("bell.fill", "I have an appointment in 1 hour"),
-    ]
 
     private var messages: [GrooChatMessage] {
         groo.activeSession?.messages ?? []
+    }
+
+    private var linkedPatient: GrooPatient? {
+        guard let patientId = groo.activeSession?.patientId else { return nil }
+        return groo.patient(withId: patientId)
     }
 
     private var firstName: String {
@@ -28,105 +28,150 @@ struct GrooMentorChatView: View {
         return n.isEmpty ? "there" : n
     }
 
-    private var showChips: Bool {
-        !isSending && streaming.isEmpty && messages.filter(\.isUser).count <= 1
+    private var sessionTitle: String {
+        guard let title = groo.activeSession?.title else { return "\(GrooBrand.appName) Clinic" }
+        if title.hasPrefix("Session") { return "\(GrooBrand.appName) Clinic" }
+        return title
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                RevolutBackgroundView()
+        ZStack(alignment: .top) {
+            messagesScroll
 
+            chatHeader
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
                 VStack(spacing: 0) {
-                    chatHeader
-                    messagesScroll
-                    if showChips {
-                        chipsRow
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if let patient = linkedPatient {
+                        GrooPatientChatContextPanel(
+                            patient: patient,
+                            groo: groo,
+                            onSchedule: { showScheduleSheet = true },
+                            onOpenProfile: {
+                                groo.openPatientProfile(patient.id)
+                                tabRouter.openPatients()
+                            },
+                            onBudget: { showBudgetSheet = true }
+                        )
                     }
-                    composer
+                    GrooChatComposerBar(
+                        text: $draft,
+                        isSending: isSending,
+                        focused: $focused,
+                        onSend: { Task { await send(draft) } },
+                        showsBlurBackground: false
+                    )
                 }
-                .opacity(chatAppeared ? 1 : 0)
-                .offset(x: chatAppeared ? 0 : 24)
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .toolbar(.hidden, for: .tabBar)
-            .animation(.spring(response: 0.42, dampingFraction: 0.86), value: showChips)
-            .onAppear {
-                groo.ensureWelcomeSession()
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.86)) {
-                    chatAppeared = true
+                .background {
+                    GrooChatTheme.floatingBlurChromeBottom()
+                        .ignoresSafeArea(edges: .bottom)
                 }
             }
-            .onDisappear { chatAppeared = false }
-            .sheet(isPresented: $groo.showPaywall) {
-                GrooPremiumPaywallView()
+            .allowsHitTesting(true)
+        }
+        .background {
+            GrooChatWallpaper().ignoresSafeArea()
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: linkedPatient?.id)
+        .sheet(isPresented: $groo.showPaywall) {
+            GrooPremiumPaywallView()
+                .environmentObject(groo)
+                .environmentObject(auth)
+        }
+        .sheet(isPresented: $showScheduleSheet) {
+            if let patient = linkedPatient {
+                GrooScheduleAppointmentSheet(patient: patient, compact: true)
                     .environmentObject(groo)
-                    .environmentObject(auth)
+                    .environmentObject(tabRouter)
             }
+        }
+        .sheet(isPresented: $showBudgetSheet) {
+            if let patient = linkedPatient {
+                GrooPatientBudgetSheet(patient: patient)
+                    .environmentObject(groo)
+            }
+        }
+        .fullScreenCover(item: $imageLightboxItem) { item in
+            GrooChatImageLightbox(item: item)
         }
     }
 
-    // MARK: - Header
+    /// Espacio reservado para compositor (+ panel paciente).
+    private var bottomChromeHeight: CGFloat {
+        var h: CGFloat = 72
+        if linkedPatient != nil { h += 96 }
+        return h
+    }
+
+    // MARK: - Header (blur flotante, sin barra sólida)
 
     private var chatHeader: some View {
-        HStack(spacing: 10) {
-            glassCircleButton(icon: "chevron.left", action: goBackHome)
-
-            Image("GrooCharacter")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 44, height: 44)
-                .shadow(color: GrooBrand.purple.opacity(0.25), radius: 8, y: 2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text("GROO")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                    Circle()
-                        .fill(Color(red: 0.2, green: 0.78, blue: 0.45))
-                        .frame(width: 7, height: 7)
-                    Text("Online")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.2, green: 0.7, blue: 0.42))
+        HStack(spacing: 8) {
+            Button {
+                focused = false
+                dismiss()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    if groo.subscription == .trial {
+                        Text("\(groo.trialMessagesRemaining)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.black.opacity(0.78)))
+                    }
                 }
-                .foregroundStyle(Color.black.opacity(0.9))
-
-                Text("Your AI career mentor")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.45))
+                .foregroundStyle(Color.black.opacity(0.85))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background { GrooChatTheme.glassPillBackground() }
             }
+            .buttonStyle(.plain)
 
             Spacer(minLength: 4)
 
-            if groo.subscription == .trial {
-                Button { groo.showPaywall = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("\(groo.trialMessagesRemaining)")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                    }
-                    .foregroundStyle(GrooBrand.purple)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .background(glassCapsule)
-                }
-                .buttonStyle(.plain)
+            VStack(spacing: 1) {
+                Text(sessionTitle)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.9))
+                    .lineLimit(1)
+                Text(linkedPatient != nil
+                     ? (isSending ? "escribiendo…" : "últ. vez recientemente")
+                     : (isSending ? "escribiendo…" : "en línea"))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background { GrooChatTheme.glassPillBackground() }
 
-            glassCircleButton(icon: "square.and.pencil") {
-                groo.startNewSession()
-                draft = ""
-                streaming = ""
+            Spacer(minLength: 4)
+
+            Group {
+                if let patient = linkedPatient {
+                    GrooPatientAvatarView(patient: patient, size: 40)
+                } else {
+                    GrooChatAvatar(size: 40, showsOnlineRing: true)
+                }
             }
+            .overlay {
+                Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity)
         .background {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(alignment: .bottom) { Color.black.opacity(0.04).frame(height: 0.5) }
+            GrooChatTheme.floatingBlurChrome()
                 .ignoresSafeArea(edges: .top)
         }
     }
@@ -136,42 +181,51 @@ struct GrooMentorChatView: View {
     private var messagesScroll: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                LazyVStack(spacing: 3) {
+                    securityBanner
+                        .padding(.bottom, 8)
+
                     if messages.isEmpty && streaming.isEmpty && !isSending {
-                        emptyState.id("empty")
+                        welcomeCard.id("empty")
                     }
 
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, msg in
+                        if shouldShowDateSeparator(at: index) {
+                            GrooChatDatePill(label: formatDateSeparator(msg.createdAt))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+
                         let prev = index > 0 ? messages[index - 1] : nil
                         let next = index + 1 < messages.count ? messages[index + 1] : nil
-                        let isFirstInGroup = prev?.isUser != msg.isUser
-                        let isLastInGroup = next?.isUser != msg.isUser
+                        let isFirst = prev?.isUser != msg.isUser
+                            || (prev != nil && !Calendar.current.isDate(prev!.createdAt, inSameDayAs: msg.createdAt))
+                        let isLast = next?.isUser != msg.isUser
+                            || (next != nil && !Calendar.current.isDate(next!.createdAt, inSameDayAs: msg.createdAt))
 
-                        bubble(msg, showAvatar: isLastInGroup, showTime: isLastInGroup)
-                            .padding(.top, isFirstInGroup ? 12 : 2)
+                        messageRow(msg, isLastInGroup: isLast)
+                            .padding(.top, isFirst ? 8 : 2)
                             .id(msg.id)
                             .transition(.asymmetric(
-                                insertion: .move(edge: msg.isUser ? .trailing : .leading).combined(with: .opacity),
+                                insertion: .scale(scale: 0.96).combined(with: .opacity),
                                 removal: .opacity
                             ))
                     }
 
                     if isSending && streaming.isEmpty {
-                        typingIndicator
-                            .padding(.top, 12)
-                            .id("typing")
+                        typingRow.id("typing")
                     }
 
                     if !streaming.isEmpty {
-                        assistantBubble(text: streaming, isStreaming: true, showAvatar: true, showTime: false)
-                            .padding(.top, 12)
+                        incomingRow(text: streaming, time: Date(), isLast: true, streaming: true)
                             .id("stream")
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 12)
+                .padding(.top, 62)
+                .padding(.bottom, bottomChromeHeight)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: streaming) { _, _ in
@@ -186,6 +240,100 @@ struct GrooMentorChatView: View {
         }
     }
 
+    private var securityBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text("Clinic messages are private to your account.")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundStyle(GrooChatTheme.metaText)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background {
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+        .padding(.top, 4)
+    }
+
+    private var welcomeCard: some View {
+        VStack(spacing: 10) {
+            GrooChatAvatar(size: 72, showsOnlineRing: true)
+            Text("Hey \(firstName) 👋")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+            Text("Ask about appointments, patients, billing, or daily clinic operations.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(GrooChatTheme.metaText)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func messageRow(_ msg: GrooChatMessage, isLastInGroup: Bool) -> some View {
+        Group {
+            if msg.isUser {
+                HStack {
+                    Spacer(minLength: 56)
+                    GrooMessageBubbleView(
+                        text: msg.text,
+                        time: msg.createdAt,
+                        isOutgoing: true,
+                        isLastInGroup: isLastInGroup,
+                        delivery: .read,
+                        image: msg.uiImage,
+                        onImageTap: msg.uiImage.map { image in
+                            { imageLightboxItem = .local(image) }
+                        }
+                    )
+                }
+            } else {
+                incomingRow(text: msg.text, time: msg.createdAt, isLast: isLastInGroup, streaming: false, image: msg.uiImage)
+            }
+        }
+    }
+
+    private func incomingRow(text: String, time: Date, isLast: Bool, streaming: Bool, image: UIImage? = nil) -> some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            GrooMessageBubbleView(
+                text: text,
+                time: time,
+                isOutgoing: false,
+                isLastInGroup: isLast,
+                isStreaming: streaming,
+                image: image,
+                onImageTap: image.map { img in
+                    { imageLightboxItem = .local(img) }
+                }
+            )
+            Spacer(minLength: 56)
+        }
+    }
+
+    private var typingRow: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            GrooTypingIndicatorBubble()
+            Spacer(minLength: 56)
+        }
+        .padding(.top, 8)
+    }
+
+    // MARK: - Helpers
+
+    private func shouldShowDateSeparator(at index: Int) -> Bool {
+        guard index < messages.count else { return false }
+        if index == 0 { return true }
+        return !Calendar.current.isDate(messages[index].createdAt, inSameDayAs: messages[index - 1].createdAt)
+    }
+
+    private func formatDateSeparator(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) { return "Today" }
+        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         let target: AnyHashable
         if !streaming.isEmpty { target = "stream" }
@@ -197,426 +345,42 @@ struct GrooMentorChatView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(GrooBrand.purpleSoft)
-                    .frame(width: 100, height: 100)
-                Image("GrooCharacter")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 88, height: 88)
-            }
-            .shadow(color: GrooBrand.purple.opacity(0.2), radius: 16, y: 6)
-
-            VStack(spacing: 6) {
-                Text("Hey \(firstName) 👋")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                Text("I'm here to help with your career.\nWhat's on your mind today?")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.48))
-                    .multilineTextAlignment(.center)
-            }
-            .foregroundStyle(Color.black.opacity(0.9))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-    }
-
-    private func bubble(_ msg: GrooChatMessage, showAvatar: Bool, showTime: Bool) -> some View {
-        Group {
-            if msg.isUser {
-                userBubble(msg.text, time: msg.createdAt, showAvatar: showAvatar, showTime: showTime)
-            } else {
-                assistantBubble(text: msg.text, isStreaming: false, showAvatar: showAvatar, showTime: showTime, time: msg.createdAt)
-            }
-        }
-    }
-
-    private func userBubble(_ text: String, time: Date, showAvatar: Bool, showTime: Bool) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            Spacer(minLength: 52)
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(text)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background {
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 20,
-                            bottomLeadingRadius: 20,
-                            bottomTrailingRadius: showAvatar ? 6 : 20,
-                            topTrailingRadius: 20,
-                            style: .continuous
-                        )
-                        .fill(
-                            LinearGradient(
-                                colors: [GrooBrand.purple, Color(red: 0.52, green: 0.14, blue: 0.68)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .shadow(color: GrooBrand.purple.opacity(0.3), radius: 10, y: 4)
-                    }
-
-                if showTime {
-                    Text(formatTime(time))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.32))
-                }
-            }
-
-            if showAvatar {
-                userAvatar(size: 32)
-            } else {
-                Color.clear.frame(width: 32, height: 1)
-            }
-        }
-    }
-
-    private func assistantBubble(
-        text: String,
-        isStreaming: Bool,
-        showAvatar: Bool,
-        showTime: Bool,
-        time: Date = Date()
-    ) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            if showAvatar {
-                grooAvatar(size: 32)
-            } else {
-                Color.clear.frame(width: 32, height: 1)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                if showAvatar {
-                    Text("GROO")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(GrooBrand.purple.opacity(0.75))
-                        .padding(.leading, 4)
-                }
-
-                Text(text)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                    .lineSpacing(4)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background {
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: showAvatar ? 6 : 20,
-                            bottomLeadingRadius: 20,
-                            bottomTrailingRadius: 20,
-                            topTrailingRadius: 20,
-                            style: .continuous
-                        )
-                        .fill(.ultraThinMaterial)
-                        .background {
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: showAvatar ? 6 : 20,
-                                bottomLeadingRadius: 20,
-                                bottomTrailingRadius: 20,
-                                topTrailingRadius: 20,
-                                style: .continuous
-                            )
-                            .fill(Color.white.opacity(0.88))
-                        }
-                        .overlay {
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: showAvatar ? 6 : 20,
-                                bottomLeadingRadius: 20,
-                                bottomTrailingRadius: 20,
-                                topTrailingRadius: 20,
-                                style: .continuous
-                            )
-                            .strokeBorder(Color.white.opacity(0.9), lineWidth: 0.8)
-                        }
-                        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
-                    }
-
-                if isStreaming {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .tint(GrooBrand.purple)
-                        Text("GROO is thinking…")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(GrooBrand.purple.opacity(0.65))
-                    }
-                    .padding(.leading, 4)
-                } else if showTime {
-                    Text(formatTime(time))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.32))
-                        .padding(.leading, 4)
-                }
-            }
-
-            Spacer(minLength: 52)
-        }
-    }
-
-    private var typingIndicator: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            grooAvatar(size: 32)
-
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(GrooBrand.purple.opacity(0.5))
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(isSending ? 1 : 0.6)
-                        .animation(
-                            .easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15),
-                            value: isSending
-                        )
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .background(glassBubbleShape)
-
-            Spacer(minLength: 52)
-        }
-    }
-
-    // MARK: - Avatars
-
-    private func grooAvatar(size: CGFloat) -> some View {
-        Image("GrooCharacter")
-            .resizable()
-            .scaledToFill()
-            .frame(width: size, height: size)
-            .clipShape(Circle())
-            .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
-            .shadow(color: GrooBrand.purple.opacity(0.2), radius: 4, y: 1)
-    }
-
-    private func userAvatar(size: CGFloat) -> some View {
-        Group {
-            if let img = auth.profileAvatarImage {
-                Image(uiImage: img).resizable().scaledToFill()
-            } else {
-                ZStack {
-                    Circle().fill(GrooBrand.purpleSoft)
-                    Text(userInitial)
-                        .font(.system(size: size * 0.38, weight: .bold, design: .rounded))
-                        .foregroundStyle(GrooBrand.purple)
-                }
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
-        .shadow(color: GrooBrand.purple.opacity(0.15), radius: 4, y: 1)
-    }
-
-    private var userInitial: String {
-        let n = groo.profile.firstName.trimmingCharacters(in: .whitespaces)
-        let c = String(n.prefix(1)).uppercased()
-        return c.isEmpty ? "U" : c
-    }
-
-    // MARK: - Chips
-
-    private var chipsRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Try asking")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.38))
-                .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(quickChips, id: \.title) { chip in
-                        Button {
-                            Task { await send(chip.title) }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: chip.icon)
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text(chip.title)
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundStyle(GrooBrand.purple)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(.ultraThinMaterial)
-                                    .overlay {
-                                        Capsule(style: .continuous)
-                                            .strokeBorder(GrooBrand.purple.opacity(0.15), lineWidth: 0.8)
-                                    }
-                                    .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
-                            }
-                        }
-                        .buttonStyle(GrooMentorChatPressStyle())
-                        .disabled(isSending)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-        .padding(.bottom, 8)
-    }
-
-    // MARK: - Composer
-
-    private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message GROO…", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused($focused)
-                    .font(.system(size: 15, weight: .medium))
-                    .submitLabel(.send)
-                    .onSubmit {
-                        if canSend && !isSending {
-                            Task { await send(draft) }
-                        }
-                    }
-
-                if !draft.isEmpty {
-                    Button { draft = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 17))
-                            .foregroundStyle(Color.black.opacity(0.22))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(
-                                focused ? GrooBrand.purple.opacity(0.35) : Color.white.opacity(0.7),
-                                lineWidth: focused ? 1.2 : 0.75
-                            )
-                    }
-                    .shadow(color: focused ? GrooBrand.purple.opacity(0.1) : .black.opacity(0.04), radius: 8, y: 2)
-            }
-
-            Button {
-                Task { await send(draft) }
-            } label: {
-                Image(systemName: isSending ? "ellipsis" : "arrow.up")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background {
-                        Circle()
-                            .fill(
-                                canSend && !isSending
-                                    ? LinearGradient(
-                                        colors: [GrooBrand.purple, Color(red: 0.52, green: 0.14, blue: 0.68)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                    : LinearGradient(
-                                        colors: [Color.black.opacity(0.15), Color.black.opacity(0.12)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                            )
-                            .shadow(color: canSend ? GrooBrand.purple.opacity(0.35) : .clear, radius: 8, y: 3)
-                    }
-            }
-            .disabled(!canSend || isSending)
-            .buttonStyle(GrooMentorChatPressStyle())
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-        .background {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(alignment: .top) {
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.6), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 1)
-                }
-                .shadow(color: .black.opacity(0.04), radius: 10, y: -3)
-                .ignoresSafeArea(edges: .bottom)
-        }
-    }
-
-    // MARK: - Glass helpers
-
-    private var glassCapsule: some View {
-        Capsule(style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(GrooBrand.purple.opacity(0.2), lineWidth: 0.8)
-            }
-            .shadow(color: GrooBrand.purple.opacity(0.1), radius: 6, y: 2)
-    }
-
-    private var glassBubbleShape: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .background {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white.opacity(0.88))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 0.8)
-            }
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
-    }
-
-    private func glassCircleButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(GrooBrand.purple)
-                .frame(width: 36, height: 36)
-                .background {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay { Circle().strokeBorder(Color.white.opacity(0.75), lineWidth: 0.7) }
-                        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
-                }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
-    }
-
-    private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func goBackHome() {
-        focused = false
-        withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
-            chatAppeared = false
-            tabRouter.selected = .home
-        }
-    }
-
     // MARK: - Send
 
     private func send(_ raw: String) async {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
-        if let canned = groo.handleChatReminderIfNeeded(text: text) {
+        let patientId = groo.activeSession?.patientId
+
+        if let patientId,
+           text.lowercased().contains("presupuesto") {
+            guard groo.appendUserMessage(text, countsAgainstTrial: false) else { return }
+            draft = ""
+            focused = false
+            isSending = true
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            groo.appendAssistantMessage(
+                "He preparado el presupuesto de \(linkedPatient?.fullName ?? "el paciente"). Toca el botón 📄 o «Generar PDF y enviar» para mandarlo por WhatsApp o email."
+            )
+            isSending = false
+            showBudgetSheet = true
+            return
+        }
+
+        if let patientId,
+           let appointmentReply = groo.handleChatPatientAppointmentIfNeeded(text: text, patientId: patientId) {
+            guard groo.appendUserMessage(text, countsAgainstTrial: false) else { return }
+            draft = ""
+            focused = false
+            isSending = true
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            groo.appendAssistantMessage(appointmentReply)
+            isSending = false
+            return
+        }
+
+        if let canned = groo.handleChatReminderIfNeeded(text: text, patientId: patientId) {
             guard groo.appendUserMessage(text, countsAgainstTrial: false) else { return }
             draft = ""
             focused = false
@@ -643,7 +407,7 @@ struct GrooMentorChatView: View {
             if OpenAIChatClient.isConfigured {
                 try await OpenAIChatClient.streamVieraChatReply(
                     conversation: Array(history),
-                    dataContextSupplement: groo.careContextForMentor()
+                    dataContextSupplement: groo.mentorContextSupplement(for: groo.activeSession)
                 ) { chunk in
                     streaming += chunk
                 }
@@ -659,29 +423,20 @@ struct GrooMentorChatView: View {
         } catch {
             streaming = ""
             groo.appendAssistantMessage(
-                "I couldn't reach the mentor right now. \(error.localizedDescription)\n\n" +
+                "I couldn't reach the assistant right now. \(error.localizedDescription)\n\n" +
                 localMentorReply(to: text)
             )
         }
     }
 
     private func localMentorReply(to text: String) -> String {
-        let d = groo.diagnostic
-        let weak = d?.pillars.min(by: { $0.average < $1.average })?.pillar.title ?? "Communication"
+        let weak = groo.diagnostic?.pillars.min(by: { $0.average < $1.average })?.pillar.title ?? "Operations"
         return """
-        I hear you. Looking at C.A.R.E+U, your biggest friction right now points to \(weak).
+        Got it. For your clinic, the area that needs attention most is \(weak).
 
-        One question to move forward: if you could take one small, real step in the next 7 days about “\(text)” — what would it be?
+        What's one concrete step you can take in the next 7 days about "\(text)"?
 
-        Once you say it, we'll build a simple plan. If there's a date (interview, review, meeting), I can suggest a reminder.
+        If there's a date (appointment, follow-up, sterilization), tell me and I'll set a reminder.
         """
-    }
-}
-
-private struct GrooMentorChatPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }

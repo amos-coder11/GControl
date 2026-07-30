@@ -5,28 +5,28 @@ enum UGCTermsText {
     static let title = "Terms of Use and Community"
 
     static let body = """
-    Welcome to Groo. By using the career mentor chat and other user-generated content features, you agree to the following:
+    Welcome to GControl. By using the dental clinic assistant and other features, you agree to the following:
 
     1. Zero tolerance
     Objectionable content and abusive behavior are not allowed. This includes, but is not limited to: harassment, threats, hate speech, explicit sexual content, graphic violence, spam, and impersonation.
 
     2. Your responsibility
-    You are responsible for the content you post or send. Groo may remove content and suspend or ban accounts that violate these rules.
+    You are responsible for the content you post or send. GControl may remove content and suspend or ban accounts that violate these rules.
 
     3. Reports
     You can report messages or users from any conversation. Our team reviews each report and acts within 24 hours, removing content and banning offending users when appropriate.
 
     4. Blocking
-    You can block any abusive user. When you block someone, you will stop seeing their content immediately and the Groo team will be notified automatically for review.
+    You can block any abusive user. When you block someone, you will stop seeing their content immediately and the GControl team will be notified automatically for review.
 
     5. Filtering
     The app automatically filters objectionable language in messages sent and displayed.
 
     6. Scope of service
-    Groo is a mentorship platform for human and professional skills development. It does not offer therapy, psychological diagnosis, or medical advice. For mental health concerns, seek support from a qualified professional.
+    GControl is a dental clinic management platform. It helps with appointments, operations, and team coordination. It does not replace licensed clinical judgment, provide diagnoses, or prescribe treatment. Clinical decisions must be made by qualified dental professionals.
 
     7. Contact
-    For moderation inquiries: soporte@groo.co
+    For moderation inquiries: soporte@gflow.co
 
     Terms version: \(ContentModerationFilter.currentTermsVersion)
     """

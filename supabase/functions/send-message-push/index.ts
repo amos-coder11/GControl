@@ -176,13 +176,22 @@ async function sendApnsAlert(
   return { ok: res.ok, status: res.status, body: text };
 }
 
+function isPushRequestAuthorized(req: Request, webhookSecret: string | undefined): boolean {
+  if (!webhookSecret) return true;
+  if (req.headers.get("x-push-secret") === webhookSecret) return true;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const auth = req.headers.get("authorization") || "";
+  if (serviceKey && auth === `Bearer ${serviceKey}`) return true;
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   const webhookSecret = Deno.env.get("PUSH_WEBHOOK_SECRET");
-  if (webhookSecret && req.headers.get("x-push-secret") !== webhookSecret) {
+  if (!isPushRequestAuthorized(req, webhookSecret)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -194,16 +203,105 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   let body: {
+    kind?: string;
     type?: string;
     eventType?: string;
     table?: string;
     record?: Record<string, unknown>;
+    title?: string;
+    body?: string;
+    thread_id?: string;
+    avatar_url?: string | null;
+    recipient_user_ids?: string[];
   };
   try {
     body = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: "JSON inválido" }), {
       status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Push directo desde backend Instagram (mensaje CRM entrante).
+  if (body.kind === "crm_lead") {
+    const title = String(body.title || "Instagram").trim() || "Instagram";
+    const alertBody = truncate(String(body.body || "Nuevo mensaje"), 180);
+    const threadId = String(body.thread_id || "");
+    const avatarUrl = (body.avatar_url as string | null) || null;
+
+    let deviceQuery = supabase.from("user_apns_devices").select("device_token, user_id");
+    const recipientIds = Array.isArray(body.recipient_user_ids)
+      ? body.recipient_user_ids.filter((id) => typeof id === "string" && id.length > 0)
+      : [];
+    if (recipientIds.length > 0) {
+      deviceQuery = deviceQuery.in("user_id", recipientIds);
+    }
+
+    const { data: devices, error: devErr } = await deviceQuery;
+    if (devErr) throw devErr;
+    const tokens = (devices ?? []).map((d) => d.device_token as string);
+    const sandbox = Deno.env.get("APNS_USE_SANDBOX") === "true";
+    const bundleId = Deno.env.get("APNS_BUNDLE_ID") ?? "com.grooapp.app";
+    console.log("[send-message-push] crm_lead", {
+      threadId,
+      deviceCount: tokens.length,
+      apnsSandbox: sandbox,
+      bundleId,
+    });
+
+    if (tokens.length === 0) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          kind: "crm_lead",
+          error: "no_device_tokens",
+          hint:
+            "Abre GControl en un iPhone real, acepta notificaciones e inicia sesión para registrar el token en user_apns_devices.",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const apnsPayload = {
+      aps: {
+        alert: { title, body: alertBody },
+        sound: "default",
+        "mutable-content": 1,
+        "content-available": 1,
+      },
+      drflow: {
+        kind: "crm_lead",
+        thread_id: threadId,
+        avatar_url: avatarUrl,
+      },
+    };
+
+    const providerJwt = await getApnsProviderJwt();
+    const results = [];
+    for (const hex of tokens) {
+      const out = await sendApnsAlert(hex, apnsPayload, providerJwt);
+      if (out.status === 410) {
+        await supabase
+          .from("user_apns_devices")
+          .delete()
+          .eq("device_token", hex);
+      }
+      results.push({ token: hex.slice(0, 8) + "…", ...out });
+    }
+
+    if (tokens.length > 0) {
+      console.log("[send-message-push] crm_lead APNs", {
+        results: results.map((r) => ({
+          token: r.token,
+          ok: r.ok,
+          status: r.status,
+          body: r.body?.slice(0, 120),
+        })),
+      });
+    }
+
+    return new Response(JSON.stringify({ ok: true, kind: "crm_lead", results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

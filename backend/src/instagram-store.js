@@ -66,7 +66,7 @@ export function ensureConversation(convId, patch = {}) {
       wa_user_id: convId,
       source: "instagram",
       pinned: false,
-      ai_active: false,
+      ai_active: true,
     };
   } else {
     Object.assign(store.conversations[convId], Object.fromEntries(
@@ -144,12 +144,14 @@ function extractMessagingEvents(body) {
 }
 
 /**
- * @returns {{ added: number, customerIds: string[] }}
+ * @returns {{ added: number, customerIds: string[], incoming: Array<{ conversationId: string, text: string, contactName: string | null }> }}
  */
 export function ingestInstagramWebhook(body) {
   const events = extractMessagingEvents(body);
   let added = 0;
   const customerIds = new Set();
+  /** @type {Array<{ conversationId: string, text: string, contactName: string | null }>} */
+  const incoming = [];
 
   for (const event of events) {
     const message = event.message;
@@ -191,11 +193,19 @@ export function ingestInstagramWebhook(body) {
     });
     if (inserted) {
       added += 1;
-      if (!isEcho) customerIds.add(String(customerId));
+      if (!isEcho) {
+        customerIds.add(String(customerId));
+        const conv = getConversation(convId);
+        incoming.push({
+          conversationId: convId,
+          text: text || (hasAttachment ? `[${messageType}]` : "Nuevo mensaje"),
+          contactName: conv?.contact_name || null,
+        });
+      }
     }
   }
 
-  return { added, customerIds: [...customerIds] };
+  return { added, customerIds: [...customerIds], incoming };
 }
 
 export function listConversations(limit = 100) {
@@ -216,8 +226,8 @@ export function getConversation(conversationId) {
   return store.conversations[conversationId] || null;
 }
 
-export function appendOutgoing(conversationId, text) {
-  const id = `out-${Date.now()}`;
+export function appendOutgoing(conversationId, text, messageId = null) {
+  const id = messageId ? String(messageId) : `out-${Date.now()}`;
   upsertMessage(conversationId, {
     id,
     text_content: text,
@@ -226,6 +236,42 @@ export function appendOutgoing(conversationId, text) {
     message_type: "text",
   });
   return id;
+}
+
+export function appendOutgoingMedia(
+  conversationId,
+  {
+    text = "",
+    messageId = null,
+    mediaUrl = null,
+    mediaType = "image/jpeg",
+    mediaContent = null,
+    messageType = "image",
+  } = {}
+) {
+  const id = messageId ? String(messageId) : `out-${Date.now()}`;
+  const preview = String(text || "").trim() || (messageType === "image" ? "📷 Foto" : "📎 Archivo");
+  upsertMessage(conversationId, {
+    id,
+    text_content: preview,
+    sender_type: "agent",
+    created_at: nowISO(),
+    message_type: messageType,
+    media_url: mediaUrl,
+    media_type: mediaType,
+    media_content: mediaContent,
+  });
+  return id;
+}
+
+/** Marca la conversación como leída (sin mensajes pendientes). */
+export function markConversationRead(conversationId) {
+  const store = ensureLoaded();
+  const conv = store.conversations[conversationId];
+  if (!conv) return false;
+  conv.unread_count = 0;
+  persist();
+  return true;
 }
 
 export function setAiActive(conversationId, active) {

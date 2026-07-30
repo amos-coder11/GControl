@@ -50,3 +50,9 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 CarDashboardApp/Models/CrmMetricsService.swift
 vendor/bundle/
+
+# Smile Studio generated previews
+CarDashboardApp/Generated/
+
+# Smile Studio generated previews
+CarDashboardApp/Generated/

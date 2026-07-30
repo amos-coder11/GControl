@@ -79,7 +79,7 @@ struct DashboardMonthlyCommissionsCard: View {
             VStack(alignment: .trailing, spacing: 8) {
                 dateSelectorChip
 
-                Text("GROO")
+                Text(GrooBrand.appName)
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(GrooBrand.purple)
                     .frame(height: 112, alignment: .bottom)

@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         NotificationCenter.default.post(
-            name: Notification.Name("Drflow.refreshInboxFromPush"),
+            name: .refreshInboxFromPush,
             object: nil,
             userInfo: userInfo
         )

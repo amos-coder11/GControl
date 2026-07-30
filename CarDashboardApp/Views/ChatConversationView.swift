@@ -75,6 +75,7 @@ private struct ChatMessage: Identifiable, Equatable {
     init(
         id: UUID = UUID(),
         image: UIImage,
+        caption: String? = nil,
         isOutgoing: Bool,
         time: String,
         receipt: OutgoingReceipt? = nil,
@@ -83,7 +84,7 @@ private struct ChatMessage: Identifiable, Equatable {
         senderUserId: UUID? = nil
     ) {
         self.id = id
-        self.text = nil
+        self.text = caption
         self.image = image
         self.remoteImageURL = nil
         self.remoteAudioURL = nil
@@ -214,6 +215,8 @@ struct ChatConversationView: View {
     @State private var isChatDictating = false
     @State private var isRecordingTeamVoice = false
     @State private var isSendingVoiceNote = false
+    @State private var isSendingCrmMessage = false
+    @State private var isSendingImage = false
     @State private var teamVoiceRecorder: AVAudioRecorder?
     @State private var teamVoiceURL: URL?
     @State private var teamVoiceError: String?
@@ -223,6 +226,7 @@ struct ChatConversationView: View {
     @State private var showModerationAlert = false
     @State private var showObjectionableContentAlert = false
     @State private var softphoneTarget: SoftphoneTarget?
+    @State private var imageLightboxItem: GrooChatImageLightboxItem?
 
     private struct ModerationTarget: Identifiable {
         let id = UUID()
@@ -255,8 +259,55 @@ struct ChatConversationView: View {
     private var stackedConversationMessages: [ChatMessage] {
         if usesTeamGroupServer { return teamGroupUIMessages + liveMessages }
         if usesTeamDirectServer { return teamDirectUIMessages + liveMessages }
-        if usesCrmServer { return crmUIMessages + liveMessages }
+        if usesCrmServer { return mergedCrmConversationMessages }
+        if thread.kind == .lead { return liveMessages }
         return mockMsgs + liveMessages
+    }
+
+    /// Mensajes CRM sin duplicar optimistas locales ni ecos repetidos del servidor.
+    private var mergedCrmConversationMessages: [ChatMessage] {
+        let server = deduplicatedCrmUIMessages
+        let serverOutgoingTexts = Set(
+            server.filter(\.isOutgoing).compactMap(\.text).map(normalizeCrmMessageText)
+        )
+        let pending = liveMessages.filter { msg in
+            guard msg.isOutgoing else { return false }
+            if let text = msg.text {
+                return !serverOutgoingTexts.contains(normalizeCrmMessageText(text))
+            }
+            if msg.image != nil {
+                let hasServerImage = server.contains { serverMsg in
+                    guard serverMsg.isOutgoing else { return false }
+                    guard serverMsg.image != nil || serverMsg.remoteImageURL != nil else { return false }
+                    return abs(serverMsg.sortKey.timeIntervalSince(msg.sortKey)) < 240
+                }
+                return !hasServerImage
+            }
+            return false
+        }
+        return server + pending
+    }
+
+    private var deduplicatedCrmUIMessages: [ChatMessage] {
+        Self.deduplicateAdjacentOutgoing(crmUIMessages.sorted { $0.sortKey < $1.sortKey })
+    }
+
+    private func normalizeCrmMessageText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func deduplicateAdjacentOutgoing(_ messages: [ChatMessage]) -> [ChatMessage] {
+        var result: [ChatMessage] = []
+        for msg in messages {
+            if let last = result.last,
+               last.isOutgoing == msg.isOutgoing,
+               last.text == msg.text,
+               abs(last.sortKey.timeIntervalSince(msg.sortKey)) < 180 {
+                continue
+            }
+            result.append(msg)
+        }
+        return result
     }
 
     /// ¿La IA está encendida para este chat? (por defecto sí).
@@ -282,7 +333,7 @@ struct ChatConversationView: View {
     private var crmUIMessages: [ChatMessage] {
         crmRows
             .map { row -> ChatMessage in
-                let incoming = (row.senderType ?? "contact") == "contact"
+                let incoming = CrmChatService.messageIsFromContact(row.senderType)
                 let id = CrmChatService.stableUUID(for: "msg:\(row.id)")
                 let time = CrmChatService.clockTime(fromISO: row.createdAt)
                 let sortKey = CrmChatService.parseISO(row.createdAt) ?? Date()
@@ -331,19 +382,12 @@ struct ChatConversationView: View {
 
     /// Devuelve una URL de imagen para el mensaje si es una foto (URL http o base64).
     private static func crmImageURL(for row: CrmChatService.Message) -> URL? {
-        if CrmChatService.isAudioMessage(row) { return nil }
+        guard CrmChatService.isImageMessage(row) else { return nil }
         let type = (row.mediaType ?? row.messageType ?? "").lowercased()
-        let isImageType = type.contains("image") || type.hasPrefix("img")
-        // a) URL pública directa
         if let urlStr = row.mediaUrl, let url = URL(string: urlStr) {
-            let lower = urlStr.lowercased()
-            let looksImage = isImageType
-                || lower.contains(".jpg") || lower.contains(".jpeg")
-                || lower.contains(".png") || lower.contains(".webp") || lower.contains(".heic")
-            if looksImage { return url }
+            return url
         }
-        // b) base64 incrustado (data URL) cuando es imagen
-        if isImageType, let b64 = row.mediaContent, !b64.isEmpty {
+        if let b64 = row.mediaContent, !b64.isEmpty {
             let clean = b64.contains(",") ? String(b64.split(separator: ",").last ?? "") : b64
             let mime = type.contains("/") ? type : "image/jpeg"
             if let url = URL(string: "data:\(mime);base64,\(clean)") { return url }
@@ -353,7 +397,7 @@ struct ChatConversationView: View {
 
     private static func looksLikePlaceholder(_ s: String) -> Bool {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty || t == "📷 Imagen" || t == "📎 Archivo adjunto" || t.count <= 1
+        return t.isEmpty || t == "📷 Imagen" || t == "📷 Foto" || t == "📎 Archivo adjunto" || t.count <= 1
     }
 
     private var teamDirectUIMessages: [ChatMessage] {
@@ -403,15 +447,15 @@ struct ChatConversationView: View {
         }
     }
 
-    /// Cabecera conversación estilo WhatsApp.
-    private let chatToolbarNameColor = Color.white
-    private let chatToolbarStatusColor = Color(red: 0.62, green: 0.66, blue: 0.72)
-    private let whatsAppFieldFill = Color(red: 0.11, green: 0.11, blue: 0.11)
-    private let whatsAppSendGreen = Color(red: 0.0, green: 0.72, blue: 0.45)
-    private let whatsAppComposerInset: CGFloat = 8
-    /// Entrantes: fondo pizarra azulada; texto blanco; hora en gris claro visible.
-    private let incomingBubbleTextColor = Color.white
-    private let incomingBubbleMetaColor = Color(red: 0.72, green: 0.76, blue: 0.82)
+    /// Cabecera conversación estilo Telegram (blur Apple).
+    private let chatToolbarNameColor = Color.black.opacity(0.9)
+    private let chatToolbarStatusColor = Color.black.opacity(0.45)
+    private let whatsAppFieldFill = Color.white.opacity(0.62)
+    private let whatsAppSendGreen = Color(red: 0.20, green: 0.55, blue: 0.91)
+    private let whatsAppComposerInset: CGFloat = 10
+    /// Entrantes: blanco; texto oscuro.
+    private let incomingBubbleTextColor = GrooChatTheme.incomingText
+    private let incomingBubbleMetaColor = GrooChatTheme.metaText
 
     /// Margen desde el borde seguro hasta el contenido del chat, alineado visualmente con barra de navegación (atrás / avatar ~40pt).
     private let navBarContentInset: CGFloat = 20
@@ -439,12 +483,14 @@ struct ChatConversationView: View {
                 min(280, innerW - bubbleEdgeMargin * 2)
             )
 
-            ZStack {
+            ZStack(alignment: .top) {
                 ConversationBackdrop()
 
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 3) {
+                            Color.clear.frame(height: 56)
+
                             if usesTeamDirectServer, thread.peerUserId != nil {
                                 ForEach(teamDirectTimelineItems) { item in
                                     if case .message(let msg) = item {
@@ -487,6 +533,8 @@ struct ChatConversationView: View {
                         scrollChatToBottom(proxy: proxy, animated: false)
                     }
                 }
+
+                whatsAppConversationHeader
             }
             .frame(maxWidth: contentW, maxHeight: .infinity)
             .background(alignment: .topLeading) {
@@ -510,21 +558,10 @@ struct ChatConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            whatsAppConversationHeader
-        }
+        .toolbar(.hidden, for: .tabBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
         .onChange(of: selectedPhoto) { _, newItem in
-            Task {
-                guard let newItem else { return }
-                if let data = try? await newItem.loadTransferable(type: Data.self),
-                   let img = UIImage(data: data) {
-                    let now = Self.currentTimeString()
-                    withAnimation {
-                        liveMessages.append(ChatMessage(image: img, isOutgoing: true, time: now, receipt: .sent))
-                    }
-                }
-                selectedPhoto = nil
-            }
+            Task { await handleSelectedPhoto(newItem) }
         }
         .onAppear {
             if thread.kind == .lead {
@@ -537,6 +574,14 @@ struct ChatConversationView: View {
                 chatInbox.activeTeamGroupChatOpen = true
             }
             chatInbox.markThreadAsRead(thread.id)
+            if usesCrmServer {
+                Task {
+                    await chatInbox.markCrmThreadAsRead(
+                        threadId: thread.id,
+                        accessToken: auth.session?.accessToken
+                    )
+                }
+            }
         }
         .onDisappear {
             stopChatDictationIfNeeded()
@@ -593,6 +638,9 @@ struct ChatConversationView: View {
                 softphoneTarget = nil
             }
         }
+        .fullScreenCover(item: $imageLightboxItem) { item in
+            GrooChatImageLightbox(item: item)
+        }
         .confirmationDialog(
             "Bloquear usuario",
             isPresented: $showBlockConfirm,
@@ -603,7 +651,7 @@ struct ChatConversationView: View {
             }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Dejarás de ver los mensajes de esta persona y se enviará un informe al equipo de Groo.")
+            Text("Dejarás de ver los mensajes de esta persona y se enviará un informe al equipo de GControl.")
         }
         .alert("Contenido no permitido", isPresented: $showObjectionableContentAlert) {
             Button("Entendido", role: .cancel) {}
@@ -617,61 +665,86 @@ struct ChatConversationView: View {
         }
     }
 
-    /// Barra inferior estilo WhatsApp (fondo negro, márgenes fijos).
+    /// Barra inferior estilo Telegram (glass flotante).
     private func inputBarChrome(leadingPad: CGFloat, trailingPad: CGFloat) -> some View {
         VStack(spacing: 4) {
+            if usesCrmServer {
+                GrooCrmQuickRepliesBar(
+                    contactTitle: thread.title,
+                    isDisabled: isSendingCrmMessage || isSendingVoiceNote || isSendingImage
+                ) { reply in
+                    sendCrmQuickReply(reply)
+                }
+            }
             if isRecordingTeamVoice {
                 Text("Toca el micrófono otra vez para enviar el audio")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Color.black.opacity(0.45))
             }
             messageInputBar
         }
-        .padding(.horizontal, whatsAppComposerInset)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
-        .background(Color.black)
-        .ignoresSafeArea(edges: .bottom)
+        .background {
+            GrooChatTheme.floatingBlurChromeBottom()
+                .ignoresSafeArea(edges: .bottom)
+        }
     }
 
-    // MARK: - Cabecera WhatsApp
+    // MARK: - Cabecera Telegram (blur Apple)
 
     private var whatsAppConversationHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
                 dismiss()
             } label: {
-                HStack(spacing: 2) {
+                HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                     if let unread = thread.unread, unread > 0 {
                         Text("\(min(unread, 99))")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.black.opacity(0.78)))
                     }
                 }
-                .foregroundStyle(.white.opacity(0.95))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color.white.opacity(0.14), in: Capsule())
+                .foregroundStyle(Color.black.opacity(0.85))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background { GrooChatTheme.glassPillBackground() }
             }
             .buttonStyle(.plain)
 
-            conversationHeaderAvatar
+            Spacer(minLength: 4)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(spacing: 1) {
                 Text(thread.title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(chatToolbarNameColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 Text(conversationStatusLine)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(chatToolbarStatusColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background { GrooChatTheme.glassPillBackground() }
             .layoutPriority(1)
+
+            Spacer(minLength: 4)
+
+            conversationHeaderAvatar
+                .overlay {
+                    Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
+                }
+                .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
 
             if usesCrmServer {
                 whatsAppCrmActionsPill
@@ -679,23 +752,27 @@ struct ChatConversationView: View {
                 teamConversationActionsMenu
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity)
-        .background(Color.black)
+        .background {
+            GrooChatTheme.floatingBlurChrome()
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var whatsAppCrmActionsPill: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             Button {
                 toggleCrmAi(to: !crmAiActive)
             } label: {
                 Image(systemName: crmAiActive ? "cpu.fill" : "cpu")
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(
                         crmAiActive
-                            ? Color(red: 0.15, green: 0.78, blue: 0.45)
-                            : .white.opacity(0.92)
+                            ? GrooChatTheme.telegramBlue
+                            : Color.black.opacity(0.75)
                     )
             }
             .buttonStyle(.plain)
@@ -707,19 +784,16 @@ struct ChatConversationView: View {
                     softphoneTarget = SoftphoneTarget(number: phone, name: thread.title)
                 } label: {
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.45))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(GrooChatTheme.telegramBlue)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Llamar")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background {
-            Capsule(style: .continuous)
-                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.75)
-        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background { GrooChatTheme.glassPillBackground() }
     }
 
     private var teamConversationActionsMenu: some View {
@@ -741,9 +815,10 @@ struct ChatConversationView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 32, height: 32)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.75))
+                .frame(width: 36, height: 36)
+                .background { Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.white.opacity(0.55))) }
         }
     }
 
@@ -755,29 +830,30 @@ struct ChatConversationView: View {
             currentUserId: auth.session?.user.id,
             localProfileImage: auth.profileAvatarImage,
             localInitials: auth.userInitials,
-            diameter: 36
+            diameter: 40
         )
     }
 
     // MARK: - Burbujas
 
-    /// Salientes: azul intenso → cian (degradado horizontal).
+    /// Salientes: azul claro Telegram.
     private let outgoingBubbleGradient = LinearGradient(
         colors: [
-            Color(red: 0.0, green: 0.38, blue: 0.98),
-            Color(red: 0.15, green: 0.78, blue: 0.95),
+            GrooChatTheme.outgoingBubble,
+            GrooChatTheme.outgoingBubble,
         ],
         startPoint: .leading,
         endPoint: .trailing
     )
-    /// Entrantes: gris carbón con matiz fría (referencia burbuja oscura).
-    private let incomingBubbleFill = Color(red: 0.12, green: 0.15, blue: 0.20)
-    /// Hora y checks en salientes: blanco suavizado sobre el degradado.
-    private let outgoingMetaTint = Color.white.opacity(0.78)
-    private let outgoingMetaTintMuted = Color.white.opacity(0.52)
-    private let bubblePadH: CGFloat = 11
-    private let bubblePadV: CGFloat = 8
+    /// Entrantes: blanco.
+    private let incomingBubbleFill = GrooChatTheme.incomingBubble
+    /// Hora y checks en salientes.
+    private let outgoingMetaTint = GrooChatTheme.outgoingMeta
+    private let outgoingMetaTintMuted = GrooChatTheme.outgoingMeta.opacity(0.75)
+    private let bubblePadH: CGFloat = 10
+    private let bubblePadV: CGFloat = 7
     private let bubbleCorner: CGFloat = 16
+    private let outgoingBubbleTextColor = GrooChatTheme.outgoingText
 
     private func messageBubble(_ msg: ChatMessage, maxBubbleWidth: CGFloat) -> some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -847,40 +923,100 @@ struct ChatConversationView: View {
     /// Burbuja con la imagen que mandó el cliente (foto por WhatsApp/Instagram).
     @ViewBuilder
     private func remoteImageBubble(url: URL, msg: ChatMessage, maxBubbleWidth: CGFloat) -> some View {
-        let side = min(maxBubbleWidth, 240)
+        let side = min(maxBubbleWidth, 260)
         VStack(alignment: msg.isOutgoing ? .trailing : .leading, spacing: 4) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFill()
-                case .failure:
-                    ZStack {
-                        Color.black.opacity(0.25)
-                        Image(systemName: "photo")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                default:
-                    ZStack {
-                        Color.black.opacity(0.2)
-                        ProgressView().tint(.white)
+            chatImageFrame(side: side) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    case .failure:
+                        ZStack {
+                            Color.black.opacity(0.25)
+                            Image(systemName: "photo")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                    default:
+                        ZStack {
+                            Color.black.opacity(0.2)
+                            ProgressView().tint(.white)
+                        }
                     }
                 }
+            } metaOverlay: {
+                imageMetaOverlay(time: msg.time, receipt: msg.isOutgoing ? msg.receipt : nil)
+            } onTap: {
+                imageLightboxItem = .remote(url)
             }
-            .frame(width: side, height: side)
-            .clipShape(RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous))
 
-            if let caption = msg.text, !caption.trimmingCharacters(in: .whitespaces).isEmpty {
+            if let caption = msg.text, !caption.trimmingCharacters(in: .whitespaces).isEmpty,
+               !Self.looksLikePlaceholder(caption) {
                 if msg.isOutgoing {
                     outgoingTextBubble(text: caption, time: msg.time, receipt: msg.receipt ?? .sent, maxBubbleWidth: maxBubbleWidth)
                 } else {
                     incomingTextBubble(text: caption, time: msg.time, maxBubbleWidth: maxBubbleWidth)
                 }
-            } else {
-                Text(msg.time)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.6))
             }
+        }
+    }
+
+    @ViewBuilder
+    private func chatImageFrame<Content: View, Meta: View>(
+        side: CGFloat,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder metaOverlay: () -> Meta,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        content()
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                metaOverlay()
+                    .padding(8)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous))
+            .onTapGesture(perform: onTap)
+    }
+
+    private func imageMetaOverlay(time: String, receipt: OutgoingReceipt?) -> some View {
+        HStack(spacing: 3) {
+            Text(time)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white)
+            if let receipt {
+                imageReceiptMarks(receipt)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.42))
+        }
+    }
+
+    @ViewBuilder
+    private func imageReceiptMarks(_ receipt: OutgoingReceipt) -> some View {
+        switch receipt {
+        case .sent:
+            Image(systemName: "checkmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.92))
+        case .delivered:
+            HStack(spacing: -4) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white.opacity(0.92))
+        case .read:
+            HStack(spacing: -4) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(GrooChatTheme.readChecks)
         }
     }
 
@@ -900,8 +1036,7 @@ struct ChatConversationView: View {
 
     private func incomingTextBubble(text: String, time: String, maxBubbleWidth: CGFloat) -> some View {
         let displayText = ContentModerationFilter.sanitizeForDisplay(text)
-        let contentCap = max(40, maxBubbleWidth - 2 * bubblePadH - 4)
-        let shape = RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
+        let shape = GrooMessageBubbleShape(isOutgoing: false, isLastInGroup: true)
 
         return Group {
             if chatTextFitsSingleLineWithMeta(text: displayText, time: time, maxBubbleWidth: maxBubbleWidth, outgoing: false, receipt: nil) {
@@ -911,57 +1046,87 @@ struct ChatConversationView: View {
                         .foregroundStyle(incomingBubbleTextColor)
                         .lineLimit(1)
                     Text(time)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(incomingBubbleMetaColor)
                 }
                 .padding(.horizontal, bubblePadH)
                 .padding(.vertical, bubblePadV)
-                .background { shape.fill(incomingBubbleFill) }
+                .background {
+                    shape.fill(incomingBubbleFill)
+                        .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+                }
             } else {
-                incomingTextMultiline(text: displayText, time: time, contentCap: contentCap, shape: shape)
+                Text(displayText)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(incomingBubbleTextColor)
+                    .multilineTextAlignment(.leading)
+                    .lineSpacing(2)
+                    .padding(.trailing, 52)
+                    .padding(.bottom, 2)
+                    .overlay(alignment: .bottomTrailing) {
+                        Text(time)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(incomingBubbleMetaColor)
+                    }
+                    .padding(.horizontal, bubblePadH)
+                    .padding(.vertical, bubblePadV)
+                    .background {
+                        shape.fill(incomingBubbleFill)
+                            .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+                    }
             }
         }
         .frame(maxWidth: maxBubbleWidth, alignment: .leading)
     }
 
     private func incomingTextMultiline(text: String, time: String, contentCap: CGFloat, shape: RoundedRectangle) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(text)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(incomingBubbleTextColor)
-                .multilineTextAlignment(.leading)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 0, maxWidth: contentCap, alignment: .leading)
-
-            Text(time)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(incomingBubbleMetaColor)
-                .frame(maxWidth: contentCap, alignment: .leading)
-        }
-        .padding(.horizontal, bubblePadH)
-        .padding(.vertical, bubblePadV)
-        .background { shape.fill(incomingBubbleFill) }
+        // Legacy helper kept for call sites that still pass RoundedRectangle; unused by Telegram layout.
+        Text(text)
+            .font(.system(size: 16, weight: .regular))
+            .foregroundStyle(incomingBubbleTextColor)
+            .padding(.horizontal, bubblePadH)
+            .padding(.vertical, bubblePadV)
+            .background { shape.fill(incomingBubbleFill) }
+            .frame(maxWidth: contentCap, alignment: .leading)
+            .accessibilityHidden(true)
+            .hidden()
     }
 
     private func outgoingTextBubble(text: String, time: String, receipt: OutgoingReceipt, maxBubbleWidth: CGFloat) -> some View {
-        let contentCap = max(40, maxBubbleWidth - 2 * bubblePadH - 4)
-        let shape = RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
+        let shape = GrooMessageBubbleShape(isOutgoing: true, isLastInGroup: true)
 
         return Group {
             if chatTextFitsSingleLineWithMeta(text: text, time: time, maxBubbleWidth: maxBubbleWidth, outgoing: true, receipt: receipt) {
                 HStack(alignment: .bottom, spacing: 6) {
                     Text(text)
                         .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(outgoingBubbleTextColor)
                         .lineLimit(1)
                     outgoingMetaRow(time: time, receipt: receipt)
                 }
                 .padding(.horizontal, bubblePadH)
                 .padding(.vertical, bubblePadV)
-                .background { shape.fill(outgoingBubbleGradient) }
+                .background {
+                    shape.fill(GrooChatTheme.outgoingBubble)
+                        .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+                }
             } else {
-                outgoingTextMultiline(text: text, time: time, receipt: receipt, contentCap: contentCap, shape: shape)
+                Text(text)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(outgoingBubbleTextColor)
+                    .multilineTextAlignment(.leading)
+                    .lineSpacing(2)
+                    .padding(.trailing, 72)
+                    .padding(.bottom, 2)
+                    .overlay(alignment: .bottomTrailing) {
+                        outgoingMetaRow(time: time, receipt: receipt)
+                    }
+                    .padding(.horizontal, bubblePadH)
+                    .padding(.vertical, bubblePadV)
+                    .background {
+                        shape.fill(GrooChatTheme.outgoingBubble)
+                            .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+                    }
             }
         }
         .frame(maxWidth: maxBubbleWidth, alignment: .trailing)
@@ -991,27 +1156,21 @@ struct ChatConversationView: View {
     }
 
     private func outgoingTextMultiline(text: String, time: String, receipt: OutgoingReceipt, contentCap: CGFloat, shape: RoundedRectangle) -> some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            Text(text)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.trailing)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 0, maxWidth: contentCap, alignment: .trailing)
-
-            outgoingMetaRow(time: time, receipt: receipt)
-                .frame(maxWidth: contentCap, alignment: .trailing)
-        }
-        .padding(.horizontal, bubblePadH)
-        .padding(.vertical, bubblePadV)
-        .background { shape.fill(outgoingBubbleGradient) }
+        Text(text)
+            .font(.system(size: 16, weight: .regular))
+            .foregroundStyle(outgoingBubbleTextColor)
+            .padding(.horizontal, bubblePadH)
+            .padding(.vertical, bubblePadV)
+            .background { shape.fill(GrooChatTheme.outgoingBubble) }
+            .frame(maxWidth: contentCap, alignment: .trailing)
+            .accessibilityHidden(true)
+            .hidden()
     }
 
     private func outgoingMetaRow(time: String, receipt: OutgoingReceipt) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Text(time)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(outgoingMetaTint)
             outgoingReceiptMarks(receipt)
         }
@@ -1022,17 +1181,17 @@ struct ChatConversationView: View {
         switch receipt {
         case .sent:
             Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(outgoingMetaTint)
         case .delivered:
             outgoingDoubleCheckmarks(foreground: outgoingMetaTintMuted)
         case .read:
-            outgoingDoubleCheckmarks(foreground: Color.white.opacity(0.92))
+            outgoingDoubleCheckmarks(foreground: GrooChatTheme.readChecks)
         }
     }
 
     private func outgoingDoubleCheckmarks(foreground: Color) -> some View {
-        HStack(spacing: -5) {
+        HStack(spacing: -4) {
             Image(systemName: "checkmark")
                 .font(.system(size: 10, weight: .bold))
             Image(systemName: "checkmark")
@@ -1043,50 +1202,32 @@ struct ChatConversationView: View {
 
     @ViewBuilder
     private func outgoingOrIncomingImageBubble(_ msg: ChatMessage, image: UIImage, maxBubbleWidth: CGFloat) -> some View {
-        let maxW = min(220, maxBubbleWidth - 8)
-        if msg.isOutgoing {
-            VStack(alignment: .trailing, spacing: 4) {
+        let side = min(maxBubbleWidth, 260)
+        VStack(alignment: msg.isOutgoing ? .trailing : .leading, spacing: 4) {
+            chatImageFrame(side: side, content: {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: maxW, maxHeight: 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }, metaOverlay: {
+                imageMetaOverlay(time: msg.time, receipt: msg.isOutgoing ? msg.receipt : nil)
+            }, onTap: {
+                imageLightboxItem = .local(image)
+            })
 
-                outgoingMetaRow(time: msg.time, receipt: msg.receipt ?? .sent)
+            if let caption = msg.text, !caption.trimmingCharacters(in: .whitespaces).isEmpty {
+                if msg.isOutgoing {
+                    outgoingTextBubble(text: caption, time: msg.time, receipt: msg.receipt ?? .sent, maxBubbleWidth: maxBubbleWidth)
+                } else {
+                    incomingTextBubble(text: caption, time: msg.time, maxBubbleWidth: maxBubbleWidth)
+                }
             }
-            .padding(6)
-            .background {
-                RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-                    .fill(outgoingBubbleGradient)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: maxBubbleWidth, alignment: .trailing)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: maxW, maxHeight: 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                Text(msg.time)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(incomingBubbleMetaColor)
-            }
-            .padding(6)
-            .background {
-                RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-                    .fill(incomingBubbleFill)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: maxBubbleWidth, alignment: .leading)
         }
     }
 
-    // MARK: - Barra de entrada (estilo WhatsApp)
+    // MARK: - Barra de entrada (estilo Telegram glass)
 
     private let composerFontSize: CGFloat = 16
-    private let composerVerticalPadding: CGFloat = 6
+    private let composerVerticalPadding: CGFloat = 10
     private let composerTextTopInset: CGFloat = 2
     private let composerTextBottomInset: CGFloat = 2
 
@@ -1096,20 +1237,25 @@ struct ChatConversationView: View {
         return max(120, h * 0.42)
     }
 
+    private var composerIsMultiline: Bool {
+        draft.contains(where: \.isNewline) || draft.count > 36
+    }
+
     private var messageInputBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: draftIsEmpty ? .center : .bottom, spacing: 8) {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .frame(width: 28, height: 36)
-                    .contentShape(Rectangle())
+                Image(systemName: "paperclip")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.65))
+                    .frame(width: 40, height: 40)
+                    .background { GrooChatTheme.glassCircleBackground() }
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
+            .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote || isSendingImage)
 
-            HStack(alignment: .bottom, spacing: 8) {
-                ZStack(alignment: .leading) {
+            HStack(alignment: draftIsEmpty ? .center : .bottom, spacing: 8) {
+                ZStack(alignment: draftIsEmpty ? .leading : .topLeading) {
                     ComposerTextView(
                         text: $draft,
                         maxHeight: composerTextScrollMaxHeight,
@@ -1117,20 +1263,26 @@ struct ChatConversationView: View {
                         textTopInset: composerTextTopInset,
                         textBottomInset: composerTextBottomInset
                     )
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .opacity((isChatDictating || isRecordingTeamVoice || isSendingVoiceNote) ? 0.2 : 1)
 
                     if isSendingVoiceNote {
                         Text("Enviando audio…")
                             .font(.system(size: composerFontSize))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(Color.black.opacity(0.4))
+                            .padding(.top, composerTextTopInset)
+                            .allowsHitTesting(false)
+                    } else if isSendingImage {
+                        Text("Enviando imagen…")
+                            .font(.system(size: composerFontSize))
+                            .foregroundStyle(Color.black.opacity(0.4))
                             .padding(.top, composerTextTopInset)
                             .allowsHitTesting(false)
                     } else if isRecordingTeamVoice {
                         Text("Grabando… Toca el micrófono para enviar")
                             .font(.system(size: composerFontSize))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(Color.black.opacity(0.4))
                             .padding(.top, composerTextTopInset)
                             .allowsHitTesting(false)
                     } else if isChatDictating {
@@ -1138,11 +1290,11 @@ struct ChatConversationView: View {
                             if chatDictationTranscriber.partialText.isEmpty {
                                 Text("Escuchando…")
                                     .font(.system(size: composerFontSize))
-                                    .foregroundStyle(.white.opacity(0.45))
+                                    .foregroundStyle(Color.black.opacity(0.35))
                             } else {
                                 Text(chatDictationTranscriber.partialText)
                                     .font(.system(size: composerFontSize))
-                                    .foregroundStyle(.white.opacity(0.92))
+                                    .foregroundStyle(Color.black.opacity(0.85))
                             }
                         }
                         .padding(.top, composerTextTopInset)
@@ -1150,72 +1302,80 @@ struct ChatConversationView: View {
                     } else if draftIsEmpty && !isRecordingTeamVoice {
                         Text("Mensaje")
                             .font(.system(size: composerFontSize))
-                            .foregroundStyle(.white.opacity(0.45))
-                            .padding(.top, composerTextTopInset)
+                            .foregroundStyle(Color.black.opacity(0.35))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                             .allowsHitTesting(false)
                     }
                 }
+                .frame(maxWidth: .infinity, minHeight: 22)
 
                 if draftIsEmpty && !isRecordingTeamVoice && !isSendingVoiceNote && !isChatDictating {
                     Image(systemName: "face.smiling")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .frame(width: 24, height: 28)
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.35))
+                        .frame(width: 28, height: 28)
+                        .accessibilityHidden(true)
+                } else if !draftIsEmpty {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.35))
+                        .frame(width: 28, height: 28)
+                        .padding(.bottom, 1)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, composerVerticalPadding)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .center)
+            .padding(.leading, 14)
+            .padding(.trailing, 10)
+            .padding(.vertical, draftIsEmpty ? 8 : (composerIsMultiline ? 12 : composerVerticalPadding))
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: draftIsEmpty ? .center : .bottom)
+            .fixedSize(horizontal: false, vertical: true)
             .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(whatsAppFieldFill)
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(Color.white.opacity(0.88)))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.98), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
             }
 
             if !draftIsEmpty {
                 Button { sendMessage() } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 40, height: 40)
                         .background(whatsAppSendGreen, in: Circle())
+                        .shadow(color: GrooChatTheme.telegramBlue.opacity(0.3), radius: 8, y: 2)
                 }
                 .buttonStyle(.plain)
                 .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
                 .accessibilityLabel("Enviar mensaje")
             } else {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Image(systemName: "camera")
-                        .font(.system(size: 21, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .frame(width: 28, height: 36)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isChatDictating || isRecordingTeamVoice || isSendingVoiceNote)
-
-                if usesTeamDirectServer || usesCrmServer {
-                    VoiceNoteMicTapControl(
-                        isRecording: isRecordingTeamVoice,
-                        isBusy: isSendingVoiceNote
-                    ) {
-                        toggleVoiceNoteRecording()
+                Group {
+                    if usesTeamDirectServer || usesCrmServer {
+                        VoiceNoteMicTapControl(
+                            isRecording: isRecordingTeamVoice,
+                            isBusy: isSendingVoiceNote
+                        ) {
+                            toggleVoiceNoteRecording()
+                        }
+                    } else {
+                        Button {
+                            toggleChatDictation()
+                        } label: {
+                            Image(systemName: isChatDictating ? "stop.fill" : "mic.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(isChatDictating ? Color.red.opacity(0.9) : Color.black.opacity(0.65))
+                                .frame(width: 40, height: 40)
+                                .background { GrooChatTheme.glassCircleBackground() }
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(isChatDictating ? "Detener dictado" : "Dictar mensaje")
                     }
-                } else {
-                    Button {
-                        toggleChatDictation()
-                    } label: {
-                        Image(systemName: isChatDictating ? "stop.fill" : "mic")
-                            .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(isChatDictating ? Color.red.opacity(0.9) : .white.opacity(0.92))
-                            .frame(width: 28, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isChatDictating ? "Detener dictado" : "Dictar mensaje")
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.15), value: composerIsMultiline)
         .animation(.easeInOut(duration: 0.2), value: draftIsEmpty)
         .animation(.easeInOut(duration: 0.2), value: draft.count)
         .animation(.easeInOut(duration: 0.2), value: isChatDictating)
@@ -1451,6 +1611,130 @@ struct ChatConversationView: View {
 
     // MARK: - Envío texto
 
+    @MainActor
+    private func handleSelectedPhoto(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        defer { selectedPhoto = nil }
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else { return }
+
+        let caption = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !caption.isEmpty, ContentModerationFilter.containsObjectionableContent(caption) {
+            showObjectionableContentAlert = true
+            return
+        }
+        draft = ""
+
+        if usesCrmServer,
+           let convId = chatInbox.crmConversationIdByThread[thread.id],
+           let token = auth.session?.accessToken {
+            await sendCrmImage(image, caption: caption, conversationId: convId, token: token)
+            return
+        }
+
+        let now = Self.currentTimeString()
+        withAnimation {
+            liveMessages.append(
+                ChatMessage(
+                    image: image,
+                    caption: caption.isEmpty ? nil : caption,
+                    isOutgoing: true,
+                    time: now,
+                    receipt: .sent
+                )
+            )
+        }
+    }
+
+    @MainActor
+    private func sendCrmImage(
+        _ image: UIImage,
+        caption: String,
+        conversationId convId: String,
+        token: String
+    ) async {
+        guard !isSendingImage else { return }
+        isSendingImage = true
+        let now = Self.currentTimeString()
+        let sortKey = Date()
+        let optimistic = ChatMessage(
+            image: image,
+            caption: caption.isEmpty ? nil : caption,
+            isOutgoing: true,
+            time: now,
+            receipt: .sent,
+            sortKey: sortKey
+        )
+        withAnimation {
+            liveMessages.append(optimistic)
+        }
+        chatInbox.applyCrmLeadPreview(
+            threadId: thread.id,
+            preview: caption.isEmpty ? "📷 Foto" : caption,
+            date: sortKey
+        )
+
+        do {
+            try await CrmChatService.sendImage(
+                token: token,
+                conversationId: convId,
+                image: image,
+                caption: caption
+            )
+            await refreshCrmMessages(clearLocal: true)
+            NotificationCenter.default.post(name: .messageDidRespond, object: nil)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } catch {
+            liveMessages.removeAll { $0.id == optimistic.id }
+            teamVoiceError = "No se pudo enviar la imagen. \(error.localizedDescription)"
+        }
+        isSendingImage = false
+    }
+
+    private func sendCrmQuickReply(_ reply: GrooCrmQuickReply) {
+        let text = reply.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              let convId = chatInbox.crmConversationIdByThread[thread.id],
+              let token = auth.session?.accessToken
+        else { return }
+        if ContentModerationFilter.containsObjectionableContent(text) {
+            showObjectionableContentAlert = true
+            return
+        }
+        sendCrmText(text, conversationId: convId, token: token)
+    }
+
+    private func sendCrmText(_ text: String, conversationId convId: String, token: String) {
+        guard !isSendingCrmMessage else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isSendingCrmMessage = true
+        let now = Self.currentTimeString()
+        withAnimation {
+            liveMessages.append(ChatMessage(text: trimmed, isOutgoing: true, time: now, receipt: .sent))
+        }
+        chatInbox.applyCrmLeadPreview(threadId: thread.id, preview: trimmed, date: Date())
+
+        Task {
+            do {
+                try await CrmChatService.send(token: token, conversationId: convId, text: trimmed)
+                await refreshCrmMessages(clearLocal: true)
+                await MainActor.run {
+                    isSendingCrmMessage = false
+                    NotificationCenter.default.post(name: .messageDidRespond, object: nil)
+                }
+            } catch {
+                await MainActor.run {
+                    isSendingCrmMessage = false
+                    liveMessages.removeAll { $0.text == trimmed && $0.isOutgoing }
+                    if draft.isEmpty { draft = trimmed }
+                }
+            }
+        }
+    }
+
     private func sendMessage() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -1482,25 +1766,7 @@ struct ChatConversationView: View {
            let convId = chatInbox.crmConversationIdByThread[thread.id],
            let token = auth.session?.accessToken {
             draft = ""
-            let now = Self.currentTimeString()
-            withAnimation {
-                liveMessages.append(ChatMessage(text: text, isOutgoing: true, time: now, receipt: .sent))
-            }
-            Task {
-                do {
-                    try await CrmChatService.send(token: token, conversationId: convId, text: text)
-                    await refreshCrmMessages(clearLocal: true)
-                    await MainActor.run {
-                        NotificationCenter.default.post(name: .messageDidRespond, object: nil)
-                    }
-                } catch {
-                    // El backend rechazó el envío (p. ej. ventana de 24 h cerrada).
-                    await MainActor.run {
-                        liveMessages.removeAll { $0.text == text && $0.isOutgoing }
-                        draft = text
-                    }
-                }
-            }
+            sendCrmText(text, conversationId: convId, token: token)
             return
         }
         if usesTeamDirectServer, let peer = thread.peerUserId {
@@ -1553,7 +1819,46 @@ struct ChatConversationView: View {
         guard let rows = try? await CrmChatService.messages(token: token, conversationId: convId, limit: 100)
         else { return }
         crmRows = rows
-        if clearLocal { liveMessages.removeAll() }
+        if clearLocal {
+            liveMessages.removeAll()
+        } else {
+            let serverOutgoingTexts = Set(
+                rows
+                    .filter { !CrmChatService.messageIsFromContact($0.senderType) }
+                    .compactMap(\.textContent)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            )
+            liveMessages.removeAll { msg in
+                guard msg.isOutgoing else { return false }
+                if let text = msg.text {
+                    return serverOutgoingTexts.contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                if msg.image != nil {
+                    let hasServerImage = rows.contains { row in
+                        guard !CrmChatService.messageIsFromContact(row.senderType) else { return false }
+                        guard CrmChatService.isImageMessage(row) else { return false }
+                        guard let serverDate = CrmChatService.parseISO(row.createdAt) else { return false }
+                        return abs(serverDate.timeIntervalSince(msg.sortKey)) < 240
+                    }
+                    return hasServerImage
+                }
+                return false
+            }
+        }
+        if let preview = CrmChatService.latestInboxPreview(from: rows) {
+            chatInbox.applyCrmLeadPreview(
+                threadId: thread.id,
+                preview: preview.text,
+                date: preview.date
+            )
+        }
+        if chatInbox.activeLeadThreadId == thread.id {
+            chatInbox.markThreadAsRead(thread.id)
+            await chatInbox.markCrmThreadAsRead(
+                threadId: thread.id,
+                accessToken: token
+            )
+        }
     }
 
     @MainActor
@@ -1920,7 +2225,7 @@ struct ChatConversationView: View {
         default:
             return [
                 ChatMessage(text: "Hola, ¿en qué podemos ayudarte?", isOutgoing: false, time: "10:12"),
-                ChatMessage(text: "Gracias, te escribo desde Groo.", isOutgoing: true, time: "10:18", receipt: .read)
+                ChatMessage(text: "Gracias, te escribo desde GControl.", isOutgoing: true, time: "10:18", receipt: .read)
             ]
         }
     }
@@ -1938,16 +2243,17 @@ private struct VoiceNoteMicTapControl: View {
             Group {
                 if isBusy {
                     ProgressView()
-                        .tint(.white.opacity(0.9))
+                        .tint(Color.black.opacity(0.55))
                         .scaleEffect(0.75)
                 } else {
-                    Image(systemName: isRecording ? "stop.fill" : "mic")
-                        .font(.system(size: 21, weight: .regular))
-                        .foregroundStyle(isRecording ? Color.red.opacity(0.92) : .white.opacity(0.92))
+                    Image(systemName: isRecording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(isRecording ? Color.red.opacity(0.92) : Color.black.opacity(0.7))
                 }
             }
-            .frame(width: 28, height: 36)
-            .contentShape(Rectangle())
+            .frame(width: 40, height: 40)
+            .background { GrooChatTheme.glassCircleBackground() }
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
@@ -2076,65 +2382,50 @@ private struct VoiceNoteBubbleView: View {
     @State private var playFileURL: URL?
     @State private var streamEndObserver: NSObjectProtocol?
 
-    private let outgoingBubbleGradient = LinearGradient(
-        colors: [
-            Color(red: 0.0, green: 0.38, blue: 0.98),
-            Color(red: 0.15, green: 0.78, blue: 0.95),
-        ],
-        startPoint: .leading,
-        endPoint: .trailing
-    )
-    private let incomingBubbleFill = Color(red: 0.12, green: 0.15, blue: 0.20)
-    private let incomingText = Color.white
-    private let incomingMeta = Color(red: 0.72, green: 0.76, blue: 0.82)
-    private let outgoingMeta = Color.white.opacity(0.78)
-    private let bubblePadH: CGFloat = 11
-    private let bubblePadV: CGFloat = 8
-    private let bubbleCorner: CGFloat = 16
-    private let waveformBarCount = 40
-    private let waveformStripHeight: CGFloat = 36
+    private let incomingBubbleFill = Color.white.opacity(0.92)
+    private let incomingMeta = Color.black.opacity(0.38)
+    private let outgoingMeta = Color.black.opacity(0.38)
+    private let bubblePadH: CGFloat = 12
+    private let bubblePadV: CGFloat = 10
+    private let bubbleCorner: CGFloat = 18
+    private let waveformBarCount = 42
+    private let waveformStripHeight: CGFloat = 28
+    private let playButtonSize: CGFloat = 40
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: bubbleCorner, style: .continuous)
-        VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 8) {
-            Button {
-                togglePlayback()
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: isPlaying ? "stop.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(isOutgoing ? Color.white : incomingText)
-                        .opacity(isPlayLoading ? 0.55 : 1)
+        Button {
+            togglePlayback()
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                playCircleButton
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Nota de voz")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(isOutgoing ? Color.white.opacity(0.92) : incomingText.opacity(0.95))
+                VStack(alignment: .leading, spacing: 6) {
+                    playbackWaveform
 
-                        waveformStrip
-
-                        if loadFailed && waveformBars.isEmpty {
-                            Text("No se pudo cargar el audio")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.orange.opacity(0.95))
-                        }
+                    HStack(alignment: .center, spacing: 8) {
+                        durationLabel
+                        Spacer(minLength: 4)
+                        bubbleMetaRow
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    durationColumn
+                    if loadFailed && waveformBars.isEmpty {
+                        Text("No se pudo cargar el audio")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.orange.opacity(0.95))
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
-            .disabled(isPlayLoading)
-
-            metaRow
         }
+        .buttonStyle(.plain)
+        .disabled(isPlayLoading)
         .padding(.horizontal, bubblePadH)
         .padding(.vertical, bubblePadV)
         .frame(maxWidth: maxBubbleWidth, alignment: isOutgoing ? .trailing : .leading)
         .background {
             if isOutgoing {
-                shape.fill(outgoingBubbleGradient)
+                shape.fill(GrooChatTheme.outgoingBubble)
             } else {
                 shape.fill(incomingBubbleFill)
             }
@@ -2147,98 +2438,135 @@ private struct VoiceNoteBubbleView: View {
         }
     }
 
-    private var waveformStrip: some View {
-        GeometryReader { geo in
-            waveformStripContent(width: geo.size.width, height: geo.size.height)
+    private var playCircleButton: some View {
+        ZStack {
+            Circle()
+                .fill(GrooChatTheme.telegramBlue)
+                .frame(width: playButtonSize, height: playButtonSize)
+
+            if isPlayLoading {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.72)
+            } else {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: isPlaying ? 15 : 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(x: isPlaying ? 0 : 1.5)
+            }
+        }
+        .opacity(isPlayLoading ? 0.85 : 1)
+    }
+
+    @ViewBuilder
+    private var playbackWaveform: some View {
+        Group {
+            if isPlaying {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { _ in
+                    voiceWaveformStrip(progress: playbackProgress)
+                }
+            } else {
+                voiceWaveformStrip(progress: 0)
+            }
         }
         .frame(height: waveformStripHeight)
     }
 
-    @ViewBuilder
-    private func waveformStripContent(width: CGFloat, height: CGFloat) -> some View {
-        let count = max(1, waveformBars.isEmpty ? 24 : waveformBars.count)
-        let gap: CGFloat = 2
-        let totalGaps = CGFloat(max(0, count - 1)) * gap
-        let barW = max(1.5, (width - totalGaps) / CGFloat(count))
+    private func voiceWaveformStrip(progress: CGFloat) -> some View {
+        VoiceMessageWaveformStrip(
+            bars: waveformBars,
+            progress: progress,
+            isLoading: isPrefetching && waveformBars.isEmpty,
+            accentColor: GrooChatTheme.telegramBlue,
+            stripHeight: waveformStripHeight,
+            onSeek: audioDuration > 0 ? { fraction in
+                seekToProgress(fraction)
+            } : nil
+        )
+    }
 
-        HStack(alignment: .center, spacing: gap) {
-            if isPrefetching && waveformBars.isEmpty {
-                ForEach(0 ..< min(24, waveformBarCount), id: \.self) { i in
-                    voicePlaceholderBar(index: i, barWidth: barW, maxHeight: height)
-                }
-            } else {
-                ForEach(Array(waveformBars.enumerated()), id: \.offset) { _, amp in
-                    WaveformBarView(
-                        amplitude: amp,
-                        maxHeight: height,
-                        barWidth: barW,
-                        cornerRadius: min(2, barW * 0.45),
-                        color: waveformBarColor(amplitude: amp)
-                    )
-                }
+    @MainActor
+    private func seekToProgress(_ fraction: CGFloat) {
+        guard audioDuration > 0 else { return }
+        let target = min(audioDuration, max(0, Double(fraction) * audioDuration))
+
+        if player == nil, streamPlayer == nil, let data = cachedAudioData {
+            do {
+                try playData(data, fileExtension: source.fileExtension)
+            } catch {
+                loadFailed = true
+                return
             }
         }
-        .frame(width: width, height: height, alignment: .center)
-    }
 
-    private func voicePlaceholderBar(index: Int, barWidth: CGFloat, maxHeight: CGFloat) -> some View {
-        let t = 0.22 + 0.55 * (0.5 + 0.5 * sin(Double(index) * 0.38))
-        let h = max(4, maxHeight * CGFloat(t))
-        let fill = isOutgoing ? Color.white.opacity(0.2) : Color.white.opacity(0.16)
-        return RoundedRectangle(cornerRadius: 1, style: .continuous)
-            .fill(fill)
-            .frame(width: barWidth, height: h)
-    }
-
-    private func waveformBarColor(amplitude: CGFloat) -> Color {
-        if isOutgoing {
-            let a = Double(amplitude)
-            return Color.white.opacity(0.28 + 0.62 * a)
+        if let player {
+            player.currentTime = target
+            if !isPlaying {
+                player.play()
+                isPlaying = true
+            }
+            return
         }
-        let a = Double(amplitude)
-        return Color(red: 0.75 + 0.2 * a, green: 0.88 + 0.1 * a, blue: 1.0).opacity(0.45 + 0.5 * a)
+        if let streamPlayer {
+            let time = CMTime(seconds: target, preferredTimescale: 600)
+            streamPlayer.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+            if !isPlaying {
+                streamPlayer.play()
+                isPlaying = true
+            }
+        }
+    }
+
+    private var currentPlaybackTime: TimeInterval {
+        if let player {
+            return player.currentTime
+        }
+        if let streamPlayer {
+            let t = streamPlayer.currentTime().seconds
+            return t.isFinite ? max(0, t) : 0
+        }
+        return 0
+    }
+
+    private var playbackProgress: CGFloat {
+        guard audioDuration > 0 else { return 0 }
+        return min(1, CGFloat(currentPlaybackTime / audioDuration))
     }
 
     @ViewBuilder
-    private var durationColumn: some View {
-        VStack(alignment: .trailing, spacing: 2) {
+    private var durationLabel: some View {
+        HStack(spacing: 5) {
             if isPlaying {
-                TimelineView(.animation(minimumInterval: 0.12, paused: false)) { _ in
-                    let cur = player?.currentTime ?? 0
-                    Text(VoiceMessageWaveformExtractor.formatDuration(cur))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { _ in
+                    Text(VoiceMessageWaveformExtractor.formatDuration(currentPlaybackTime))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(isOutgoing ? Color.white : incomingText)
+                        .foregroundStyle(incomingMeta)
                 }
-                Text("/ \(VoiceMessageWaveformExtractor.formatDuration(audioDuration))")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(isOutgoing ? outgoingMeta : incomingMeta)
             } else {
                 Text(VoiceMessageWaveformExtractor.formatDuration(audioDuration))
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(isOutgoing ? Color.white : incomingText)
+                    .foregroundStyle(incomingMeta)
+            }
+
+            if isPlaying {
+                Circle()
+                    .fill(GrooChatTheme.telegramBlue)
+                    .frame(width: 6, height: 6)
             }
         }
-        .frame(minWidth: 44, alignment: .trailing)
     }
 
     @ViewBuilder
-    private var metaRow: some View {
-        if isOutgoing, let receipt {
-            HStack(spacing: 4) {
-                Text(time)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(outgoingMeta)
+    private var bubbleMetaRow: some View {
+        HStack(spacing: 3) {
+            Text(time)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(isOutgoing ? outgoingMeta : incomingMeta)
+            if isOutgoing, let receipt {
                 voiceReceiptMarks(receipt)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        } else {
-            Text(time)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(incomingMeta)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -2254,13 +2582,13 @@ private struct VoiceNoteBubbleView: View {
                 Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
             }
-            .foregroundStyle(Color.white.opacity(0.52))
+            .foregroundStyle(Color.black.opacity(0.28))
         case .read:
             HStack(spacing: -5) {
                 Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
             }
-            .foregroundStyle(Color.white.opacity(0.92))
+            .foregroundStyle(GrooChatTheme.telegramBlue)
         }
     }
 
@@ -2278,7 +2606,11 @@ private struct VoiceNoteBubbleView: View {
             let data = try await loadAudioData(from: src)
             let barN = waveformBarCount
             let bars = await Task.detached(priority: .userInitiated) {
-                VoiceMessageWaveformExtractor.waveformBars(fromM4AData: data, barCount: barN)
+                VoiceMessageWaveformExtractor.waveformBars(
+                    fromAudioData: data,
+                    fileExtension: ext,
+                    barCount: barN
+                )
             }.value
             let dur = VoiceMessageWaveformExtractor.durationSeconds(ofAudioData: data, fileExtension: ext) ?? 0
             await MainActor.run {
@@ -2332,7 +2664,11 @@ private struct VoiceNoteBubbleView: View {
                 let data = try await loadAudioData(from: src)
                 await MainActor.run {
                     cachedAudioData = data
-                    waveformBars = VoiceMessageWaveformExtractor.waveformBars(fromM4AData: data, barCount: waveformBarCount)
+                    waveformBars = VoiceMessageWaveformExtractor.waveformBars(
+                        fromAudioData: data,
+                        fileExtension: src.fileExtension,
+                        barCount: waveformBarCount
+                    )
                     audioDuration = VoiceMessageWaveformExtractor.durationSeconds(
                         ofAudioData: data,
                         fileExtension: src.fileExtension
@@ -2379,17 +2715,17 @@ private struct VoiceNoteBubbleView: View {
         try data.write(to: temp)
         playFileURL = temp
 
-        if fileExtension == "m4a" || fileExtension == "mp4" || fileExtension == "mp3" || fileExtension == "aac" {
+        if fileExtension == "m4a" || fileExtension == "mp4" || fileExtension == "mp3" || fileExtension == "aac" || fileExtension == "wav" {
             do {
                 let p = try AVAudioPlayer(contentsOf: temp)
                 p.prepareToPlay()
+                let duration = max(p.duration, 0.35)
+                if audioDuration < 0.5 { audioDuration = duration }
                 guard p.play() else { throw NSError(domain: "Drflow", code: 3) }
                 player = p
                 isPlaying = true
                 let token = UUID()
                 playbackToken = token
-                let duration = max(p.duration, 0.35)
-                if audioDuration < 0.5 { audioDuration = duration }
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: UInt64((duration + 0.15) * 1_000_000_000))
                     guard playbackToken == token else { return }
@@ -2418,6 +2754,15 @@ private struct VoiceNoteBubbleView: View {
         av.play()
         Task { @MainActor in
             let asset = AVURLAsset(url: temp)
+            if #available(iOS 16.0, *) {
+                if let loaded = try? await asset.load(.duration) {
+                    let seconds = CMTimeGetSeconds(loaded)
+                    if seconds.isFinite, seconds > 0, audioDuration < 0.5 {
+                        audioDuration = seconds
+                    }
+                    return
+                }
+            }
             let seconds = CMTimeGetSeconds(asset.duration)
             if seconds.isFinite, seconds > 0, audioDuration < 0.5 {
                 audioDuration = seconds
@@ -2478,7 +2823,7 @@ private struct ComposerTextView: UIViewRepresentable {
         tv.adjustsFontForContentSizeCategory = true
         let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
         tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
-        tv.textColor = UIColor(white: 0.96, alpha: 1)
+        tv.textColor = UIColor(red: 0.07, green: 0.10, blue: 0.20, alpha: 1)
         tv.backgroundColor = .clear
         tv.textContainerInset = UIEdgeInsets(top: textTopInset, left: 0, bottom: textBottomInset, right: 0)
         tv.textContainer.lineFragmentPadding = 0
@@ -2497,7 +2842,7 @@ private struct ComposerTextView: UIViewRepresentable {
         tv.textContainerInset = UIEdgeInsets(top: textTopInset, left: 0, bottom: textBottomInset, right: 0)
         let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
         tv.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
-        tv.textColor = UIColor(white: 0.96, alpha: 1)
+        tv.textColor = UIColor(red: 0.07, green: 0.10, blue: 0.20, alpha: 1)
         if tv.text != text {
             let range = tv.selectedRange
             tv.text = text
@@ -2528,31 +2873,40 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 }
 
-// MARK: - Fondo conversación (oscuro fijo; el mesh Revolut solo en la lista de chats)
+// MARK: - Fondo conversación (Telegram: mint → sky + patrón)
 
 private struct ConversationBackdrop: View {
-    private static let base = Color(red: 4 / 255, green: 4 / 255, blue: 7 / 255)
-
     var body: some View {
-        ZStack {
-            Self.base
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.55),
-                    Color.black.opacity(0.12),
-                    Color.black.opacity(0.62),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .ignoresSafeArea()
+        GrooChatWallpaper()
+            .ignoresSafeArea()
     }
 }
 
 #Preview {
     NavigationStack {
-        ChatConversationView(thread: ChatThread.samples[0])
+        ChatConversationView(
+            thread: ChatThread(
+                id: UUID(),
+                title: "@amosrz",
+                preview: "Hola",
+                time: "15:41",
+                unread: nil,
+                avatarInitial: "A",
+                avatarIcon: nil,
+                avatarR: 0.69,
+                avatarG: 0.32,
+                avatarB: 0.87,
+                avatarCarURL: nil,
+                socialSource: .instagram,
+                isVerified: false,
+                isPinned: false,
+                kind: .lead,
+                peerUserId: nil,
+                readReceipt: .none,
+                showOpenButton: false,
+                lastActivityAt: Date()
+            )
+        )
             .environmentObject(ChatInboxStore())
             .environmentObject(DashboardCommunityViewModel())
             .environmentObject(AuthViewModel())

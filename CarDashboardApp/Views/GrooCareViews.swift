@@ -10,10 +10,10 @@ struct GrooPillarIconsRow: View {
     var showTitles: Bool = false
 
     private let items: [(asset: String, title: String)] = [
-        ("LibroIcon", "Communication"),
-        ("CopaIcon", "Attitude"),
-        ("VerdeIcon", "Relationships"),
-        ("PhysicsIcon", "Execution"),
+        ("LibroIcon", "Patients"),
+        ("CopaIcon", "Operations"),
+        ("VerdeIcon", "Team"),
+        ("PhysicsIcon", "Billing"),
     ]
 
     /// Pilares completados antes del paso actual (p. ej. paso 3 → {0, 1, 2}).
@@ -90,16 +90,16 @@ struct GrooCareIntroView: View {
             VStack(spacing: 0) {
                 Spacer()
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("CARE Diagnostic")
+                    Text("Clinic Readiness Assessment")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(DrflowTheme.textPrimary)
                     Text("25 questions · about 5 minutes · free · no card required · confidential")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(DrflowTheme.textSecondary)
                     VStack(alignment: .leading, spacing: 10) {
-                        bullet("Measures Communication, Attitude, Relationships, Execution, and YOU")
+                        bullet("Measures Patients, Operations, Team, Billing, and Practice health")
                         bullet("1–5 scale; advance when you answer")
-                        bullet("This is not therapy or a clinical diagnosis")
+                        bullet("Operational guidance only — not a clinical diagnosis")
                     }
                     .padding(.top, 8)
                 }
@@ -108,7 +108,7 @@ struct GrooCareIntroView: View {
                 Button {
                     groo.startCareQuiz()
                 } label: {
-                    Text("Take the free diagnostic")
+                    Text("Start clinic assessment")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
@@ -183,7 +183,7 @@ struct GrooCareDiagnosticView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 22, height: 22)
-                    Text("YOU · Personal foundations")
+                    Text("Practice · Long-term health")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(GrooBrand.purple)
                 }
@@ -378,7 +378,7 @@ struct GrooDiagnosticResultsView: View {
                 VStack(spacing: 0) {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 22) {
-                            Text("Your CARE diagnostic")
+                            Text("Your clinic assessment")
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundStyle(DrflowTheme.textPrimary)
 
@@ -446,7 +446,7 @@ struct GrooDiagnosticResultsView: View {
             Button {
                 groo.enterMainFromResults(startChat: true)
             } label: {
-                Text("Let's Chat with GROO")
+                Text("Manage clinic with \(GrooBrand.appName)")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)

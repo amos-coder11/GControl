@@ -1,0 +1,15 @@
+{
+  "portada": "/banners/portada.webp",
+  "indice": "/banners/indice.webp",
+  "resumen": "/banners/resumen.webp",
+  "empleo": "/banners/empleo.webp",
+  "conducta": "/banners/conducta.webp",
+  "compensacion": "/banners/compensacion.webp",
+  "beneficios": "/banners/beneficios.webp",
+  "politicas": "/banners/politicas.webp",
+  "front-desk": "/banners/front-desk.webp",
+  "billing": "/banners/billing.webp",
+  "higiene": "/banners/higiene.webp",
+  "asistentes": "/banners/asistentes.webp",
+  "otros": "/banners/otros.webp"
+}

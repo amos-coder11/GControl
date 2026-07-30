@@ -1,6 +1,8 @@
 import PhotosUI
 import SwiftUI
 
+// MARK: - Home
+
 /// Home dashboard — contenedores separados con scroll.
 struct GrooHomeView: View {
     @EnvironmentObject private var groo: GrooAppStore
@@ -8,6 +10,13 @@ struct GrooHomeView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @State private var appeared = false
     @State private var showAccount = false
+    @State private var showAddSale = false
+    @State private var showActionHistory = false
+    @State private var showEmployeeManual = false
+    @State private var showSmileStudio = false
+    @State private var scrollY: CGFloat = 0
+
+    private var showsScrollHeader: Bool { scrollY > 28 }
 
     private var firstName: String {
         let n = groo.profile.firstName.trimmingCharacters(in: .whitespaces)
@@ -15,70 +24,29 @@ struct GrooHomeView: View {
         return "there"
     }
 
-    private var result: GrooDiagnosticResult? { groo.diagnostic }
-
-    private struct PillarCard: Identifiable {
-        let pillar: GrooCarePillar
-        let title: String
-        let assetName: String
-        var id: String { pillar.rawValue }
-    }
-
-    private var pillarCards: [PillarCard] {
-        [
-            .init(pillar: .communication, title: "Communication", assetName: "LibroIcon"),
-            .init(pillar: .attitude, title: "Attitude", assetName: "CopaIcon"),
-            .init(pillar: .relationships, title: "Relationships", assetName: "VerdeIcon"),
-            .init(pillar: .execution, title: "Execution", assetName: "PhysicsIcon"),
-        ]
-    }
-
-    private var upcomingReminders: [(icon: String, title: String, when: String, tint: Color)] {
-        let live = groo.reminders.filter { !$0.isDone }.prefix(2)
-        if !live.isEmpty {
-            return live.map { item in
-                (
-                    icon: "bell.fill",
-                    title: item.title,
-                    when: item.dueAt.formatted(date: .abbreviated, time: .shortened),
-                    tint: Color(red: 0.35, green: 0.55, blue: 0.98)
-                )
-            }
-        }
-        return [
-            ("calendar", "Interview with Acme Co.", "May 2, 10:00 AM", Color(red: 0.35, green: 0.55, blue: 0.98)),
-            ("bell.fill", "Performance review", "May 15, 2:00 PM", Color(red: 0.45, green: 0.72, blue: 0.98)),
-        ]
-    }
-
     var body: some View {
         NavigationStack {
-            ZStack {
-                RevolutBackgroundView()
+            ZStack(alignment: .top) {
+                DrflowTheme.background.ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 22) {
                         topHeader
-
-                        heroRow(characterSize: 190)
-                            .frame(height: 170)
-
-                        pillarsRow
-                            .frame(height: 118)
-
-                        careRow
-                            .frame(height: 176)
-
-                        progressCTA
-                            .frame(minHeight: 72)
-
-                        focusAndReminders
-                            .frame(height: 188)
+                        aiSmileHeroCard
+                        ourServicesSection
+                        ourDoctorsSection
+                        clinicPulseStrip
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 32)
                     .opacity(appeared ? 1 : 0)
+                    .grooScrollYReporter()
+                }
+                .grooTrackScrollY($scrollY)
+
+                GrooActiveScrollHeader(isVisible: showsScrollHeader, backgroundColor: DrflowTheme.background) {
+                    activeScrollHeaderContent
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -90,40 +58,422 @@ struct GrooHomeView: View {
                     .environmentObject(groo)
                     .environmentObject(auth)
             }
+            .sheet(isPresented: $showAddSale) {
+                GrooAddSaleSheet()
+                    .environmentObject(groo)
+            }
+            .sheet(isPresented: $showActionHistory) {
+                GrooActionHistoryView()
+                    .environmentObject(groo)
+            }
+            .sheet(isPresented: $showEmployeeManual) {
+                GControlEmployeeManualView()
+            }
+            .sheet(isPresented: $showSmileStudio) {
+                GrooSmileStudioView()
+                    .environmentObject(groo)
+                    .environmentObject(tabRouter)
+            }
+        }
+    }
+
+    // MARK: - AI Smile hero
+
+    private var aiSmileHeroCard: some View {
+        Button {
+            showSmileStudio = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("AI Smile Studio")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Photo → perfect smile preview · 3D model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .padding(16)
+            .background {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                GrooBrand.primary,
+                                Color(red: 0.28, green: 0.48, blue: 0.98),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: GrooBrand.primary.opacity(0.35), radius: 14, y: 6)
+            }
+        }
+        .buttonStyle(GrooSoftPressStyle())
+    }
+
+    // MARK: - Services
+
+    private var ourServicesSection: some View {
+        VStack(spacing: 14) {
+            dentalSectionHeader(title: "Our Services") {
+                tabRouter.openCalendar()
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                spacing: 12
+            ) {
+                ForEach(Array(homeServices.enumerated()), id: \.element.id) { index, service in
+                    dentalServiceCard(service, highlighted: index == 0)
+                }
+            }
+        }
+    }
+
+    private struct HomeService: Identifiable {
+        let id: String
+        let title: String
+        let available: Int
+        let icon: String
+        let action: HomeServiceAction
+    }
+
+    private enum HomeServiceAction {
+        case orthodontics
+        case retainers
+        case cleanings
+        case oralHygiene
+    }
+
+    private var homeServices: [HomeService] {
+        [
+            .init(id: "ortho", title: "Orthodontics", available: 7, icon: "mouth.fill", action: .orthodontics),
+            .init(id: "retainers", title: "Retainers", available: 4, icon: "circle.dashed", action: .retainers),
+            .init(id: "cleanings", title: "Cleanings", available: 3, icon: "sparkles", action: .cleanings),
+            .init(id: "hygiene", title: "Oral Hygiene", available: 4, icon: "leaf.fill", action: .oralHygiene),
+        ]
+    }
+
+    private func dentalServiceCard(_ service: HomeService, highlighted: Bool) -> some View {
+        Button {
+            handleService(service.action)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: service.icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(highlighted ? .white : GrooBrand.primary)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle().fill(highlighted ? Color.white.opacity(0.22) : GrooBrand.primarySoft)
+                        )
+                    Spacer(minLength: 0)
+                    Text("This week")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(highlighted ? .white.opacity(0.95) : Color.black.opacity(0.45))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule().fill(highlighted ? Color.white.opacity(0.2) : Color.black.opacity(0.05))
+                        )
+                }
+
+                Text("Available \(service.available)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(highlighted ? .white.opacity(0.9) : Color.black.opacity(0.45))
+
+                Text(service.title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(highlighted ? .white : Color.black.opacity(0.88))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+            .background {
+                ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(highlighted ? GrooBrand.primary : Color.white)
+                    Image(systemName: "tooth")
+                        .font(.system(size: 56, weight: .ultraLight))
+                        .foregroundStyle(highlighted ? Color.white.opacity(0.14) : Color.black.opacity(0.04))
+                        .offset(x: 8, y: 10)
+                        .allowsHitTesting(false)
+                }
+                .shadow(color: .black.opacity(highlighted ? 0.12 : 0.05), radius: highlighted ? 14 : 10, y: 5)
+            }
+        }
+        .buttonStyle(GrooSoftPressStyle())
+    }
+
+    private func handleService(_ action: HomeServiceAction) {
+        switch action {
+        case .orthodontics, .retainers:
+            tabRouter.openCalendar()
+        case .cleanings:
+            tabRouter.openCalendar()
+        case .oralHygiene:
+            showSmileStudio = true
+        }
+    }
+
+    // MARK: - Doctors
+
+    private var ourDoctorsSection: some View {
+        VStack(spacing: 14) {
+            dentalSectionHeader(title: "Our Doctors") {
+                tabRouter.openPatients()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(GrooClinicDefaults.doctors.enumerated()), id: \.offset) { index, name in
+                        doctorMiniCard(name: name, specialty: doctorSpecialty(at: index))
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private func doctorSpecialty(at index: Int) -> String {
+        let specialties = [
+            "Surgery",
+            "General Dentistry",
+            "Orthodontics",
+            "Emergency Care",
+        ]
+        return specialties[index % specialties.count]
+    }
+
+    private func doctorMiniCard(name: String, specialty: String) -> some View {
+        Button {
+            tabRouter.openCalendar()
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(GrooBrand.primarySoft)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(GrooBrand.primary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "heart")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.red.opacity(0.7))
+                }
+
+                Text(name)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(1)
+
+                Text(specialty)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
+
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.orange)
+                    Text("5.0")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+            }
+            .padding(14)
+            .frame(width: 158, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+            }
+        }
+        .buttonStyle(GrooSoftPressStyle())
+    }
+
+    // MARK: - Clinic pulse (compact ops)
+
+    private var clinicPulseStrip: some View {
+        HStack(spacing: 0) {
+            pulseItem(title: "Patients", value: "\(groo.patients.count)", icon: "person.2.fill") {
+                tabRouter.openPatients()
+            }
+            pulseDivider
+            pulseItem(title: "Today", value: "\(groo.todayPendingAppointmentsCount)", icon: "calendar") {
+                tabRouter.openCalendar()
+            }
+            pulseDivider
+            pulseItem(title: "Revenue", value: groo.formattedMonthlyRevenue, icon: "dollarsign") {
+                showAddSale = true
+            }
+            pulseDivider
+            pulseItem(title: "Manual", value: "ES/EN", icon: "book.pages.fill") {
+                showEmployeeManual = true
+            }
+        }
+        .padding(.vertical, 12)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+        }
+    }
+
+    private var pulseDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.06))
+            .frame(width: 1, height: 36)
+    }
+
+    private func pulseItem(title: String, value: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(GrooBrand.primary)
+                Text(value)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.4))
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func dentalSectionHeader(title: String, seeAll: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.9))
+            Spacer()
+            Button(action: seeAll) {
+                HStack(spacing: 4) {
+                    Text("See All")
+                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Color.black.opacity(0.4))
+            }
+            .buttonStyle(.plain)
         }
     }
 
     // MARK: - Header
 
-    private var topHeader: some View {
+    /// Barra compacta activa al hacer scroll (logo + acciones).
+    private var activeScrollHeaderContent: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image("GrooLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .shadow(color: GrooBrand.purple.opacity(0.3), radius: 6, y: 2)
-
-                Text("GROO")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.9))
+                    .frame(width: 28, height: 28)
+                Text(GrooBrand.appName)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.88))
             }
 
             Spacer(minLength: 8)
 
+            earningsHeaderPill
+
+            Button { showAccount = true } label: {
+                compactProfileAvatar(size: 32)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func compactProfileAvatar(size: CGFloat) -> some View {
+        Group {
+            if let img = auth.profileAvatarImage {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                ZStack {
+                    Circle().fill(GrooBrand.purpleSoft)
+                    Text(String(firstName.prefix(1)).uppercased())
+                        .font(.system(size: size * 0.38, weight: .bold, design: .rounded))
+                        .foregroundStyle(GrooBrand.purple)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
+        .shadow(color: GrooBrand.purple.opacity(0.25), radius: 6, y: 2)
+    }
+
+    private var topHeader: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Hello, \(firstName)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                HStack(spacing: 8) {
+                    Image("GrooLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 30, height: 30)
+                    Text(GrooBrand.appName)
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.92))
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            earningsHeaderPill
+
+            profileAvatar
+        }
+    }
+
+    private var earningsHeaderPill: some View {
+        Button { showAddSale = true } label: {
             HStack(spacing: 5) {
-                Image(systemName: "flame.fill")
+                Image(systemName: "dollarsign.circle.fill")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(GrooBrand.purple)
-                Text("0")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.12, green: 0.58, blue: 0.28))
+                Text(groo.formattedMonthlyRevenue)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Capsule().fill(Color.white).shadow(color: .black.opacity(0.06), radius: 6, y: 2))
-
-            profileAvatar
         }
+        .buttonStyle(.plain)
     }
 
     private var profileAvatar: some View {
@@ -145,430 +495,157 @@ struct GrooHomeView: View {
         .shadow(color: GrooBrand.purple.opacity(0.4), radius: 8, y: 0)
         .onTapGesture { showAccount = true }
     }
+}
 
-    // MARK: - Hero (burbuja izquierda · personaje derecha, sin solape)
+struct GrooActionHistoryView: View {
+    @EnvironmentObject private var groo: GrooAppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var filter: GrooClinicActionKind?
 
-    private func heroRow(characterSize: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            speechBubble
-                .layoutPriority(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var items: [GrooClinicAction] {
+        groo.filteredActionHistory(kind: filter)
+    }
 
-            Image("GrooCharacter")
-                .resizable()
-                .scaledToFit()
-                .frame(width: characterSize, height: characterSize)
-                .shadow(color: GrooBrand.purple.opacity(0.28), radius: 18, y: 6)
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                filterRow
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(red: 0.97, green: 0.98, blue: 1.0))
+
+                if items.isEmpty {
+                    ContentUnavailableView(
+                        "Sin acciones",
+                        systemImage: "tray",
+                        description: Text("Aquí verás ventas registradas y citas marcadas como completadas.")
+                    )
+                } else {
+                    List(items) { action in
+                        actionRow(action)
+                            .listRowSeparator(.visible)
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .background(GrooChatTheme.listBackground.ignoresSafeArea())
+            .navigationTitle("Historial de acciones")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Listo") { dismiss() }
+                }
+            }
         }
     }
 
-    private var speechBubble: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Hey \(firstName), I'm GROO 👋")
+    private var filterRow: some View {
+        HStack(spacing: 8) {
+            filterChip(title: "Todas", kind: nil)
+            filterChip(title: "Ventas", kind: .sale)
+            filterChip(title: "Citas", kind: .appointment)
+        }
+    }
+
+    private func filterChip(title: String, kind: GrooClinicActionKind?) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) { filter = kind }
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(filter == kind ? .white : GrooBrand.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background {
+                    Capsule().fill(filter == kind ? GrooBrand.primary : GrooBrand.primarySoft)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func actionRow(_ action: GrooClinicAction) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: action.icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(action.kind == .sale ? Color(red: 0.12, green: 0.58, blue: 0.28) : GrooBrand.primary)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle().fill(
+                        (action.kind == .sale ? Color(red: 0.12, green: 0.58, blue: 0.28) : GrooBrand.primary)
+                            .opacity(0.12)
+                    )
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(action.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DrflowTheme.textPrimary)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(action.kindLabel)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(GrooBrand.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(GrooBrand.primarySoft))
+                    Text(action.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DrflowTheme.textSecondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Text(DealershipStatsViewModel.formatUSD(action.amount))
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.9))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Text("What would you like to focus on today?")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.5))
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .foregroundStyle(DrflowTheme.positive)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.white)
-                .shadow(color: .black.opacity(0.07), radius: 12, y: 5)
-        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct GrooAddSaleSheet: View {
+    @EnvironmentObject private var groo: GrooAppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var amountText = ""
+
+    private var parsedAmount: Double? {
+        let cleaned = amountText
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(cleaned)
     }
 
-    // MARK: - Pillars
-
-    private var pillarsRow: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ForEach(pillarCards) { card in
-                Button {
-                    groo.ensureWelcomeSession()
-                    tabRouter.openChat()
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(card.assetName)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                        Text(card.title)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.black.opacity(0.88))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .background {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white)
-                            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
-                    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Concepto (ej. Blanqueamiento)", text: $title)
+                    TextField("Importe", text: $amountText)
+                        .keyboardType(.decimalPad)
+                } footer: {
+                    Text("Las citas completadas en el calendario también suman en «Citas».")
                 }
-                .buttonStyle(GrooSoftPressStyle())
             }
-        }
-    }
-
-    // MARK: - CARE (dos columnas iguales)
-
-    private var careRow: some View {
-        Group {
-            if let result {
-                HStack(alignment: .top, spacing: 12) {
-                    careScorePanel(result)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    careDimensionsPanel(result)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Registrar venta")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
                 }
-            } else {
-                Button {
-                    groo.phase = .careIntro
-                } label: {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle().fill(GrooBrand.purpleSoft).frame(width: 44, height: 44)
-                            Image(systemName: "chart.radar")
-                                .foregroundStyle(GrooBrand.purple)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        if let amount = parsedAmount {
+                            groo.addSale(title: title, amount: amount)
+                            dismiss()
                         }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Take your free CARE diagnostic")
-                                .font(.system(size: 14, weight: .bold))
-                            Text("5 minutes · 25 questions · no card needed")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(GrooBrand.purple)
                     }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(softCard)
-                }
-                .buttonStyle(GrooSoftPressStyle())
-            }
-        }
-    }
-
-    private func careScorePanel(_ result: GrooDiagnosticResult) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Your CARE Score")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.88))
-
-            HStack(alignment: .center, spacing: 12) {
-                GrooRingScore(score: result.overall, lineWidth: 10, fontSize: 22)
-                    .frame(width: 82, height: 82)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(displayNickname(result.nickname))
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(GrooBrand.purple)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            GrooBrand.purpleSoft,
-                                            Color(red: 0.94, green: 0.90, blue: 1.0)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-
-                    Text("You have a strong foundation and clear direction.")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.85)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Spacer(minLength: 2)
-
-            Button {
-                groo.phase = .careResults
-            } label: {
-                HStack(spacing: 4) {
-                    Text("View full diagnostic")
-                        .font(.system(size: 11, weight: .bold))
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .foregroundStyle(GrooBrand.purple)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(softCard)
-    }
-
-    private func careDimensionsPanel(_ result: GrooDiagnosticResult) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("CARE Dimensions")
-                    .font(.system(size: 13, weight: .bold))
-                Spacer()
-                Image(systemName: "info.circle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.black.opacity(0.28))
-            }
-            GrooRadarChart(scores: result.pillars, compact: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-        }
-        .padding(12)
-        .background(softCard)
-    }
-
-    // MARK: - CTA
-
-    private var progressCTA: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [GrooBrand.purple, GrooBrand.purple.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 34, height: 34)
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Let's make progress, together.")
-                    .font(.system(size: 12, weight: .bold))
-                    .lineLimit(1)
-                Text("Chat with GROO and create a plan to overcome professional friction.")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.48))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                groo.ensureWelcomeSession()
-                tabRouter.openChat()
-            } label: {
-                Text("Chat with GROO →")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Capsule().fill(GrooBrand.purple))
-            }
-            .buttonStyle(GrooSoftPressStyle())
-            .fixedSize()
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.94, green: 0.90, blue: 1.0),
-                            Color(red: 0.90, green: 0.93, blue: 1.0)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .shadow(color: GrooBrand.purple.opacity(0.08), radius: 8, y: 3)
-        }
-    }
-
-    // MARK: - Focus + Reminders (dos columnas, misma altura)
-
-    private var focusAndReminders: some View {
-        HStack(alignment: .top, spacing: 12) {
-            todaysFocusCard
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            upcomingRemindersCard
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var todaysFocusCard: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.78, green: 0.90, blue: 1.0),
-                                Color(red: 0.90, green: 0.95, blue: 1.0),
-                                Color.white
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(height: 72)
-
-                Image("GraduationCap")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 78)
-                    .shadow(color: Color(red: 0.2, green: 0.45, blue: 0.9).opacity(0.25), radius: 10, y: 4)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-            Text("Create a consistent\nlearning routine")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.85))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .frame(maxWidth: .infinity)
-
-            Spacer(minLength: 0)
-
-            Button {
-                groo.ensureWelcomeSession()
-                tabRouter.openChat()
-            } label: {
-                Text("Register Now")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.55))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background {
-                        Capsule()
-                            .fill(Color.white)
-                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
-                    }
-            }
-            .buttonStyle(GrooSoftPressStyle())
-        }
-        .padding(10)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.93, green: 0.96, blue: 1.0),
-                            Color(red: 0.96, green: 0.97, blue: 1.0),
-                            Color.white
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
-        }
-    }
-
-    private var upcomingRemindersCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Upcoming reminders")
-                    .font(.system(size: 12, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 4)
-                Button {
-                    tabRouter.selected = .reminders
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .background(Circle().fill(Color(red: 0.35, green: 0.55, blue: 0.98)))
-                }
-                .buttonStyle(GrooSoftPressStyle())
-            }
-
-            VStack(spacing: 6) {
-                ForEach(Array(upcomingReminders.enumerated()), id: \.offset) { _, item in
-                    HStack(spacing: 8) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(item.tint)
-                            .frame(width: 24, height: 24)
-                            .background(Circle().fill(item.tint.opacity(0.14)))
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .lineLimit(1)
-                            Text(item.when)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.4))
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .background {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white)
-                    }
+                    .disabled(parsedAmount == nil || (parsedAmount ?? 0) <= 0)
                 }
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.92, green: 0.95, blue: 1.0),
-                            Color(red: 0.90, green: 0.94, blue: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var softCard: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color.white)
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.05), lineWidth: 0.8)
-            }
-            .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
-    }
-
-    private func displayNickname(_ raw: String) -> String {
-        if raw.localizedCaseInsensitiveContains("steady") { return "Steady Builder" }
-        if raw.localizedCaseInsensitiveContains("quiet") || raw.localizedCaseInsensitiveContains("comunic") {
-            return "Quiet Communicator"
-        }
-        return raw
+        .presentationDetents([.medium])
     }
 }
 
@@ -581,42 +658,12 @@ private struct GrooSoftPressStyle: ButtonStyle {
     }
 }
 
-struct GrooRingScore: View {
-    let score: Double
-    var lineWidth: CGFloat = 11
-    var fontSize: CGFloat = 24
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(GrooBrand.purpleSoft, lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(score / 5, 0), 1)))
-                .stroke(
-                    AngularGradient(
-                        colors: [GrooBrand.purple.opacity(0.7), GrooBrand.purple],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text(String(format: "%.1f", score))
-                    .font(.system(size: fontSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.9))
-                Text("out of 5")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.38))
-            }
-        }
-    }
-}
-
 struct GrooAccountView: View {
     @EnvironmentObject private var groo: GrooAppStore
     @EnvironmentObject private var auth: AuthViewModel
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isSavingPhoto = false
+    @State private var showEmployeeManual = false
 
     var body: some View {
         NavigationStack {
@@ -651,6 +698,9 @@ struct GrooAccountView: View {
                 GrooPremiumPaywallView()
                     .environmentObject(groo)
                     .environmentObject(auth)
+            }
+            .sheet(isPresented: $showEmployeeManual) {
+                GControlEmployeeManualView()
             }
         }
     }
@@ -747,11 +797,17 @@ struct GrooAccountView: View {
 
     private var careerCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Career")
+            Text("Clinic")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(GrooBrand.purple)
+                .foregroundStyle(GrooBrand.primary)
 
-            accountRowButton(title: "View full diagnostic", icon: "chart.radar") {
+            accountRowButton(title: "Manual de empleado", icon: "book.pages.fill") {
+                showEmployeeManual = true
+            }
+
+            Divider().opacity(0.5)
+
+            accountRowButton(title: "View clinic assessment", icon: "chart.radar") {
                 if groo.diagnostic != nil {
                     groo.phase = .careResults
                 } else {
@@ -761,7 +817,7 @@ struct GrooAccountView: View {
 
             Divider().opacity(0.5)
 
-            accountRowButton(title: "Retake CARE diagnostic", icon: "arrow.clockwise") {
+            accountRowButton(title: "Retake clinic assessment", icon: "arrow.clockwise") {
                 groo.phase = .careIntro
             }
         }
@@ -804,3 +860,4 @@ struct GrooAccountView: View {
             .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
     }
 }
+

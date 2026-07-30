@@ -191,7 +191,7 @@ struct SettingsView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(DrflowTheme.textPrimary)
                         Text(
-                            "Receive push when you get a direct message, group alert, or task from Viera. Turn off if you don't want notifications on this device."
+                            "Recibe avisos de mensajes de Instagram, del equipo y tareas de Viera. Necesitas un iPhone real y tener notificaciones activadas para GControl."
                         )
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(DrflowTheme.textSecondary)
@@ -274,7 +274,7 @@ struct SettingsView: View {
                             Text(isDeletingAccount ? "Deleting account..." : "Delete account")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DrflowTheme.textPrimary)
-                            Text("Permanently deletes your Groo account.")
+                            Text("Permanently deletes your \(GrooBrand.appName) account.")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundStyle(DrflowTheme.textSecondary)
                         }

@@ -1,11 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Paleta clara de Groo (fondo blanco, texto oscuro, acento violeta de marca).
+/// Paleta clara de Groo (fondo blanco, texto oscuro, acento azul de marca).
 enum DrflowTheme {
+    /// Fondo global de la app (blanco) — mismo color en pantallas y header.
     static let background = Color.white
     static let surface = Color.white
-    static let surfaceMuted = Color(red: 0.97, green: 0.95, blue: 0.98)
+    static let surfaceMuted = Color(red: 0.94, green: 0.97, blue: 1.0)
 
     static let textPrimary = Color(red: 0.11, green: 0.14, blue: 0.22)
     static let textSecondary = Color(red: 0.45, green: 0.48, blue: 0.54)
@@ -16,22 +17,27 @@ enum DrflowTheme {
     static let separator = Color.black.opacity(0.08)
     static let cardBorder = Color.black.opacity(0.06)
     static let cardShadow = Color.black.opacity(0.06)
-    static let searchFill = Color(red: 0.96, green: 0.94, blue: 0.98)
-    static let controlFill = Color(red: 0.95, green: 0.93, blue: 0.97)
+    static let searchFill = Color(red: 0.93, green: 0.96, blue: 1.0)
+    static let controlFill = Color(red: 0.91, green: 0.95, blue: 0.99)
 }
 
-/// Marca Groo — color primario `#8d2eb5`.
+/// Marca Groo — color primario azul `#598afa` (alineado con AccentColor `#0095ff`).
 enum GrooBrand {
-    /// #8d2eb5
-    static let purple = Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255)
+    /// Nombre visible de la app (App Store, cabeceras, copy).
+    static let appName = "GControl"
+    /// Azul principal de marca.
+    static let purple = Color(red: 0.35, green: 0.55, blue: 0.98)
+    /// Alias semántico del color primario.
+    static let primary = purple
     /// Tinte suave para fondos y chips.
-    static let purpleSoft = Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255).opacity(0.12)
+    static let purpleSoft = Color(red: 0.35, green: 0.55, blue: 0.98).opacity(0.12)
+    static let primarySoft = purpleSoft
     /// Degradado de marca para heroes y CTAs.
     static let heroGradient = LinearGradient(
         colors: [
-            Color(red: 0.42, green: 0.12, blue: 0.55),
-            Color(red: 141 / 255, green: 46 / 255, blue: 181 / 255),
-            Color(red: 0.72, green: 0.38, blue: 0.88)
+            Color(red: 0.10, green: 0.30, blue: 0.71),
+            Color(red: 0.35, green: 0.55, blue: 0.98),
+            Color(red: 0.45, green: 0.72, blue: 0.98)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -45,14 +51,14 @@ enum PremiumAccent {
     static let ice = Color(red: 0.52, green: 0.72, blue: 0.92)
     static let amber = Color(red: 0.96, green: 0.76, blue: 0.42)
     static let ink = Color(red: 0.18, green: 0.22, blue: 0.28)
-    /// Violeta Groo (`#8d2eb5`) — ítem activo en tab bar y CTAs.
-    static let tabActive = GrooBrand.purple
+    /// Azul Groo — ítem activo en tab bar y CTAs.
+    static let tabActive = GrooBrand.primary
 
-    /// Fondo del dock de pestañas (blanco con ligero tinte violeta).
+    /// Fondo del dock de pestañas (blanco con ligero tinte azul).
     static let tabBarDockBackgroundGradient = LinearGradient(
         colors: [
             Color.white,
-            Color(red: 0.99, green: 0.97, blue: 1.0)
+            Color(red: 0.97, green: 0.98, blue: 1.0)
         ],
         startPoint: .top,
         endPoint: .bottom

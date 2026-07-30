@@ -14,28 +14,39 @@ enum RemotePushRegistration {
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             guard granted else {
-                #if DEBUG
-                print("[Drflow APNs] Permiso de notificaciones denegado: no habrá push hasta que lo actives en Ajustes.")
-                #endif
+                pushLog("Permiso de notificaciones denegado.")
                 return
             }
             await WorkdayNotificationService.rescheduleAll()
-            UIApplication.shared.registerForRemoteNotifications()
+            registerForRemoteNotifications()
         } catch {
-            #if DEBUG
-            print("Permiso de notificaciones: \(error)")
-            #endif
+            pushLog("Error pidiendo permiso: \(error.localizedDescription)")
         }
+    }
+
+    /// Si ya hay permiso, vuelve a registrar el token (p. ej. al volver a primer plano).
+    @MainActor
+    static func refreshIfAuthorized() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            registerForRemoteNotifications()
+            await syncPendingTokenToSupabase()
+        default:
+            break
+        }
+    }
+
+    @MainActor
+    private static func registerForRemoteNotifications() {
+        UIApplication.shared.registerForRemoteNotifications()
     }
 
     /// Llamar cuando APNs devuelve el token (desde `AppDelegate`).
     static func storeDeviceTokenFromAPNs(_ data: Data) {
         let hex = data.map { String(format: "%02.2hhx", $0) }.joined()
         UserDefaults.standard.set(hex, forKey: pendingTokenKey)
-        #if DEBUG
-        let prefix = hex.prefix(12)
-        print("[Drflow APNs] Token recibido de Apple (hex \(prefix)…, \(hex.count) chars). Subiendo a Supabase si hay sesión.")
-        #endif
+        pushLog("Token APNs recibido (\(hex.prefix(12))…, \(hex.count) chars)")
         Task {
             await syncPendingTokenToSupabase()
         }
@@ -43,31 +54,39 @@ enum RemotePushRegistration {
 
     /// Tras iniciar sesión, reintenta subir el token pendiente.
     static func syncPendingTokenToSupabase(client: SupabaseClient = SupabaseClientProvider.shared) async {
-        guard let hex = UserDefaults.standard.string(forKey: pendingTokenKey), !hex.isEmpty else { return }
+        guard let hex = UserDefaults.standard.string(forKey: pendingTokenKey), !hex.isEmpty else {
+            pushLog("Sin token APNs local todavía (¿simulador o permiso denegado?).")
+            return
+        }
         guard let uid = client.auth.currentSession?.user.id else {
-            #if DEBUG
-            print("[Drflow APNs] Hay token pero no hay sesión: inicia sesión para guardarlo en user_apns_devices.")
-            #endif
+            pushLog("Token APNs pendiente pero sin sesión Supabase.")
             return
         }
 
         struct Row: Encodable {
             let user_id: UUID
             let device_token: String
+            let updated_at: String
         }
 
+        let iso = ISO8601DateFormatter().string(from: Date())
         do {
             try await client
                 .from("user_apns_devices")
-                .upsert(Row(user_id: uid, device_token: hex), onConflict: "user_id,device_token")
+                .upsert(
+                    Row(user_id: uid, device_token: hex, updated_at: iso),
+                    onConflict: "user_id,device_token"
+                )
                 .execute()
-            #if DEBUG
-            print("[Drflow APNs] OK: token guardado en Supabase (user_apns_devices) para usuario \(uid.uuidString.prefix(8))…")
-            #endif
+            pushLog("Token guardado en Supabase para \(uid.uuidString.prefix(8))…")
         } catch {
-            #if DEBUG
-            print("[Drflow APNs] Error al guardar token: \(error)")
-            #endif
+            pushLog("Error guardando token en Supabase: \(error.localizedDescription)")
         }
+    }
+
+    private static func pushLog(_ message: String) {
+        #if DEBUG
+        print("[GControl APNs] \(message)")
+        #endif
     }
 }

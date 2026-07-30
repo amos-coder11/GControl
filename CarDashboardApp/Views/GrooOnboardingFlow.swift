@@ -54,7 +54,7 @@ struct GrooOnboardingFlowView: View {
     private var progressHeader: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("GROO")
+                Text(GrooBrand.appName)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(GrooBrand.purple)
                 Text("Step \(step + 1) of \(totalSteps)")
@@ -81,68 +81,68 @@ struct GrooOnboardingFlowView: View {
         switch step {
         case 0:
             multiSelect(
-                title: "What brought you to GROO today?",
+                title: "What brought you to \(GrooBrand.appName) for your clinic?",
                 options: [
-                    "Clarity on my next step",
-                    "Prepare for a difficult conversation",
-                    "Grow as a leader",
-                    "Regain momentum",
-                    "Negotiate or ask for what I need",
+                    "Organize appointments and chair time",
+                    "Improve patient follow-up",
+                    "Manage billing and collections",
+                    "Coordinate the clinical team",
+                    "Reduce no-shows and gaps",
                     "Just exploring"
                 ],
                 selected: $groo.onboarding.reasons
             )
         case 1:
             singleSelect(
-                title: "What stage of your career are you in?",
+                title: "What type of dental practice do you run?",
                 options: [
-                    "Early career / first years",
-                    "Growing professional (3–8 years)",
-                    "Senior / specialist",
-                    "Leadership / manager",
-                    "Executive (15+ years)",
-                    "Transition / between jobs"
+                    "Solo practice",
+                    "Small clinic (2–5 chairs)",
+                    "Multi-chair clinic (6+ chairs)",
+                    "Specialty practice",
+                    "DSO / group practice",
+                    "Opening a new clinic"
                 ],
                 selected: $groo.onboarding.careerStage
             )
         case 2:
             singleSelect(
-                title: "What is your current work situation?",
+                title: "What is your role in the clinic?",
                 options: [
-                    "Full-time employee",
-                    "Part-time employee",
-                    "Freelance / self-employed",
-                    "Student",
-                    "Between jobs",
+                    "Dentist / owner",
+                    "Associate dentist",
+                    "Office manager",
+                    "Front desk / reception",
+                    "Hygienist or assistant",
                     "Other"
                 ],
                 selected: $groo.onboarding.workSituation
             )
         case 3:
             multiSelect(
-                title: "What is your main goal?",
+                title: "What is your main goal right now?",
                 options: [
-                    "Promotion or new role",
-                    "Better communication",
-                    "More confidence",
-                    "Stronger professional network",
-                    "Execute with more focus",
-                    "Balance and energy"
+                    "Fill the schedule consistently",
+                    "Better patient communication",
+                    "Streamline daily operations",
+                    "Train and align the team",
+                    "Track revenue and KPIs",
+                    "Work-life balance for staff"
                 ],
                 selected: $groo.onboarding.goals
             )
         case 4:
             singleSelect(
-                title: "Have you worked with a mentor or coach before?",
-                options: ["Yes", "No", "Only informally"],
+                title: "Do you already use clinic management software?",
+                options: ["Yes", "No", "Only spreadsheets or paper"],
                 selected: $groo.onboarding.priorMentor
             )
         case 5:
             singleSelect(
-                title: "How do you prefer to work on your goals?",
+                title: "How do you prefer to manage the clinic?",
                 options: [
-                    "Guided conversation (chat)",
-                    "Plans and reminders",
+                    "Chat assistant + quick actions",
+                    "Reminders and task lists",
                     "Mix of both",
                     "I don't know yet"
                 ],
@@ -150,7 +150,7 @@ struct GrooOnboardingFlowView: View {
             )
         default:
             singleSelect(
-                title: "Do you manage people? (optional)",
+                title: "Do you manage other staff? (optional)",
                 options: ["Yes", "No", "Prefer not to say"],
                 selected: $groo.onboarding.managesPeople
             )
