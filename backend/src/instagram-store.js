@@ -250,7 +250,13 @@ export function appendOutgoingMedia(
   } = {}
 ) {
   const id = messageId ? String(messageId) : `out-${Date.now()}`;
-  const preview = String(text || "").trim() || (messageType === "image" ? "📷 Foto" : "📎 Archivo");
+  const previewByType = {
+    image: "📷 Foto",
+    audio: "🎤 Audio",
+    video: "🎥 Vídeo",
+  };
+  const preview =
+    String(text || "").trim() || previewByType[messageType] || "📎 Archivo";
   upsertMessage(conversationId, {
     id,
     text_content: preview,

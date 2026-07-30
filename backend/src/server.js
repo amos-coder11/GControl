@@ -12,6 +12,7 @@ import {
   handleInstagramEvent,
   handleInstagramVerify,
   instagramWebhookStatus,
+  sendInstagramAudio,
   sendInstagramImage,
   sendInstagramText,
 } from "./instagram-webhook.js";
@@ -19,6 +20,7 @@ import {
   publicMediaBaseUrl,
   resolveOutgoingMediaPath,
   mimeTypeForFilename,
+  saveOutgoingAudioBase64,
   saveOutgoingImageBase64,
 } from "./instagram-media.js";
 import {
@@ -532,12 +534,60 @@ app.post("/api/whatsapp/send_message", async (req, res) => {
     });
   }
 
+  const isAudio =
+    messageType.includes("audio") ||
+    messageType.includes("voice") ||
+    messageType.includes("ptt") ||
+    mediaType.startsWith("audio/");
+
   const isImage =
-    messageType.includes("image") ||
-    mediaType.startsWith("image/") ||
-    Boolean(directMediaUrl && !mediaType.startsWith("audio/"));
+    !isAudio &&
+    (messageType.includes("image") ||
+      mediaType.startsWith("image/") ||
+      Boolean(directMediaUrl));
 
   try {
+    if (isAudio) {
+      // Meta descarga el fichero desde nuestra URL pública, así que la nota de
+      // voz se guarda primero en disco y luego se manda el enlace.
+      let publicUrl = directMediaUrl || null;
+
+      if (mediaContent) {
+        const saved = saveOutgoingAudioBase64(mediaContent, mediaType);
+        const base = publicMediaBaseUrl(req);
+        if (!base) {
+          return res.status(500).json({
+            error: "public_base_url_missing",
+            message:
+              "Configura INSTAGRAM_WEBHOOK_PUBLIC_BASE_URL en Render para enviar audios.",
+          });
+        }
+        publicUrl = `${base}/${saved.filename}`;
+      }
+
+      if (!publicUrl) {
+        return res.status(400).json({ error: "audio_required" });
+      }
+
+      const graph = await sendInstagramAudio({ igsid, audioUrl: publicUrl });
+      const messageId =
+        graph?.message_id || graph?.messageId || graph?.id || null;
+      appendOutgoingMedia(conversationId, {
+        text,
+        messageId,
+        mediaUrl: publicUrl,
+        mediaType,
+        mediaContent: null,
+        messageType: "audio",
+      });
+      return res.status(200).json({
+        ok: true,
+        conversationId,
+        mediaUrl: publicUrl,
+        graph,
+      });
+    }
+
     if (isImage) {
       let publicUrl = directMediaUrl || null;
       let storedContent = null;

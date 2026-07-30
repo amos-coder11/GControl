@@ -148,6 +148,19 @@ export async function sendInstagramText({ igsid, text }) {
 }
 
 export async function sendInstagramImage({ igsid, imageUrl }) {
+  return sendInstagramAttachment({ igsid, mediaUrl: imageUrl, type: "image" });
+}
+
+/** Nota de voz saliente. Meta la entrega como audio reproducible en el DM. */
+export async function sendInstagramAudio({ igsid, audioUrl }) {
+  return sendInstagramAttachment({ igsid, mediaUrl: audioUrl, type: "audio" });
+}
+
+/**
+ * Envía un adjunto por URL pública. Meta descarga el fichero desde nuestro
+ * servidor, así que la URL debe ser accesible sin autenticación.
+ */
+export async function sendInstagramAttachment({ igsid, mediaUrl, type = "image" }) {
   const {
     getInstagramPageAccessToken,
     getInstagramPageId,
@@ -161,10 +174,10 @@ export async function sendInstagramImage({ igsid, imageUrl }) {
     throw err;
   }
 
-  const url = String(imageUrl || "").trim();
+  const url = String(mediaUrl || "").trim();
   if (!url) {
-    const err = new Error("image_url_required");
-    err.code = "image_url_required";
+    const err = new Error("media_url_required");
+    err.code = "media_url_required";
     throw err;
   }
 
@@ -176,7 +189,7 @@ export async function sendInstagramImage({ igsid, imageUrl }) {
     recipient: { id: igsid },
     message: {
       attachment: {
-        type: "image",
+        type,
         payload: { url, is_reusable: true },
       },
     },
@@ -186,7 +199,7 @@ export async function sendInstagramImage({ igsid, imageUrl }) {
     messaging_type: "RESPONSE",
     message: {
       attachment: {
-        type: "image",
+        type,
         payload: { url, is_reusable: true },
       },
     },
@@ -253,7 +266,7 @@ export async function sendInstagramImage({ igsid, imageUrl }) {
         details: json,
         message: json?.error?.message || `instagram_send_failed_${upstream.status}`,
       };
-      console.warn("[instagram/send-image] attempt failed", lastError.message);
+      console.warn(`[instagram/send-${type}] attempt failed`, lastError.message);
     } catch (err) {
       lastError = {
         status: 0,

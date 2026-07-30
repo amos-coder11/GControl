@@ -23,16 +23,36 @@ function extensionForMime(mimeType = "image/jpeg") {
   if (mime.includes("png")) return "png";
   if (mime.includes("webp")) return "webp";
   if (mime.includes("gif")) return "gif";
+  // Meta acepta m4a/mp4 para notas de voz; el grabador de iOS produce m4a.
+  if (mime.includes("m4a") || mime.includes("mp4") || mime.includes("aac")) return "m4a";
+  if (mime.includes("mpeg") || mime.includes("mp3")) return "mp3";
+  if (mime.includes("wav")) return "wav";
+  if (mime.includes("ogg") || mime.includes("opus")) return "ogg";
   return "jpg";
 }
 
 export function saveOutgoingImageBase64(base64, mimeType = "image/jpeg") {
+  return saveOutgoingMediaBase64(base64, mimeType, { kind: "image" });
+}
+
+export function saveOutgoingAudioBase64(base64, mimeType = "audio/m4a") {
+  return saveOutgoingMediaBase64(base64, mimeType, {
+    kind: "audio",
+    maxBytes: 25 * 1024 * 1024,
+  });
+}
+
+export function saveOutgoingMediaBase64(
+  base64,
+  mimeType = "image/jpeg",
+  { kind = "image", maxBytes = 12 * 1024 * 1024 } = {}
+) {
   const raw = String(base64 || "").trim();
-  if (!raw) throw new Error("image_empty");
+  if (!raw) throw new Error(`${kind}_empty`);
   const clean = raw.includes(",") ? raw.split(",").pop() : raw;
   const buf = Buffer.from(String(clean), "base64");
-  if (buf.length < 64) throw new Error("image_too_small");
-  if (buf.length > 12 * 1024 * 1024) throw new Error("image_too_large");
+  if (buf.length < 64) throw new Error(`${kind}_too_small`);
+  if (buf.length > maxBytes) throw new Error(`${kind}_too_large`);
 
   const ext = extensionForMime(mimeType);
   const filename = `${crypto.randomUUID()}.${ext}`;
@@ -54,5 +74,9 @@ export function mimeTypeForFilename(filename) {
   if (ext === ".png") return "image/png";
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
+  if (ext === ".m4a") return "audio/mp4";
+  if (ext === ".mp3") return "audio/mpeg";
+  if (ext === ".wav") return "audio/wav";
+  if (ext === ".ogg") return "audio/ogg";
   return "image/jpeg";
 }
