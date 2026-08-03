@@ -147,6 +147,11 @@ struct ChatView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(ChatListChromeTheme.listBackground)
+                    .morphingRefreshable {
+                        await subscribeTeamDirectInboxIfNeeded()
+                        await subscribeTeamGroupInboxIfNeeded()
+                        syncTeamThreadsFromDirectory()
+                    }
                 }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -423,17 +428,6 @@ struct ChatView: View {
     private func chatListRow(_ thread: ChatThread) -> some View {
         let pinned = effectivePinned(thread)
         let unread = effectiveUnread(thread)
-        let waPhone = inbox.contactPhone(for: thread)
-        let waPhoneLabel = inbox.contactPhoneDisplay(for: thread)
-        let canCall = inbox.canCallLead(thread)
-        let callTint: Color = {
-            switch thread.socialSource {
-            case .instagram: return Color(red: 0.79, green: 0.38, blue: 0.92)
-            case .whatsApp: return Color(red: 0.12, green: 0.72, blue: 0.38)
-            default: return .cyan
-            }
-        }()
-
         return HStack(alignment: .top, spacing: 12) {
             avatar(for: thread)
                 .padding(.top, 2)
@@ -476,21 +470,6 @@ struct ChatView: View {
 
                     trailingStatus(thread, unread: unread)
                 }
-
-                if canCall, let waPhoneLabel, let waPhone {
-                    Button {
-                        PhoneCallLauncher.call(waPhone)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 10, weight: .bold))
-                            Text(waPhoneLabel)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .foregroundStyle(callTint)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
         .padding(.horizontal, 16)
@@ -501,7 +480,6 @@ struct ChatView: View {
     private func avatar(for thread: ChatThread) -> some View {
         ChatInboxListAvatarView(
             thread: thread,
-            directory: communityVM.directory,
             accessToken: auth.session?.accessToken,
             currentUserId: auth.session?.user.id,
             localProfileImage: auth.profileAvatarImage,

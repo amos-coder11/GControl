@@ -1,32 +1,35 @@
 import SwiftUI
 
+private enum WorkdayTheme {
+    static let green = Color(red: 0.18, green: 0.72, blue: 0.42)
+    static let greenSoft = Color(red: 0.18, green: 0.72, blue: 0.42).opacity(0.14)
+    static let greenTintHex = "#2EB86B"
+}
+
 struct WorkdayView: View {
     @EnvironmentObject private var workday: WorkdayStore
     @EnvironmentObject private var auth: AuthViewModel
 
     @State private var showHistory = false
+    @State private var headerIconReplayToken = UUID()
 
     private let corner: CGFloat = 22
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-                    timerCard
-                    activityGrid
-                    todayStatsRow
-                    timelineSection
-                    scheduleCard
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 32)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                timerCard
+                activityGrid
+                todayStatsRow
+                timelineSection
+                scheduleCard
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
-        .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
+        .background(GrooClinicDesign.ScreenBackground())
         .navigationTitle("Mi jornada")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -36,6 +39,7 @@ struct WorkdayView: View {
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(GrooBrand.primary)
                 }
                 .accessibilityLabel("Historial de jornadas")
             }
@@ -46,6 +50,7 @@ struct WorkdayView: View {
         }
         .onAppear {
             workday.attach(userId: auth.session?.user.id)
+            headerIconReplayToken = UUID()
         }
         .onChange(of: auth.session?.user.id) { _, uid in
             workday.attach(userId: uid)
@@ -53,10 +58,27 @@ struct WorkdayView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Control de tu tiempo laboral")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.52))
+        HStack(spacing: 12) {
+            HomeWorkdayAnimatedIcon(
+                size: 22,
+                replayToken: headerIconReplayToken,
+                isPlaying: true,
+                tintHex: WorkdayTheme.greenTintHex
+            )
+            .frame(width: 32, height: 32)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(WorkdayTheme.greenSoft)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Control de tu tiempo laboral")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DrflowTheme.textPrimary)
+                Text(todayDayLabel)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DrflowTheme.textSecondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -77,20 +99,20 @@ struct WorkdayView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "building.2.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(PremiumAccent.ice)
+                        .foregroundStyle(GrooBrand.primary)
                         .frame(width: 40, height: 40)
                         .background {
                             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .fill(PremiumAccent.ice.opacity(0.16))
+                                .fill(GrooBrand.primarySoft)
                         }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Horario del concesionario")
+                        Text("Horario de la clínica")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.52))
+                            .foregroundStyle(DrflowTheme.textSecondary)
                         Text(DealershipOpeningHours.locationTitle)
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -99,15 +121,15 @@ struct WorkdayView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Hoy")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(DrflowTheme.textTertiary)
                         Text(DealershipOpeningHours.todayLabel(for: context.date))
                             .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(DrflowTheme.textPrimary)
                     }
                     Spacer()
                     scheduleStatusPill(
                         text: DealershipOpeningHours.statusLabel(at: context.date),
-                        color: isClosedToday ? .white.opacity(0.45) : (isOpen ? Color(red: 0.22, green: 0.78, blue: 0.45) : .orange)
+                        color: isClosedToday ? DrflowTheme.textMuted : (isOpen ? GrooBrand.primary : .orange)
                     )
                 }
 
@@ -116,17 +138,17 @@ struct WorkdayView: View {
                         HStack {
                             Text(row.label)
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.52))
+                                .foregroundStyle(DrflowTheme.textSecondary)
                             Spacer()
                             Text(row.hours)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(DrflowTheme.textPrimary)
                         }
                     }
                 }
             }
             .padding(18)
-            .background { DashboardChromeCardBackground(cornerRadius: corner) }
+            .background { WorkdayLightCardBackground(cornerRadius: corner) }
         }
     }
 
@@ -144,22 +166,17 @@ struct WorkdayView: View {
 
     private var timerCard: some View {
         VStack(spacing: 16) {
-            Text(todayDayLabel)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(maxWidth: .infinity, alignment: .center)
-
             HStack(spacing: 8) {
                 Text("Estado actual")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.52))
+                    .foregroundStyle(DrflowTheme.textSecondary)
                 Spacer()
                 if workday.isDayFinished {
                     statusPill(text: "Jornada finalizada", color: .orange)
                 } else if let kind = workday.currentKind, workday.isActive {
                     statusPill(text: kind.title, color: kind.accent)
                 } else {
-                    statusPill(text: "Sin iniciar", color: .white.opacity(0.45))
+                    statusPill(text: "Sin iniciar", color: DrflowTheme.textMuted)
                 }
             }
 
@@ -167,7 +184,7 @@ struct WorkdayView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(workday.elapsedFormatted)
                         .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(WorkdayTheme.green)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                 }
@@ -183,7 +200,7 @@ struct WorkdayView: View {
             if let start = workday.jornadaStartLabel {
                 Text("Inicio de jornada: \(start)")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(DrflowTheme.textTertiary)
             }
 
             if !workday.isDayFinished {
@@ -196,7 +213,7 @@ struct WorkdayView: View {
                             .padding(.vertical, 14)
                             .background {
                                 Capsule(style: .continuous)
-                                    .fill(Color(red: 0.18, green: 0.72, blue: 0.42))
+                                    .fill(WorkdayTheme.green)
                             }
                     }
                     .buttonStyle(.plain)
@@ -204,12 +221,16 @@ struct WorkdayView: View {
                     Button(action: workday.finishJornada) {
                         Label("Finalizar jornada", systemImage: "stop.fill")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(GrooBrand.primary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background {
                                 Capsule(style: .continuous)
-                                    .fill(Color(red: 0.92, green: 0.28, blue: 0.32))
+                                    .fill(GrooBrand.primarySoft)
+                                    .overlay {
+                                        Capsule(style: .continuous)
+                                            .strokeBorder(GrooBrand.primary.opacity(0.35), lineWidth: 1)
+                                    }
                             }
                     }
                     .buttonStyle(.plain)
@@ -218,16 +239,16 @@ struct WorkdayView: View {
                 VStack(spacing: 12) {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(GrooBrand.primary)
                         Text("Has finalizado la jornada de hoy")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.88))
+                            .foregroundStyle(DrflowTheme.textPrimary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
+                            .fill(GrooBrand.primarySoft)
                     }
 
                     Button(action: workday.reactivateJornada) {
@@ -238,7 +259,7 @@ struct WorkdayView: View {
                             .padding(.vertical, 14)
                             .background {
                                 Capsule(style: .continuous)
-                                    .fill(Color(red: 0.18, green: 0.72, blue: 0.42))
+                                    .fill(WorkdayTheme.green)
                             }
                     }
                     .buttonStyle(.plain)
@@ -246,14 +267,14 @@ struct WorkdayView: View {
             }
         }
         .padding(18)
-        .background { DashboardChromeCardBackground(cornerRadius: corner) }
+        .background { WorkdayLightCardBackground(cornerRadius: corner) }
     }
 
     private var activityGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Registrar estado")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(DrflowTheme.textPrimary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(WorkdayActivityKind.allCases) { kind in
@@ -272,14 +293,8 @@ struct WorkdayView: View {
     private var todayStatsRow: some View {
         HStack(spacing: 12) {
             statMiniCard(
-                icon: "phone.fill",
-                tint: .cyan,
-                title: "Llamadas hechas",
-                value: "\(workday.callsMadeToday)"
-            )
-            statMiniCard(
                 icon: "bubble.left.and.bubble.right.fill",
-                tint: PremiumAccent.mint,
+                tint: GrooBrand.primary,
                 title: "Mensajes respondidos",
                 value: "\(workday.messagesRespondedToday)"
             )
@@ -291,20 +306,20 @@ struct WorkdayView: View {
             HStack {
                 Text("Hoy")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(DrflowTheme.textPrimary)
                 Spacer()
                 Button("Ver historial") { showHistory = true }
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(GrooBrand.primary)
             }
 
             if workday.todaySegments.isEmpty {
                 Text("Aún no hay actividad registrada hoy.")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(DrflowTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
-                    .background { DashboardChromeCardBackground(cornerRadius: corner) }
+                    .background { WorkdayLightCardBackground(cornerRadius: corner) }
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(workday.todaySegments.enumerated()), id: \.element.id) { index, segment in
@@ -317,7 +332,7 @@ struct WorkdayView: View {
                     }
                 }
                 .padding(16)
-                .background { DashboardChromeCardBackground(cornerRadius: corner) }
+                .background { WorkdayLightCardBackground(cornerRadius: corner) }
             }
         }
     }
@@ -340,7 +355,7 @@ struct WorkdayView: View {
     private func timerUnitLabel(_ title: String) -> some View {
         Text(title)
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.white.opacity(0.38))
+            .foregroundStyle(DrflowTheme.textTertiary)
     }
 
     private func statMiniCard(icon: String, tint: Color, title: String, value: String) -> some View {
@@ -350,14 +365,14 @@ struct WorkdayView: View {
                 .foregroundStyle(tint)
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.52))
+                .foregroundStyle(DrflowTheme.textSecondary)
             Text(value)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(DrflowTheme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background { DashboardChromeCardBackground(cornerRadius: corner) }
+        .background { WorkdayLightCardBackground(cornerRadius: corner) }
     }
 }
 
@@ -389,10 +404,10 @@ private struct WorkdayActivityCard: View {
                 }
                 Text(kind.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(DrflowTheme.textPrimary)
                 Text(kind.subtitle)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(DrflowTheme.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -400,14 +415,15 @@ private struct WorkdayActivityCard: View {
             .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
             .background {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.1 : 0.05))
+                    .fill(isSelected ? kind.accent.opacity(0.08) : Color.white)
                     .overlay {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .strokeBorder(
-                                isSelected ? kind.accent.opacity(0.65) : Color.white.opacity(0.1),
-                                lineWidth: isSelected ? 1.2 : 0.6
+                                isSelected ? kind.accent.opacity(0.55) : DrflowTheme.cardBorder,
+                                lineWidth: isSelected ? 1.2 : 1
                             )
                     }
+                    .shadow(color: DrflowTheme.cardShadow.opacity(isSelected ? 0.5 : 1), radius: 8, y: 3)
             }
         }
         .buttonStyle(.plain)
@@ -429,7 +445,7 @@ private struct WorkdayTimelineRow: View {
                     .fill(segment.kind.accent)
                     .frame(width: 10, height: 10)
                 Rectangle()
-                    .fill(Color.white.opacity(0.12))
+                    .fill(DrflowTheme.separator)
                     .frame(width: 2)
                     .frame(maxHeight: .infinity)
             }
@@ -439,7 +455,7 @@ private struct WorkdayTimelineRow: View {
                 HStack {
                     Text(segment.kind.title)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DrflowTheme.textPrimary)
                     if isCurrent {
                         Text("Actualmente")
                             .font(.system(size: 10, weight: .bold))
@@ -448,18 +464,18 @@ private struct WorkdayTimelineRow: View {
                             .padding(.vertical, 3)
                             .background {
                                 Capsule(style: .continuous)
-                                    .fill(segment.kind.accent.opacity(0.18))
+                                    .fill(segment.kind.accent.opacity(0.14))
                             }
                     }
                     Spacer()
                     Text(WorkdayStore.formatDuration(segment.duration))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(DrflowTheme.textSecondary)
                         .monospacedDigit()
                 }
                 Text(WorkdayStore.formatRange(start: segment.start, end: segment.end))
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(DrflowTheme.textTertiary)
             }
             .padding(.bottom, 14)
         }
@@ -485,7 +501,7 @@ struct WorkdayHistorySheet: View {
                                 .font(.headline)
                             Text("Tiempo trabajado: \(WorkdayStore.formatDuration(seconds: day.workedSeconds))")
                                 .font(.subheadline)
-                            Text("Llamadas: \(day.callsMade) · Mensajes: \(day.messagesResponded)")
+                            Text("Mensajes: \(day.messagesResponded)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -505,7 +521,182 @@ struct WorkdayHistorySheet: View {
     }
 }
 
-// MARK: - Tarjeta Inicio
+// MARK: - Tarjeta Inicio (tema claro · Groo Home)
+
+struct GrooWorkdayHomeCard: View {
+    @ObservedObject var workday: WorkdayStore
+    var onOpenDetail: () -> Void
+
+    @State private var iconReplayToken = UUID()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                HomeWorkdayAnimatedIcon(
+                    size: 22,
+                    replayToken: iconReplayToken,
+                    isPlaying: true,
+                    tintHex: WorkdayTheme.greenTintHex
+                )
+                .frame(width: 28, height: 28)
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(WorkdayTheme.greenSoft)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Mi jornada laboral")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(WorkdayTheme.green)
+                    Text(statusSubtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DrflowTheme.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                if workday.isActive, !workday.isDayFinished {
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        Text(workday.elapsedFormatted)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(WorkdayTheme.green)
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            HStack(spacing: 10) {
+                primaryActionButton
+                if workday.isActive || workday.isDayFinished {
+                    secondaryButton(title: "Ver detalle", action: onOpenDetail)
+                }
+            }
+
+            HStack(spacing: 16) {
+                statPill(
+                    icon: "calendar",
+                    label: "Semana",
+                    value: WorkdayStore.formatHoursShort(seconds: workday.weekTotalWorkedSeconds)
+                )
+                statPill(
+                    icon: "message.fill",
+                    label: "Mensajes",
+                    value: "\(workday.weekTotalMessages)"
+                )
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { WorkdayLightCardBackground(cornerRadius: 22) }
+        .onAppear { iconReplayToken = UUID() }
+        .onChange(of: workday.isActive) { _, _ in iconReplayToken = UUID() }
+        .onChange(of: workday.isDayFinished) { _, _ in iconReplayToken = UUID() }
+    }
+
+    private var statusSubtitle: String {
+        if workday.isDayFinished {
+            return "Jornada finalizada · \(WorkdayStore.formatHoursShort(seconds: workday.elapsedSeconds)) hoy"
+        }
+        if workday.isActive, let kind = workday.currentKind {
+            if let start = workday.jornadaStartLabel {
+                return "\(kind.title) · desde \(start)"
+            }
+            return kind.title
+        }
+        if DealershipOpeningHours.isClosed() {
+            return "Hoy la clínica está cerrada"
+        }
+        return "Horario hoy: \(DealershipOpeningHours.todayLabel())"
+    }
+
+    @ViewBuilder
+    private var primaryActionButton: some View {
+        if workday.isDayFinished {
+            actionButton(title: "Reactivar jornada", filled: true) {
+                workday.reactivateJornada()
+            }
+        } else if workday.isActive {
+            actionButton(title: "Finalizar jornada", filled: false) {
+                workday.finishJornada()
+            }
+        } else {
+            actionButton(title: "Iniciar jornada", filled: true) {
+                workday.startJornada()
+            }
+        }
+    }
+
+    private func actionButton(title: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(filled ? Color.white : WorkdayTheme.green)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background {
+                    Capsule(style: .continuous)
+                        .fill(filled ? WorkdayTheme.green : WorkdayTheme.greenSoft)
+                        .overlay {
+                            if !filled {
+                                Capsule(style: .continuous)
+                                    .strokeBorder(WorkdayTheme.green.opacity(0.35), lineWidth: 1)
+                            }
+                        }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func secondaryButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DrflowTheme.textSecondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background {
+                    Capsule(style: .continuous)
+                        .fill(DrflowTheme.controlFill)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func statPill(icon: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(DrflowTheme.textTertiary)
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(DrflowTheme.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Fondo tarjeta clara (jornada)
+
+private struct WorkdayLightCardBackground: View {
+    var cornerRadius: CGFloat = 22
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(DrflowTheme.cardBorder, lineWidth: 1)
+            }
+            .shadow(color: DrflowTheme.cardShadow, radius: 10, y: 4)
+    }
+}
+
+// MARK: - Tarjeta Inicio (tema oscuro · legacy dashboard)
 
 struct DashboardWorkdayHomeCard: View {
     @ObservedObject var workday: WorkdayStore
@@ -596,6 +787,5 @@ struct WorkdayJornadaSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .preferredColorScheme(.dark)
     }
 }

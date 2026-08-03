@@ -66,9 +66,21 @@ struct CoordinatorOutboundTask: Identifiable, Equatable {
     }
 }
 
+/// Conversación dejada abierta para restaurarla al volver a la pestaña Chat.
+enum PersistedOpenChat: Equatable {
+    case mentor(UUID)
+    case instagram(UUID)
+    case team(UUID)
+    case patientLocal(UUID)
+}
+
 /// Estado compartido de la bandeja de chats: lista, overrides y total para el badge de la pestaña.
 final class ChatInboxStore: ObservableObject {
     @Published var liveThreads: [ChatThread] = []
+    /// Chats locales de pacientes de prueba (barra normal: texto, foto, audio).
+    @Published var patientLocalThreads: [ChatThread] = []
+    /// Abrir chat de paciente local tras «Chat» en ficha de paciente.
+    @Published var pendingOpenPatientLocalThreadId: UUID?
     /// Grupo «Mi equipo» y DMs del directorio (se actualizan con el listado de comunidad).
     @Published var teamGroupChatThread: ChatThread?
     @Published var teamDirectChatThreads: [ChatThread] = []
@@ -85,6 +97,8 @@ final class ChatInboxStore: ObservableObject {
     @Published var activeLeadThreadId: UUID?
     /// El chat grupal «Mi equipo» está en primer plano.
     @Published var activeTeamGroupChatOpen: Bool = false
+    /// Conversación que el usuario dejó abierta (se restaura al volver a la pestaña Chat).
+    @Published var persistedOpenChat: PersistedOpenChat?
     /// Abrir hilo CRM tras pulsar una notificación push (UUID estable del hilo).
     @Published var pendingOpenLeadThreadId: UUID?
     /// Vista previa CRM anterior por hilo (detectar mensajes nuevos → notificación).
@@ -103,6 +117,114 @@ final class ChatInboxStore: ObservableObject {
     private var blockedUserIdsForSync: Set<UUID> = []
     @Published private(set) var pinOverride: [UUID: Bool] = [:]
     @Published private(set) var unreadOverride: [UUID: Int] = [:]
+    /// Hilos archivados localmente (estilo WhatsApp «Archivados»).
+    @Published private(set) var archivedThreadIds: Set<UUID> = ChatInboxStore.loadUUIDSet(
+        forKey: ChatInboxStore.archivedIdsKey
+    )
+    /// Eliminados de la bandeja (no vuelven tras refrescar CRM).
+    @Published private(set) var deletedThreadIds: Set<UUID> = ChatInboxStore.loadUUIDSet(
+        forKey: ChatInboxStore.deletedIdsKey
+    )
+
+    private static let archivedIdsKey = "groo.inbox.archivedThreadIds"
+    private static let deletedIdsKey = "groo.inbox.deletedThreadIds"
+
+    private static func loadUUIDSet(forKey key: String) -> Set<UUID> {
+        guard let raw = UserDefaults.standard.array(forKey: key) as? [String] else { return [] }
+        return Set(raw.compactMap(UUID.init(uuidString:)))
+    }
+
+    private func persistArchivedIds() {
+        UserDefaults.standard.set(archivedThreadIds.map(\.uuidString), forKey: Self.archivedIdsKey)
+    }
+
+    private func persistDeletedIds() {
+        UserDefaults.standard.set(deletedThreadIds.map(\.uuidString), forKey: Self.deletedIdsKey)
+    }
+
+    func isArchived(_ threadId: UUID) -> Bool {
+        archivedThreadIds.contains(threadId)
+    }
+
+    func isDeleted(_ threadId: UUID) -> Bool {
+        deletedThreadIds.contains(threadId)
+    }
+
+    /// Conversaciones archivadas (leads + equipo), más recientes primero.
+    var archivedThreads: [ChatThread] {
+        var list: [ChatThread] = []
+        if let group = teamGroupChatThread, isArchived(group.id), !isDeleted(group.id) {
+            list.append(group)
+        }
+        list.append(contentsOf: teamDirectChatThreads.filter { isArchived($0.id) && !isDeleted($0.id) })
+        list.append(contentsOf: liveThreads.filter { isArchived($0.id) && !isDeleted($0.id) })
+        return list.sorted {
+            ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast)
+        }
+    }
+
+    var archivedUnreadCount: Int {
+        archivedThreads.reduce(0) { $0 + unreadContribution(for: $1) }
+    }
+
+    /// Hilos visibles en la bandeja principal (excluye archivados y eliminados).
+    func isVisibleInMainInbox(_ threadId: UUID) -> Bool {
+        !isArchived(threadId) && !isDeleted(threadId)
+    }
+
+    // MARK: - Pacientes de prueba (chat local)
+
+    /// Crea o actualiza el hilo local del paciente (mismo diseño que Instagram, sin CRM).
+    @MainActor
+    @discardableResult
+    func ensurePatientLocalThread(for patient: GrooPatient) -> ChatThread {
+        if let existing = patientLocalThreads.first(where: { $0.id == patient.id }) {
+            pendingOpenPatientLocalThreadId = existing.id
+            return existing
+        }
+        let initial = patient.fullName.trimmingCharacters(in: .whitespacesAndNewlines).first.map(String.init) ?? "?"
+        let thread = ChatThread(
+            id: patient.id,
+            title: patient.fullName,
+            preview: "Chat de prueba · \(patient.treatment)",
+            time: Self.formatShortListTime(Date()),
+            unread: nil,
+            avatarInitial: initial.uppercased(),
+            avatarIcon: nil,
+            avatarR: 0.25,
+            avatarG: 0.55,
+            avatarB: 0.92,
+            avatarCarURL: nil,
+            socialSource: nil,
+            isVerified: false,
+            isPinned: true,
+            kind: .patientLocal,
+            peerUserId: nil,
+            readReceipt: .none,
+            showOpenButton: false,
+            lastActivityAt: Date()
+        )
+        patientLocalThreads.insert(thread, at: 0)
+        pendingOpenPatientLocalThreadId = thread.id
+        return thread
+    }
+
+    @MainActor
+    func applyPatientLocalPreview(threadId: UUID, preview: String, date: Date = Date()) {
+        let body = Self.truncatePreview(preview)
+        let time = Self.formatShortListTime(date)
+        guard let idx = patientLocalThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        let thread = patientLocalThreads[idx]
+        patientLocalThreads[idx] = thread.withCrmInboxPreview(
+            body,
+            time: time,
+            unread: nil,
+            lastActivityAt: date
+        )
+        patientLocalThreads.sort {
+            ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast)
+        }
+    }
 
     // MARK: - Chats reales del CRM (WhatsApp / Instagram del concesionario)
 
@@ -113,8 +235,34 @@ final class ChatInboxStore: ObservableObject {
     /// Estado de la IA (encendida/apagada) por hilo del CRM.
     @Published private(set) var crmAiActiveByThread: [UUID: Bool] = [:]
     @Published private(set) var phoneScannedThreadIds: Set<UUID> = []
+    /// Marca temporal del último intento de resolver teléfono (evita N+1 en cada refresh).
+    private var phoneCheckedAtByThread: [UUID: Date] = [:]
     /// Ya se cargaron conversaciones reales del CRM al menos una vez.
     @Published private(set) var crmLoadedOnce = false
+    /// Mensajes CRM en memoria para abrir el chat al instante (sin esperar la red).
+    private var crmMessagesByThread: [UUID: [CrmChatService.Message]] = [:]
+
+    /// Últimos mensajes cacheados de un hilo CRM (si los hay).
+    func cachedCrmMessages(for threadId: UUID) -> [CrmChatService.Message]? {
+        crmMessagesByThread[threadId]
+    }
+
+    /// Guarda mensajes CRM para la próxima apertura inmediata del chat.
+    @MainActor
+    func cacheCrmMessages(_ rows: [CrmChatService.Message], for threadId: UUID) {
+        crmMessagesByThread[threadId] = rows
+    }
+
+    /// Precarga mensajes CRM al tocar un chat (para que abran al instante).
+    @MainActor
+    func prefetchCrmMessages(for threadId: UUID, accessToken: String?) async {
+        guard let token = accessToken, !token.isEmpty,
+              let convId = crmConversationIdByThread[threadId]
+        else { return }
+        guard let rows = try? await CrmChatService.messages(token: token, conversationId: convId, limit: 100)
+        else { return }
+        cacheCrmMessages(rows, for: threadId)
+    }
 
     /// Marca localmente el estado de la IA de un hilo (respuesta inmediata al pulsar).
     @MainActor
@@ -187,19 +335,45 @@ final class ChatInboxStore: ObservableObject {
     }
 
     /// Descarga las conversaciones reales del CRM (mismas que la web drflow.es)
-    /// y sustituye los chats de muestra de la pestaña «Generales».
+    /// y actualiza la bandeja. El enriquecimiento (fotos/teléfonos) va aparte salvo `full`.
     @MainActor
-    func refreshCrmConversations(accessToken: String) async {
+    func refreshCrmConversations(
+        accessToken: String,
+        mode: ChatInboxSyncMode = .full
+    ) async {
+        guard await ChatSyncEngine.shared.beginInboxSync() else { return }
+
+        let ok = await performCrmInboxCoreSync(accessToken: accessToken)
+        await ChatSyncEngine.shared.endInboxSync()
+        guard ok else { return }
+
+        if mode == .full {
+            Task(priority: .utility) { [weak self] in
+                guard let self else { return }
+                await self.enrichCrmInboxInBackground(accessToken: accessToken)
+            }
+        }
+    }
+
+    /// Solo lista esencial (sin fotos ni historiales). Usado por recovery / motor de sync.
+    @MainActor
+    @discardableResult
+    func performCrmInboxCoreSync(accessToken: String) async -> Bool {
         do {
             let wasLoaded = crmLoadedOnce
             let previousSnapshot = crmLeadSnapshot
+            let previousIds = Set(liveThreads.map(\.id))
 
             let rows = try await CrmChatService.conversations(token: accessToken, limit: 100)
             var map: [UUID: String] = [:]
             var waMap: [UUID: String] = [:]
             var aiMap: [UUID: Bool] = [:]
-            let threads: [ChatThread] = rows.map { row in
+            // Conserva teléfonos ya resueltos si el listado no los trae.
+            let previousPhones = crmWaUserIdByThread
+
+            let threads: [ChatThread] = rows.compactMap { row in
                 let uuid = CrmChatService.stableUUID(for: "conv:\(row.id)")
+                guard !deletedThreadIds.contains(uuid) else { return nil }
                 map[uuid] = row.id
                 let isInstagram =
                     (row.source ?? "").lowercased().contains("instagram")
@@ -207,12 +381,21 @@ final class ChatInboxStore: ObservableObject {
                 if isInstagram {
                     if let phoneRaw = row.contactPhone, !phoneRaw.isEmpty {
                         waMap[uuid] = phoneRaw
+                    } else if let kept = previousPhones[uuid] {
+                        waMap[uuid] = kept
                     }
                 } else if let phoneRaw = row.contactPhone ?? row.waUserId, !phoneRaw.isEmpty {
                     waMap[uuid] = phoneRaw
+                } else if let kept = previousPhones[uuid] {
+                    waMap[uuid] = kept
                 }
                 aiMap[uuid] = row.aiActive ?? true
                 var thread = Self.thread(fromCrm: row, uuid: uuid)
+                // Conserva avatar ya enriquecido si el listado no trae foto.
+                if thread.avatarCarURL == nil,
+                   let existing = liveThreads.first(where: { $0.id == uuid })?.avatarCarURL {
+                    thread = thread.withAvatarCarURL(existing)
+                }
                 if unreadOverride[uuid] == 0 {
                     thread = thread.withCrmInboxPreview(
                         thread.preview,
@@ -226,38 +409,55 @@ final class ChatInboxStore: ObservableObject {
             crmConversationIdByThread = map
             crmWaUserIdByThread = waMap
             crmAiActiveByThread = aiMap
-            phoneScannedThreadIds = []
-            liveThreads = threads.sorted {
+            // No resetear phoneScannedThreadIds: evita N+1 en cada sync.
+            let sorted = threads.sorted {
                 ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast)
             }
+            liveThreads = sorted
             crmLeadSnapshot = Dictionary(
-                uniqueKeysWithValues: threads
+                uniqueKeysWithValues: sorted
                     .filter { $0.kind == .lead }
                     .map { ($0.id, CrmLeadSnapshot(preview: $0.preview, unread: $0.unread ?? 0)) }
             )
             crmLoadedOnce = true
 
+            let changed = sorted.filter { !previousIds.contains($0.id) }.count
+                + sorted.filter { thread in
+                    guard let prev = previousSnapshot[thread.id] else { return false }
+                    return prev.preview != thread.preview || prev.unread != (thread.unread ?? 0)
+                }.count
+            ChatPerfLog.inbox("applied conversations=\(sorted.count) changed≈\(changed)")
+
             if wasLoaded {
                 MessageNotificationService.notifyNewCrmMessages(
                     previous: previousSnapshot,
-                    current: threads.filter { $0.kind == .lead },
+                    current: sorted.filter { $0.kind == .lead },
                     activeThreadId: activeLeadThreadId,
                     accessToken: accessToken
                 )
             }
-
-            await refreshLeadPhonesFromMessages(accessToken: accessToken)
-            await enrichMissingContactPhotos(accessToken: accessToken)
+            return true
         } catch {
-            // Sin red o sin sesión: si nunca cargamos, se quedan las muestras.
+            ChatPerfLog.inbox("core sync failed")
+            return false
         }
+    }
+
+    /// Fotos (URL) + teléfonos en background, con límites y sin bloquear la UI.
+    @MainActor
+    func enrichCrmInboxInBackground(accessToken: String) async {
+        guard await ContactEnrichmentService.shared.beginEnrichment() else { return }
+        await refreshLeadPhonesFromMessages(accessToken: accessToken)
+        await enrichMissingContactPhotos(accessToken: accessToken)
+        await ContactEnrichmentService.shared.endEnrichment()
     }
 
     /// Si el listado no trae foto, intenta obtenerla con endpoints dedicados del CRM.
     @MainActor
     private func enrichMissingContactPhotos(accessToken: String) async {
         let targets = liveThreads.filter { $0.kind == .lead && $0.avatarCarURL == nil }
-        for thread in targets.prefix(40) {
+        // Límite bajo: el resto se resuelve al aparecer la fila / pull manual.
+        for thread in targets.prefix(8) {
             guard let convId = crmConversationIdByThread[thread.id] else { continue }
             let wa = crmWaUserIdByThread[thread.id]
             guard let url = try? await CrmChatService.fetchContactProfilePhotoURL(
@@ -271,18 +471,27 @@ final class ChatInboxStore: ObservableObject {
     }
 
     /// Busca teléfonos en el historial (Instagram suele darlo en un mensaje).
+    /// Solo threads no resueltos y no comprobados recientemente.
     @MainActor
     func refreshLeadPhonesFromMessages(accessToken: String) async {
+        let now = Date()
         let targets = liveThreads.filter { thread in
-            thread.kind == .lead && contactPhone(for: thread) == nil
+            guard thread.kind == .lead, contactPhone(for: thread) == nil else { return false }
+            if phoneScannedThreadIds.contains(thread.id) {
+                if let checked = phoneCheckedAtByThread[thread.id],
+                   now.timeIntervalSince(checked) < ContactEnrichmentService.phoneRecheckInterval {
+                    return false
+                }
+            }
+            return true
         }
-        for thread in targets.prefix(25) where !phoneScannedThreadIds.contains(thread.id) {
+        for thread in targets.prefix(6) {
             guard let backendId = crmConversationIdByThread[thread.id] else { continue }
             do {
                 let rows = try await CrmChatService.messages(
                     token: accessToken,
                     conversationId: backendId,
-                    limit: 50
+                    limit: 40
                 )
                 let texts = rows.compactMap(\.textContent)
                 if crmWaUserIdByThread[thread.id] == nil,
@@ -290,18 +499,99 @@ final class ChatInboxStore: ObservableObject {
                     crmWaUserIdByThread[thread.id] = phone
                 }
             } catch {
+                phoneCheckedAtByThread[thread.id] = now
+                phoneScannedThreadIds.insert(thread.id)
                 continue
             }
+            phoneCheckedAtByThread[thread.id] = now
             phoneScannedThreadIds.insert(thread.id)
         }
     }
 
+    /// Fusiona mensajes CRM por id (evita reemplazar el array si no hay cambios).
+    @MainActor
+    func mergeCachedCrmMessages(_ incoming: [CrmChatService.Message], for threadId: UUID) -> [CrmChatService.Message] {
+        let previous = crmMessagesByThread[threadId] ?? []
+        if previous.isEmpty {
+            crmMessagesByThread[threadId] = incoming
+            return incoming
+        }
+        var byId = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
+        var changed = false
+        for row in incoming {
+            if byId[row.id] == nil {
+                byId[row.id] = row
+                changed = true
+            } else if byId[row.id]?.createdAt != row.createdAt
+                || byId[row.id]?.textContent != row.textContent {
+                byId[row.id] = row
+                changed = true
+            }
+        }
+        guard changed || byId.count != previous.count else {
+            return previous
+        }
+        let merged = byId.values.sorted {
+            (CrmChatService.parseISO($0.createdAt) ?? .distantPast)
+                < (CrmChatService.parseISO($1.createdAt) ?? .distantPast)
+        }
+        // Mantén ventana razonable en memoria.
+        let clipped = Array(merged.suffix(120))
+        crmMessagesByThread[threadId] = clipped
+        return clipped
+    }
+
+    private static func socialPlatform(from row: CrmChatService.Conversation) -> ChatSocialPlatform {
+        let source = (row.source ?? "").lowercased()
+        let waUserId = (row.waUserId ?? "").lowercased()
+        let conversationId = row.id.lowercased()
+
+        if source.contains("instagram") || waUserId.hasPrefix("ig:") || conversationId.hasPrefix("ig:") {
+            return .instagram
+        }
+        if source.contains("facebook") || waUserId.hasPrefix("fb:") || conversationId.hasPrefix("fb:") {
+            return .facebook
+        }
+        if source.contains("shopify") || waUserId.hasPrefix("shopify:") || conversationId.hasPrefix("shopify:") {
+            return .shopify
+        }
+        if source.contains("mail")
+            || source.contains("email")
+            || source.contains("correo")
+            || waUserId.hasPrefix("mail:")
+            || waUserId.hasPrefix("email:")
+            || conversationId.hasPrefix("mail:")
+            || conversationId.hasPrefix("email:") {
+            return .mail
+        }
+        return .whatsApp
+    }
+
+    private static func avatarColors(for platform: ChatSocialPlatform) -> (r: Double, g: Double, b: Double) {
+        switch platform {
+        case .instagram:
+            return (0.69, 0.32, 0.87)
+        case .whatsApp:
+            return (0.16, 0.68, 0.38)
+        case .facebook:
+            return (0.09, 0.47, 0.95)
+        case .shopify:
+            return (0.59, 0.75, 0.22)
+        case .mail:
+            return (0.35, 0.55, 0.95)
+        }
+    }
+
     private static func thread(fromCrm row: CrmChatService.Conversation, uuid: UUID) -> ChatThread {
-        let isInstagram =
-            (row.source ?? "").lowercased().contains("instagram")
-            || (row.waUserId ?? "").hasPrefix("ig:")
-        let fallbackName = (row.waUserId ?? "Contacto").replacingOccurrences(of: "ig:", with: "@")
+        let platform = socialPlatform(from: row)
+        let fallbackName = (row.waUserId ?? "Contacto")
+            .replacingOccurrences(of: "ig:", with: "@")
+            .replacingOccurrences(of: "fb:", with: "")
+            .replacingOccurrences(of: "shopify:", with: "")
+            .replacingOccurrences(of: "mail:", with: "")
+            .replacingOccurrences(of: "email:", with: "")
         let name = (row.contactName?.isEmpty == false) ? row.contactName! : fallbackName
+        let colors = avatarColors(for: platform)
         return ChatThread(
             id: uuid,
             title: name,
@@ -310,12 +600,12 @@ final class ChatInboxStore: ObservableObject {
             unread: (row.unreadCount ?? 0) > 0 ? row.unreadCount : nil,
             avatarInitial: String(name.prefix(1)).uppercased(),
             avatarIcon: nil,
-            avatarR: isInstagram ? 0.69 : 0.16,
-            avatarG: isInstagram ? 0.32 : 0.68,
-            avatarB: isInstagram ? 0.87 : 0.38,
+            avatarR: colors.r,
+            avatarG: colors.g,
+            avatarB: colors.b,
             avatarCarURL: CrmChatService.resolveMediaURL(row.contactPhotoUrl),
-            socialSource: isInstagram ? .instagram : .whatsApp,
-            isVerified: false,
+            socialSource: platform,
+            isVerified: platform == .instagram && (row.contactVerified ?? false),
             isPinned: row.pinned ?? false,
             kind: .lead,
             peerUserId: nil,
@@ -515,10 +805,13 @@ final class ChatInboxStore: ObservableObject {
         return max(0, u ?? 0)
     }
 
-    /// Suma de mensajes sin leer / sin responder en todos los hilos visibles.
+    /// Suma de mensajes sin leer / sin responder en hilos visibles (no archivados).
     var totalUnansweredMessageCount: Int {
-        let leadSum = liveThreads.reduce(0) { $0 + unreadContribution(for: $1) }
+        let leadSum = liveThreads
+            .filter { isVisibleInMainInbox($0.id) }
+            .reduce(0) { $0 + unreadContribution(for: $1) }
         let teamSum = ([teamGroupChatThread].compactMap { $0 } + teamDirectChatThreads)
+            .filter { isVisibleInMainInbox($0.id) }
             .reduce(0) { $0 + unreadContribution(for: $1) }
         return leadSum + teamSum
     }
@@ -719,45 +1012,36 @@ final class ChatInboxStore: ObservableObject {
         }
     }
 
+    @MainActor
     func archiveThread(_ thread: ChatThread) {
-        switch thread.kind {
-        case .teamGroup:
-            teamGroupChatThread = nil
-            teamGroupPreviewBody = nil
-            teamGroupPreviewTime = nil
-        case .teamDirect:
-            teamDirectChatThreads.removeAll { $0.id == thread.id }
-            if let pid = thread.peerUserId {
-                var tp = teamCoordinatorPeerPreview
-                tp.removeValue(forKey: pid)
-                teamCoordinatorPeerPreview = tp
-                var db = teamDirectPreviewBody
-                db.removeValue(forKey: pid)
-                teamDirectPreviewBody = db
-                var dt = teamDirectPreviewTime
-                dt.removeValue(forKey: pid)
-                teamDirectPreviewTime = dt
-                var la = teamDirectLastActivityAt
-                la.removeValue(forKey: pid)
-                teamDirectLastActivityAt = la
-                var ct = coordinatorTasksByPeer
-                ct.removeValue(forKey: pid)
-                coordinatorTasksByPeer = ct
-                bumpCoordinatorTimeline()
-            }
-        case .lead:
-            liveThreads.removeAll { $0.id == thread.id }
-        }
+        archivedThreadIds.insert(thread.id)
+        persistArchivedIds()
+    }
+
+    @MainActor
+    func unarchiveThread(_ thread: ChatThread) {
+        archivedThreadIds.remove(thread.id)
+        persistArchivedIds()
+    }
+
+    @MainActor
+    func deleteThread(_ thread: ChatThread) {
+        deletedThreadIds.insert(thread.id)
+        archivedThreadIds.remove(thread.id)
+        persistDeletedIds()
+        persistArchivedIds()
+        liveThreads.removeAll { $0.id == thread.id }
+        crmConversationIdByThread.removeValue(forKey: thread.id)
+        crmWaUserIdByThread.removeValue(forKey: thread.id)
+        crmAiActiveByThread.removeValue(forKey: thread.id)
+        crmLeadSnapshot.removeValue(forKey: thread.id)
+        crmMessagesByThread.removeValue(forKey: thread.id)
         var p = pinOverride
         p.removeValue(forKey: thread.id)
         pinOverride = p
         var u = unreadOverride
         u.removeValue(forKey: thread.id)
         unreadOverride = u
-    }
-
-    func deleteThread(_ thread: ChatThread) {
-        archiveThread(thread)
     }
 
     func markUnread(_ thread: ChatThread) {
@@ -998,6 +1282,7 @@ enum CrmChatService {
         let source: String?
         let pinned: Bool?
         let aiActive: Bool?
+        let contactVerified: Bool?
         let vehicleId: String?
     }
 
@@ -1011,6 +1296,7 @@ enum CrmChatService {
         let mediaType: String?
         let mediaContent: String?
         let mediaFilename: String?
+        let editedAt: String?
     }
 
     // MARK: Peticiones
@@ -1129,6 +1415,13 @@ enum CrmChatService {
                 source: r["source"] as? String,
                 pinned: (r["pinned"] as? Bool) ?? (r["is_pinned"] as? Bool),
                 aiActive: r["ai_active"] as? Bool,
+                contactVerified: flexBool(
+                    r["contact_verified"]
+                        ?? r["contactVerified"]
+                        ?? r["is_verified"]
+                        ?? r["is_verified_user"]
+                        ?? r["verified"]
+                ),
                 vehicleId: flexString(r["vehicle_id"])
                     ?? flexString(r["vehicleId"])
                     ?? flexString(r["car_id"])
@@ -1154,7 +1447,8 @@ enum CrmChatService {
                 mediaUrl: r["media_url"] as? String,
                 mediaType: r["media_type"] as? String,
                 mediaContent: r["media_content"] as? String,
-                mediaFilename: r["media_filename"] as? String
+                mediaFilename: r["media_filename"] as? String,
+                editedAt: (r["edited_at"] as? String) ?? (r["editedAt"] as? String)
             )
         }
     }
@@ -1207,6 +1501,32 @@ enum CrmChatService {
                 "textContent": text,
             ]
         )
+    }
+
+    /// Edita un mensaje saliente (Instagram: ventana de 15 minutos).
+    static func editMessage(
+        token: String,
+        conversationId: String,
+        messageId: String,
+        text: String
+    ) async throws {
+        try await postJSON(
+            path: "/api/whatsapp/edit_message",
+            token: token,
+            body: [
+                "conversationId": conversationId,
+                "messageId": messageId,
+                "textContent": text,
+            ]
+        )
+    }
+
+    /// Ventana de edición de Instagram (15 minutos).
+    static let instagramEditWindow: TimeInterval = 15 * 60
+
+    static func isWithinInstagramEditWindow(sentAt: Date, now: Date = Date()) -> Bool {
+        let elapsed = now.timeIntervalSince(sentAt)
+        return elapsed >= 0 && elapsed <= instagramEditWindow
     }
 
     /// Envía una imagen al cliente por Instagram CRM.
@@ -1378,6 +1698,19 @@ enum CrmChatService {
     private static func flexInt(_ value: Any?) -> Int? {
         if let n = value as? NSNumber { return n.intValue }
         if let s = value as? String { return Int(s) }
+        return nil
+    }
+
+    private static func flexBool(_ value: Any?) -> Bool? {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue }
+        if let s = value as? String {
+            switch s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes", "y", "si", "sí": return true
+            case "0", "false", "no", "n": return false
+            default: return nil
+            }
+        }
         return nil
     }
 

@@ -9,6 +9,7 @@ struct AuthRootView: View {
     @StateObject private var chatInbox = ChatInboxStore()
     @StateObject private var communityVM = DashboardCommunityViewModel()
     @StateObject private var chatNav = ChatNavigationCoordinator()
+    @ObservedObject private var voicePlayback = ChatVoicePlaybackCoordinator.shared
     @State private var showPostAuthTerms = false
 
     var body: some View {
@@ -44,6 +45,7 @@ struct AuthRootView: View {
         .environmentObject(chatInbox)
         .environmentObject(communityVM)
         .environmentObject(chatNav)
+        .environmentObject(voicePlayback)
         .onOpenURL { url in
             SupabaseClientProvider.shared.auth.handle(url)
         }

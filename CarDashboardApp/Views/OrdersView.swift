@@ -80,6 +80,9 @@ struct OrdersView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 36)
                 }
+                .morphingRefreshable {
+                    await ordersStore.refresh()
+                }
                 .navigationDestination(for: DrflowOrder.self) { order in
                     OrderDetailSimulationView(
                         simulation: DrflowOrderCatalog.simulation(for: order)
@@ -88,9 +91,6 @@ struct OrdersView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable {
-            await ordersStore.refresh()
-        }
         .task {
             await ordersStore.refresh()
         }

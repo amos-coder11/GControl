@@ -8,12 +8,33 @@ import UniformTypeIdentifiers
 
 // MARK: - Enrutador de pestañas GROO
 
-enum GrooMainTab: Hashable {
+enum GrooMainTab: Hashable, CaseIterable {
     case home
     case patients
     case calendar
     case chat
     case settings
+
+    var title: String {
+        switch self {
+        case .home: return "Inicio"
+        case .patients: return "Pacientes"
+        case .calendar: return "Agenda"
+        case .chat: return "Chat"
+        case .settings: return "Tú"
+        }
+    }
+
+    /// SF Symbols usados en la tab bar (necesarios para SymbolEffect del ZIP).
+    var symbolImage: String {
+        switch self {
+        case .home: return "house.fill"
+        case .patients: return "person.2.fill"
+        case .calendar: return "calendar"
+        case .chat: return "bubble.left.and.bubble.right.fill"
+        case .settings: return "person.crop.circle.fill"
+        }
+    }
 }
 
 @MainActor
@@ -24,13 +45,7 @@ final class MainTabRouter: ObservableObject {
 
     func openChat(animated: Bool = true) {
         guard selected != .chat else { return }
-        if animated {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                selected = .chat
-            }
-        } else {
-            selected = .chat
-        }
+        selected = .chat
     }
 
     func openPatients(animated: Bool = true) {
@@ -66,79 +81,166 @@ final class ChatNavigationCoordinator: ObservableObject {
 
 struct MainTabView: View {
     @StateObject private var tabRouter = MainTabRouter()
+    @StateObject private var workdayStore = WorkdayStore()
     @EnvironmentObject var auth: AuthViewModel
     @EnvironmentObject var groo: GrooAppStore
     @EnvironmentObject private var chatInbox: ChatInboxStore
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var settingsIconReplayToken = UUID()
 
     var body: some View {
-        TabView(selection: $tabRouter.selected) {
-            Tab("Inicio", systemImage: "house.fill", value: GrooMainTab.home) {
+        tabViewWithAnimatedIcons
+            .environmentObject(tabRouter)
+            .environmentObject(groo)
+            .environmentObject(workdayStore)
+            .accentColor(PremiumAccent.tabActive)
+            .tint(PremiumAccent.tabActive)
+            .onAppear(perform: handleTabShellAppear)
+            .onChange(of: auth.session?.user.id) { _, userId in
+                workdayStore.attach(userId: userId)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background || phase == .inactive {
+                    workdayStore.syncActiveJornadaNotification(playsSound: false)
+                }
+            }
+            .onChange(of: tabRouter.selected, perform: handleTabSelectionChange)
+            .onChange(of: groo.shouldOpenChatOnMain) { _, _ in
+                openPendingChatIfNeeded()
+            }
+            .onChange(of: groo.shouldOpenCalendarWithDraft) { _, open in
+                if open { tabRouter.selected = .calendar }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
+                tabRouter.selected = .calendar
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush), perform: handleOpenChatFromPush)
+            .onReceive(NotificationCenter.default.publisher(for: .refreshInboxFromPush), perform: handleRefreshInboxFromPush)
+            .toolbarBackground(.visible, for: .tabBar)
+            .toolbarBackground(Color.white, for: .tabBar)
+            .toolbarColorScheme(.light, for: .tabBar)
+            .tabBarMinimizeBehavior(.never)
+            .background(DrflowTheme.background.ignoresSafeArea())
+            .overlay(alignment: .top) {
+                // En Chat la barra vive bajo el buscador (inbox) o el header (conversación).
+                if tabRouter.selected != .chat {
+                    ChatVoiceMiniPlayerSlot()
+                        .padding(.top, 6)
+                        .zIndex(80)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if tabRouter.selected == .chat, chatInbox.persistedOpenChat == nil {
+                    clinicAIFloatingTabButton
+                }
+            }
+    }
+
+    private var tabViewWithAnimatedIcons: some View {
+        /// Igual que AnimatedTabBar.zip: SF Symbols nativos + SymbolEffect al tocar
+        AnimatedTabView(selection: $tabRouter.selected) {
+            Tab.init(GrooMainTab.home.title, systemImage: GrooMainTab.home.symbolImage, value: .home) {
                 GrooHomeView()
             }
 
-            Tab("Pacientes", systemImage: "person.2.fill", value: GrooMainTab.patients) {
+            Tab.init(GrooMainTab.patients.title, systemImage: GrooMainTab.patients.symbolImage, value: .patients) {
                 GrooPatientsView()
             }
 
-            Tab("Agenda", systemImage: "calendar", value: GrooMainTab.calendar) {
+            Tab.init(GrooMainTab.calendar.title, systemImage: GrooMainTab.calendar.symbolImage, value: .calendar) {
                 GrooCalendarView()
             }
 
-            Tab("Chat", systemImage: "message.fill", value: GrooMainTab.chat) {
+            Tab.init(GrooMainTab.chat.title, systemImage: GrooMainTab.chat.symbolImage, value: .chat) {
                 GrooChatRootView()
             }
             .badge(groo.unreadChatCount)
 
+            /// Foto de perfil (no SF Symbol): bounce/rotate con keyframes al tocar
             Tab(value: GrooMainTab.settings) {
                 SettingsView()
             } label: {
                 Label {
-                    Text("Tú")
+                    Text(GrooMainTab.settings.title)
                 } icon: {
-                    Image(uiImage: Self.profileTabIcon(
+                    TabBarProfileAnimatedIcon(
                         image: auth.profileAvatarImage,
-                        initial: profileTabInitial
-                    ))
+                        initial: profileTabInitial,
+                        replayToken: settingsIconReplayToken
+                    )
                 }
             }
-        }
-        .environmentObject(tabRouter)
-        .environmentObject(groo)
-        .accentColor(PremiumAccent.tabActive)
-        .tint(PremiumAccent.tabActive)
-        .onAppear {
-            MainTabBarAppearance.applyLightSelection()
-            groo.ensureWelcomeSession()
-            openPendingChatIfNeeded()
-            Task { _ = await GrooReminderNotificationService.ensureAuthorization() }
-        }
-        .onChange(of: groo.shouldOpenChatOnMain) { _, _ in
-            openPendingChatIfNeeded()
-        }
-        .onChange(of: groo.shouldOpenCalendarWithDraft) { _, open in
-            if open { tabRouter.selected = .calendar }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .grooOpenRemindersTab)) { _ in
-            tabRouter.selected = .calendar
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
-            tabRouter.openChat()
-            if let idStr = note.userInfo?["thread_id"] as? String,
-               let threadId = UUID(uuidString: idStr) {
-                chatInbox.pendingOpenLeadThreadId = threadId
+        } effects: { tab in
+            switch tab {
+            case .home: [.bounce.up]
+            case .patients: [.bounce.down]
+            case .calendar: [.wiggle]
+            case .chat: [.bounce.up]
+            case .settings: [.rotate]
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshInboxFromPush)) { _ in
-            Task {
-                guard let token = auth.session?.accessToken, !token.isEmpty else { return }
-                await chatInbox.refreshCrmConversations(accessToken: token)
+    }
+
+    private func handleTabShellAppear() {
+        MainTabBarAppearance.applyLightSelection()
+        groo.ensureWelcomeSession()
+        openPendingChatIfNeeded()
+        workdayStore.attach(userId: auth.session?.user.id)
+        Task {
+            if await GrooReminderNotificationService.ensureAuthorization() {
+                await WorkdayNotificationService.rescheduleAll()
             }
         }
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(Color.white, for: .tabBar)
-        .toolbarColorScheme(.light, for: .tabBar)
-        .tabBarMinimizeBehavior(.never)
-        .background(DrflowTheme.background.ignoresSafeArea())
+    }
+
+    private func handleTabSelectionChange(_ newTab: GrooMainTab) {
+        if newTab == .settings {
+            settingsIconReplayToken = UUID()
+        }
+    }
+
+    private func handleOpenChatFromPush(_ note: Notification) {
+        tabRouter.openChat()
+        if let idStr = note.userInfo?["thread_id"] as? String,
+           let threadId = UUID(uuidString: idStr) {
+            chatInbox.pendingOpenLeadThreadId = threadId
+        }
+    }
+
+    private func handleRefreshInboxFromPush(_: Notification) {
+        Task {
+            guard let token = auth.session?.accessToken, !token.isEmpty else { return }
+            await chatInbox.refreshCrmConversations(accessToken: token)
+        }
+    }
+
+    /// Botón flotante arriba a la derecha del tab bar (estilo WhatsApp / Meta AI) → IA de la clínica.
+    private var clinicAIFloatingTabButton: some View {
+        Button(action: openClinicAIChat) {
+            Image("ClinicAIChatIcon")
+                .resizable()
+                .scaledToFill()
+                .frame(width: 46, height: 46)
+                .clipShape(Circle())
+                .background {
+                    Circle()
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+                }
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.white, lineWidth: 3)
+                }
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 22)
+        .padding(.bottom, 56)
+        .accessibilityLabel("Asistente IA de la clínica")
+    }
+
+    private func openClinicAIChat() {
+        groo.ensureWelcomeSession()
+        groo.prepareChatNavigation()
     }
 
     private var profileTabInitial: String {
@@ -147,42 +249,6 @@ struct MainTabView: View {
         let fromAuth = auth.userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if let c = fromAuth.first { return String(c).uppercased() }
         return "T"
-    }
-
-    /// Icono circular listo para UITabBar (tamaño fijo + alwaysOriginal).
-    private static func profileTabIcon(image: UIImage?, initial: String, side: CGFloat = 26) -> UIImage {
-        let size = CGSize(width: side, height: side)
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
-        format.scale = UIScreen.main.scale
-        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
-            let rect = CGRect(origin: .zero, size: size)
-            UIBezierPath(ovalIn: rect).addClip()
-
-            if let image {
-                let scale = max(side / max(image.size.width, 1), side / max(image.size.height, 1))
-                let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                let origin = CGPoint(
-                    x: (side - drawSize.width) / 2,
-                    y: (side - drawSize.height) / 2
-                )
-                image.draw(in: CGRect(origin: origin, size: drawSize))
-            } else {
-                UIColor(red: 0.35, green: 0.55, blue: 0.98, alpha: 1).setFill()
-                ctx.cgContext.fill(rect)
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: side * 0.42, weight: .bold),
-                    .foregroundColor: UIColor.white,
-                ]
-                let text = NSString(string: initial)
-                let textSize = text.size(withAttributes: attrs)
-                text.draw(
-                    at: CGPoint(x: (side - textSize.width) / 2, y: (side - textSize.height) / 2),
-                    withAttributes: attrs
-                )
-            }
-        }
-        return rendered.withRenderingMode(.alwaysOriginal)
     }
 
     private func openPendingChatIfNeeded() {
@@ -1701,6 +1767,119 @@ private struct TeamAIPlusMenuSheet: View {
         .buttonStyle(.plain)
         .disabled(action == nil)
         .opacity(action == nil ? 0.65 : 1)
+    }
+}
+
+// MARK: - AnimatedTabBar (Balaji / AnimatedTabBar.zip)
+
+private protocol AnimatedTabSelectionProtocol: CaseIterable, Hashable {
+    var title: String { get }
+    var symbolImage: String { get }
+}
+
+extension GrooMainTab: AnimatedTabSelectionProtocol {}
+
+private struct AnimatedTabView<Selection: AnimatedTabSelectionProtocol, Content: TabContent<Selection>>: View {
+    @Binding var selection: Selection
+    @TabContentBuilder<Selection> var content: () -> Content
+    var effects: (Selection) -> [any DiscreteSymbolEffect & SymbolEffect]
+
+    @State private var imageViews: [Selection: UIImageView] = [:]
+    @State private var tabBarRef: UITabBar?
+
+    var body: some View {
+        TabView(selection: $selection) {
+            content()
+        }
+        .tabViewStyle(.tabBarOnly)
+        .background(
+            ExtractTabBarSymbolImageViews(selection: selection) { views, bar in
+                imageViews = views
+                tabBarRef = bar
+            }
+        )
+        .compositingGroup()
+        .onChange(of: selection) { _, newValue in
+            /// Re-extrae tras el cambio de tint (iOS 26) y aplica el SymbolEffect
+            DispatchQueue.main.async {
+                if let bar = tabBarRef {
+                    imageViews = ExtractTabBarSymbolImageViews<Selection>.collect(from: bar)
+                }
+                guard let imageView = imageViews[newValue] else { return }
+                for effect in effects(newValue) {
+                    imageView.addSymbolEffect(effect, options: .nonRepeating)
+                }
+            }
+        }
+    }
+}
+
+private struct ExtractTabBarSymbolImageViews<Value: AnimatedTabSelectionProtocol>: UIViewRepresentable {
+    var selection: Value
+    var result: ([Value: UIImageView], UITabBar?) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        DispatchQueue.main.async {
+            publish(from: view)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            publish(from: uiView)
+        }
+    }
+
+    private func publish(from view: UIView) {
+        guard let bar = findTabBar(from: view) else {
+            result([:], nil)
+            return
+        }
+        result(Self.collect(from: bar), bar)
+    }
+
+    private func findTabBar(from view: UIView) -> UITabBar? {
+        guard let compositingGroup = view.superview?.superview else { return nil }
+        guard let tabHostingController = compositingGroup.subviews.last else { return nil }
+        guard let tabController = tabHostingController.subviews.first?.next as? UITabBarController else {
+            return nil
+        }
+        return tabController.tabBar
+    }
+
+    static func collect(from tabBar: UITabBar) -> [Value: UIImageView] {
+        let symbolViews = tabBar.subviews(type: UIImageView.self)
+            .filter { $0.image?.isSymbolImage ?? false }
+
+        /// En iOS 26 el icono activo usa el tint de la barra; priorízalo, con fallback a todos.
+        let preferred: [UIImageView]
+        if #available(iOS 26, *) {
+            let tinted = symbolViews.filter { $0.tintColor == tabBar.tintColor }
+            preferred = tinted.isEmpty ? symbolViews : tinted
+        } else {
+            preferred = symbolViews
+        }
+
+        var dict: [Value: UIImageView] = [:]
+        for tab in Value.allCases {
+            let match = preferred.first(where: { $0.description.contains(tab.symbolImage) })
+                ?? symbolViews.first(where: { $0.description.contains(tab.symbolImage) })
+            if let match {
+                dict[tab] = match
+            }
+        }
+        return dict
+    }
+}
+
+private extension UIView {
+    func subviews<T: UIView>(type: T.Type) -> [T] {
+        subviews.compactMap { $0 as? T } +
+            subviews.flatMap { $0.subviews(type: type) }
     }
 }
 

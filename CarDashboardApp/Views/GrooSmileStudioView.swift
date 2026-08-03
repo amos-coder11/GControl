@@ -5,7 +5,7 @@ struct GrooSmileStudioView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var groo: GrooAppStore
     @EnvironmentObject private var tabRouter: MainTabRouter
-    @State private var mode: StudioMode = .aiSmile
+    @State private var mode: StudioMode
     @State private var sourceImage: UIImage?
     @State private var resultImage: UIImage?
     @State private var isGenerating = false
@@ -39,6 +39,10 @@ struct GrooSmileStudioView: View {
             case .model3D: return "cube.transparent"
             }
         }
+    }
+
+    init(opensIn3D: Bool = false) {
+        _mode = State(initialValue: opensIn3D ? .model3D : .aiSmile)
     }
 
     var body: some View {

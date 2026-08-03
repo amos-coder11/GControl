@@ -23,6 +23,10 @@ enum TeamGroupMessagesService {
         let body: String
     }
 
+    private struct BodyPatch: Encodable {
+        let body: String
+    }
+
     private static let jsonDecoder = PostgrestClient.Configuration.jsonDecoder
 
     static func fetchMessages(client: SupabaseClient) async throws -> [Row] {
@@ -56,6 +60,28 @@ enum TeamGroupMessagesService {
             .execute()
             .value
         return inserted
+    }
+
+    static func updateBody(id: UUID, body: String, client: SupabaseClient) async throws -> Row {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "TeamGroupMessages", code: 0, userInfo: [NSLocalizedDescriptionKey: "Vacío"])
+        }
+        if ContentModerationFilter.containsObjectionableContent(trimmed) {
+            throw NSError(
+                domain: "TeamGroupMessages",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "El mensaje incluye lenguaje no permitido."]
+            )
+        }
+        return try await client
+            .from(tableName)
+            .update(BodyPatch(body: trimmed))
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
     }
 
     static func decodeInsert(_ action: InsertAction) throws -> Row {

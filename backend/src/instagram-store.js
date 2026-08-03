@@ -59,6 +59,7 @@ export function ensureConversation(convId, patch = {}) {
       id: convId,
       contact_name: patch.contact_name || `Instagram · ${String(convId).replace(/^ig:/, "").slice(-6)}`,
       contact_photo_url: patch.contact_photo_url || null,
+      contact_verified: Boolean(patch.contact_verified) || false,
       last_message: patch.last_message || "",
       unread_count: patch.unread_count || 0,
       updated_at: patch.updated_at || nowISO(),
@@ -78,12 +79,18 @@ export function ensureConversation(convId, patch = {}) {
   return store.conversations[convId];
 }
 
-export function updateConversationProfile(conversationId, { contact_name, contact_photo_url } = {}) {
+export function updateConversationProfile(
+  conversationId,
+  { contact_name, contact_photo_url, contact_verified } = {}
+) {
   const store = ensureLoaded();
   const conv = store.conversations[conversationId];
   if (!conv) return false;
   if (contact_name) conv.contact_name = contact_name;
   if (contact_photo_url) conv.contact_photo_url = contact_photo_url;
+  if (contact_verified !== undefined && contact_verified !== null) {
+    conv.contact_verified = Boolean(contact_verified);
+  }
   persist();
   return true;
 }
@@ -236,6 +243,30 @@ export function appendOutgoing(conversationId, text, messageId = null) {
     message_type: "text",
   });
   return id;
+}
+
+/** Edita un mensaje saliente (ventana 15 min, como Instagram). */
+export function updateOutgoingMessageText(conversationId, messageId, text) {
+  const store = ensureLoaded();
+  const rows = store.messages[conversationId];
+  if (!rows) return { ok: false, error: "conversation_not_found" };
+
+  const row = rows.find((m) => String(m.id) === String(messageId));
+  if (!row) return { ok: false, error: "message_not_found" };
+  if (row.sender_type !== "agent") return { ok: false, error: "not_outgoing" };
+
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return { ok: false, error: "text_required" };
+
+  const created = new Date(row.created_at).getTime();
+  if (Number.isFinite(created) && Date.now() - created > 15 * 60 * 1000) {
+    return { ok: false, error: "edit_window_expired" };
+  }
+
+  row.text_content = trimmed;
+  row.edited_at = nowISO();
+  persist();
+  return { ok: true, message: row };
 }
 
 export function appendOutgoingMedia(

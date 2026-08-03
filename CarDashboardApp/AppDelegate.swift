@@ -27,6 +27,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if notification.request.identifier == WorkdayNotificationService.activeJornadaId {
+            let playsSound = notification.request.content.userInfo["grooWorkdaySound"] as? Bool == true
+            completionHandler(playsSound ? [.banner, .sound] : [])
+            return
+        }
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -56,6 +61,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
 
         let userInfo = response.notification.request.content.userInfo
+        if userInfo["grooWorkdayActive"] as? Bool == true {
+            NotificationCenter.default.post(name: .grooOpenWorkday, object: nil)
+            completionHandler()
+            return
+        }
+
         if userInfo["grooReminderId"] != nil {
             NotificationCenter.default.post(name: .grooOpenRemindersTab, object: nil)
             completionHandler()

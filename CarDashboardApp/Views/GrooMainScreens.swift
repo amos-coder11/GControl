@@ -1,4 +1,5 @@
 import PhotosUI
+import Supabase
 import SwiftUI
 import UIKit
 
@@ -7,11 +8,15 @@ import UIKit
 private enum GrooChatDestination: Hashable, Identifiable {
     case mentor(UUID)
     case instagram(ChatThread)
+    case team(ChatThread)
+    case patientLocal(ChatThread)
 
     var id: String {
         switch self {
         case .mentor(let id): return "mentor-\(id.uuidString)"
         case .instagram(let thread): return "ig-\(thread.id.uuidString)"
+        case .team(let thread): return "team-\(thread.id.uuidString)"
+        case .patientLocal(let thread): return "patient-\(thread.id.uuidString)"
         }
     }
 }
@@ -20,27 +25,31 @@ struct GrooChatRootView: View {
     @EnvironmentObject private var groo: GrooAppStore
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var moderation: UserModerationStore
     @State private var destination: GrooChatDestination?
     @State private var query = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
             GrooChatInboxView(
                 query: $query,
-                onOpenSession: { id in
-                    groo.selectSession(id)
-                    destination = .mentor(id)
-                },
                 onOpenInstagram: { thread in
-                    chatInbox.activeLeadThreadId = thread.id
-                    destination = .instagram(thread)
+                    openInstagram(thread)
                 },
-                onNewChat: {
-                    let id = groo.startNewSession()
-                    destination = .mentor(id)
+                onOpenTeam: { thread in
+                    openTeam(thread)
+                },
+                onOpenPatientLocal: { thread in
+                    openPatientLocal(thread)
+                },
+                onOpenAISession: { id in
+                    openMentor(id)
                 },
                 onRefreshInstagram: {
-                    await refreshInstagramInbox()
+                    await refreshInstagramInbox(mode: .full)
                 }
             )
             .navigationDestination(item: $destination) { dest in
@@ -50,7 +59,10 @@ struct GrooChatRootView: View {
                         .onAppear { groo.selectSession(id) }
                 case .instagram(let thread):
                     ChatConversationView(thread: thread)
-                        .onDisappear { chatInbox.activeLeadThreadId = nil }
+                case .team(let thread):
+                    ChatConversationView(thread: thread)
+                case .patientLocal(let thread):
+                    ChatConversationView(thread: thread)
                 }
             }
         }
@@ -58,39 +70,201 @@ struct GrooChatRootView: View {
         .toolbarVisibility(destination == nil ? .automatic : .hidden, for: .tabBar)
         .onAppear {
             groo.ensureWelcomeSession()
-            Task { await refreshInstagramInbox() }
+            syncTeamThreadsFromDirectory()
+            restorePersistedChatIfNeeded()
+            Task { await refreshInstagramInbox(mode: .full) }
+        }
+        .onChange(of: communityVM.directory) { _, _ in
+            syncTeamThreadsFromDirectory()
+        }
+        .onChange(of: moderation.blockedUserIds) { _, _ in
+            syncTeamThreadsFromDirectory()
+        }
+        .onChange(of: tabRouter.selected) { _, tab in
+            if tab == .chat {
+                restorePersistedChatIfNeeded()
+                Task {
+                    await communityVM.refresh()
+                    await refreshInstagramInboxIfNeeded(mode: .recovery)
+                }
+            }
+        }
+        .task(id: auth.session?.user.id) {
+            await ensureTeamRealtimeSubscriptions()
         }
         .task(id: auth.session?.accessToken) {
-            await refreshInstagramInbox()
+            await refreshInstagramInbox(mode: .full)
+            restorePersistedChatIfNeeded()
         }
-        // Keep Instagram inbox fresh while Chat tab is open.
-        .task {
+        /// Polling de recuperación ligero (máx. cada 5 min), sin enriquecimiento completo.
+        .task(id: tabRouter.selected) {
+            guard tabRouter.selected == .chat else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 8_000_000_000)
-                await refreshInstagramInbox()
+                try? await Task.sleep(nanoseconds: UInt64(ChatSyncEngine.recoveryInterval * 1_000_000_000))
+                guard !Task.isCancelled, tabRouter.selected == .chat, scenePhase == .active else { continue }
+                await refreshInstagramInboxIfNeeded(mode: .recovery)
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, tabRouter.selected == .chat {
+                Task {
+                    await ensureTeamRealtimeSubscriptions()
+                    await refreshInstagramInboxIfNeeded(mode: .recovery)
+                }
+            }
+        }
+        .onChange(of: destination) { _, newValue in
+            persistDestination(newValue)
         }
         .onChange(of: groo.pendingChatNavigation) { _, sessionId in
             guard let sessionId else { return }
             groo.pendingChatNavigation = nil
-            groo.selectSession(sessionId)
-            destination = .mentor(sessionId)
+            openMentor(sessionId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChatFromPush)) { note in
             handleOpenChatPush(note.userInfo)
         }
         .onReceive(NotificationCenter.default.publisher(for: .refreshInboxFromPush)) { _ in
-            Task { await refreshInstagramInbox() }
+            Task { await refreshInstagramInbox(mode: .full) }
         }
         .onChange(of: chatInbox.pendingOpenLeadThreadId) { _, threadId in
             guard let threadId else { return }
             openLeadThreadIfPossible(threadId)
         }
+        .onChange(of: chatInbox.pendingOpenPatientLocalThreadId) { _, threadId in
+            guard let threadId else { return }
+            openPatientLocalThreadIfPossible(threadId)
+        }
         .onChange(of: chatInbox.liveThreads.count) { _, _ in
             if let pending = chatInbox.pendingOpenLeadThreadId {
                 openLeadThreadIfPossible(pending)
+            } else {
+                restorePersistedChatIfNeeded()
             }
         }
+    }
+
+    private func openMentor(_ id: UUID) {
+        groo.selectSession(id)
+        destination = .mentor(id)
+        chatInbox.persistedOpenChat = .mentor(id)
+        chatInbox.activeLeadThreadId = nil
+    }
+
+    private func openInstagram(_ thread: ChatThread) {
+        chatInbox.activeLeadThreadId = thread.id
+        chatInbox.activeTeamDirectPeerId = nil
+        chatInbox.activeTeamGroupChatOpen = false
+        chatInbox.persistedOpenChat = .instagram(thread.id)
+        Task { await chatInbox.prefetchCrmMessages(for: thread.id, accessToken: auth.session?.accessToken) }
+        destination = .instagram(thread)
+    }
+
+    private func openTeam(_ thread: ChatThread) {
+        chatInbox.activeLeadThreadId = nil
+        chatInbox.persistedOpenChat = .team(thread.id)
+        switch thread.kind {
+        case .teamDirect:
+            chatInbox.activeTeamDirectPeerId = thread.peerUserId
+            chatInbox.activeTeamGroupChatOpen = false
+        case .teamGroup:
+            chatInbox.activeTeamDirectPeerId = nil
+            chatInbox.activeTeamGroupChatOpen = true
+        default:
+            break
+        }
+        destination = .team(thread)
+    }
+
+    private func openPatientLocal(_ thread: ChatThread) {
+        chatInbox.activeLeadThreadId = nil
+        chatInbox.activeTeamDirectPeerId = nil
+        chatInbox.activeTeamGroupChatOpen = false
+        chatInbox.persistedOpenChat = .patientLocal(thread.id)
+        chatInbox.pendingOpenPatientLocalThreadId = nil
+        destination = .patientLocal(thread)
+    }
+
+    private func openPatientLocalThreadIfPossible(_ threadId: UUID) {
+        guard let thread = chatInbox.patientLocalThreads.first(where: { $0.id == threadId }) else { return }
+        openPatientLocal(thread)
+    }
+
+    private func syncTeamThreadsFromDirectory() {
+        chatInbox.syncTeamThreads(
+            from: communityVM.directory,
+            currentUserId: auth.session?.user.id,
+            blockedUserIds: moderation.blockedUserIds
+        )
+    }
+
+    private func persistDestination(_ dest: GrooChatDestination?) {
+        switch dest {
+        case .mentor(let id):
+            chatInbox.persistedOpenChat = .mentor(id)
+            chatInbox.activeLeadThreadId = nil
+            chatInbox.activeTeamDirectPeerId = nil
+            chatInbox.activeTeamGroupChatOpen = false
+        case .instagram(let thread):
+            chatInbox.persistedOpenChat = .instagram(thread.id)
+            chatInbox.activeLeadThreadId = thread.id
+            chatInbox.activeTeamDirectPeerId = nil
+            chatInbox.activeTeamGroupChatOpen = false
+        case .team(let thread):
+            chatInbox.persistedOpenChat = .team(thread.id)
+            chatInbox.activeLeadThreadId = nil
+            switch thread.kind {
+            case .teamDirect:
+                chatInbox.activeTeamDirectPeerId = thread.peerUserId
+                chatInbox.activeTeamGroupChatOpen = false
+            case .teamGroup:
+                chatInbox.activeTeamDirectPeerId = nil
+                chatInbox.activeTeamGroupChatOpen = true
+            default:
+                break
+            }
+        case .patientLocal(let thread):
+            chatInbox.persistedOpenChat = .patientLocal(thread.id)
+            chatInbox.activeLeadThreadId = nil
+            chatInbox.activeTeamDirectPeerId = nil
+            chatInbox.activeTeamGroupChatOpen = false
+        case nil:
+            guard tabRouter.selected == .chat else { return }
+            chatInbox.persistedOpenChat = nil
+            chatInbox.activeLeadThreadId = nil
+            chatInbox.activeTeamDirectPeerId = nil
+            chatInbox.activeTeamGroupChatOpen = false
+        }
+    }
+
+    /// Reabre la conversación que el usuario dejó al cambiar de pestaña.
+    private func restorePersistedChatIfNeeded() {
+        guard destination == nil, let saved = chatInbox.persistedOpenChat else { return }
+        switch saved {
+        case .mentor(let id):
+            groo.selectSession(id)
+            destination = .mentor(id)
+        case .patientLocal(let threadId):
+            if let thread = chatInbox.patientLocalThreads.first(where: { $0.id == threadId }) {
+                destination = .patientLocal(thread)
+            }
+        case .instagram(let threadId):
+            if let thread = chatInbox.liveThreads.first(where: { $0.id == threadId }) {
+                chatInbox.activeLeadThreadId = threadId
+                destination = .instagram(thread)
+            }
+        case .team(let threadId):
+            if let thread = resolveTeamThread(id: threadId) {
+                openTeam(thread)
+            }
+        }
+    }
+
+    private func resolveTeamThread(id: UUID) -> ChatThread? {
+        if chatInbox.teamGroupChatThread?.id == id {
+            return chatInbox.teamGroupChatThread
+        }
+        return chatInbox.teamDirectChatThreads.first(where: { $0.id == id })
     }
 
     private func handleOpenChatPush(_ userInfo: [AnyHashable: Any]?) {
@@ -114,13 +288,45 @@ struct GrooChatRootView: View {
             return
         }
         chatInbox.pendingOpenLeadThreadId = nil
-        chatInbox.activeLeadThreadId = thread.id
-        destination = .instagram(thread)
+        openInstagram(thread)
     }
 
-    private func refreshInstagramInbox() async {
+    private func refreshInstagramInbox(mode: ChatInboxSyncMode = .full) async {
         guard let token = auth.session?.accessToken, !token.isEmpty else { return }
-        await chatInbox.refreshCrmConversations(accessToken: token)
+        await chatInbox.refreshCrmConversations(accessToken: token, mode: mode)
+    }
+
+    private func refreshInstagramInboxIfNeeded(mode: ChatInboxSyncMode) async {
+        guard let token = auth.session?.accessToken, !token.isEmpty else { return }
+        guard await ChatSyncEngine.shared.shouldRunRecovery() || mode == .full else {
+            ChatPerfLog.inbox("skip recovery; still fresh")
+            return
+        }
+        await chatInbox.refreshCrmConversations(accessToken: token, mode: mode)
+    }
+
+    private func ensureTeamRealtimeSubscriptions() async {
+        guard let uid = auth.session?.user.id else {
+            await ChatRealtimeCoordinator.shared.disconnectAll()
+            return
+        }
+        let inbox = chatInbox
+        await ChatRealtimeCoordinator.shared.ensureTeamInboxSubscriptions(
+            userId: uid,
+            onDirectInsert: { row in
+                let date = TeamDirectMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+                inbox.applyTeamDirectIncoming(fromPeer: row.senderId, body: row.body, date: date)
+            },
+            onGroupInsert: { row in
+                let date = TeamGroupMessagesService.parseCreatedAt(row.createdAt) ?? Date()
+                inbox.applyTeamGroupIncoming(
+                    fromSender: row.senderId,
+                    body: row.body,
+                    date: date,
+                    currentUserId: uid
+                )
+            }
+        )
     }
 }
 
@@ -130,55 +336,146 @@ enum GrooInboxFilter: String, CaseIterable, Identifiable {
     case all = "Todos"
     case unread = "No leídos"
     case instagram = "Instagram"
-    case assistant = "Asistente"
+    case whatsApp = "WhatsApp"
+    case facebook = "Facebook"
+    case shopify = "Shopify"
+    case mail = "Mail"
+    case internalChat = "Chat interno"
+    case aiAssistant = "IA"
 
     var id: String { rawValue }
+
+    var leadPlatform: ChatSocialPlatform? {
+        switch self {
+        case .instagram: return .instagram
+        case .whatsApp: return .whatsApp
+        case .facebook: return .facebook
+        case .shopify: return .shopify
+        case .mail: return .mail
+        default: return nil
+        }
+    }
 }
 
 struct GrooChatInboxView: View {
     @EnvironmentObject private var groo: GrooAppStore
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
+    @EnvironmentObject private var voicePlayback: ChatVoicePlaybackCoordinator
     @Binding var query: String
-    var onOpenSession: (UUID) -> Void
     var onOpenInstagram: (ChatThread) -> Void
-    var onNewChat: () -> Void
+    var onOpenTeam: (ChatThread) -> Void
+    var onOpenPatientLocal: (ChatThread) -> Void = { _ in }
+    var onOpenAISession: (UUID) -> Void
     var onRefreshInstagram: (() async -> Void)? = nil
 
     @State private var filter: GrooInboxFilter = .all
-    @State private var scrollOffset: CGFloat = 0
+    /// Offset de scroll ≥ 0; el buscador se aplasta en proporción (estilo Telegram).
+    @State private var searchScrollOffset: CGFloat = 0
+    @State private var showArchivedChats = false
+
+    private let searchBarExpandedHeight: CGFloat = 40
+    private let searchBarBottomGap: CGFloat = 12
+    /// Distancia de scroll para aplastar el buscador por completo.
+    private let searchCollapseDistance: CGFloat = 64
+    private let voicePlayerBlockHeight: CGFloat = 58
 
     private var q: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    /// Buscador visible arriba; se pliega al subir la lista (salvo si hay texto).
-    private var isSearchVisible: Bool {
-        !query.isEmpty || scrollOffset < 18
+    /// 0 = abierto, 1 = cerrado. Con texto en el campo no se colapsa.
+    private var searchCollapseProgress: CGFloat {
+        if !q.isEmpty { return 0 }
+        return min(1, max(0, searchScrollOffset / searchCollapseDistance))
     }
 
-    private var headerContentHeight: CGFloat {
-        let search: CGFloat = isSearchVisible ? 52 : 0
-        return 52 + search + 44
+    /// Alto del contenedor tras aplastarse (la cápsula se comprime de verdad).
+    private var searchVisibleHeight: CGFloat {
+        max(0, searchBarExpandedHeight * (1 - searchCollapseProgress))
     }
 
-    private var sessions: [GrooChatSession] {
-        guard filter != .instagram else { return [] }
-        let base = groo.filteredSessions(query: query)
+    /// Alto máximo del bloque buscador (sin colapsar). El List usa esto fijo para no relayout al scrollear.
+    private var maxSearchBlockHeight: CGFloat {
+        searchBarExpandedHeight + searchBarBottomGap
+    }
+
+    /// Spacer del List: altura estable (solo cambia si aparece el mini-player).
+    private var listHeaderSpacerHeight: CGFloat {
+        let player = voicePlayback.isActive ? voicePlayerBlockHeight : 0
+        return 8 + 44 + maxSearchBlockHeight + player + 44
+    }
+
+    /// Blur estable (no se redimensiona en cada tick de scroll).
+    private var stickyChromeHeight: CGFloat {
+        listHeaderSpacerHeight + 56
+    }
+
+    /// Texto/iconos se desvanecen al aplastar; casi invisibles al final.
+    private var searchContentFade: Double {
+        let p = Double(searchCollapseProgress)
+        return max(0, min(1, pow(1 - p, 1.65)))
+    }
+
+    private var archivedPreviewNames: String {
+        let names = chatInbox.archivedThreads.prefix(4).map(\.title)
+        guard !names.isEmpty else { return "" }
+        var text = names.joined(separator: ", ")
+        if chatInbox.archivedThreads.count > names.count {
+            text += "..."
+        }
+        return text
+    }
+
+    private var teamThreads: [ChatThread] {
+        var list: [ChatThread] = []
+        if let group = chatInbox.teamGroupChatThread, chatInbox.isVisibleInMainInbox(group.id) {
+            list.append(group)
+        }
+        list.append(contentsOf: chatInbox.teamDirectChatThreads.filter {
+            chatInbox.isVisibleInMainInbox($0.id)
+        })
+
+        let filtered: [ChatThread]
+        if q.isEmpty {
+            filtered = list
+        } else {
+            filtered = list.filter {
+                $0.title.lowercased().contains(q) || $0.preview.lowercased().contains(q)
+            }
+        }
+
         switch filter {
-        case .all, .assistant:
-            return base
+        case .internalChat, .all:
+            return filtered
         case .unread:
-            return base.filter { unreadCount(for: $0) > 0 }
-        case .instagram:
+            return filtered.filter { effectiveTeamUnread(for: $0) > 0 }
+        case .instagram, .whatsApp, .facebook, .shopify, .mail, .aiAssistant:
             return []
         }
     }
 
-    private var instagramThreads: [ChatThread] {
+    private var aiSessions: [GrooChatSession] {
+        guard filter == .aiAssistant || filter == .unread else { return [] }
+        let base = groo.filteredSessions(query: query)
+        switch filter {
+        case .unread:
+            return base.filter { aiUnreadCount(for: $0) > 0 }
+        case .aiAssistant:
+            return base
+        default:
+            return []
+        }
+    }
+
+    private var leadThreads: [ChatThread] {
+        let platformFilter = filter.leadPlatform
         let base = chatInbox.liveThreads.filter { thread in
-            thread.socialSource == .instagram
-                || (chatInbox.crmConversationIdByThread[thread.id] ?? "").hasPrefix("ig:")
+            guard thread.kind == .lead else { return false }
+            guard chatInbox.isVisibleInMainInbox(thread.id) else { return false }
+            guard let platformFilter else { return true }
+            return thread.socialSource == platformFilter
         }
         let filtered: [ChatThread]
         if q.isEmpty {
@@ -189,210 +486,232 @@ struct GrooChatInboxView: View {
             }
         }
         switch filter {
-        case .instagram, .all:
+        case .instagram, .whatsApp, .facebook, .shopify, .mail, .all:
             return filtered
         case .unread:
-            return filtered.filter { effectiveInstagramUnread(for: $0) > 0 }
-        case .assistant:
+            return filtered.filter { effectiveLeadUnread(for: $0) > 0 }
+        case .internalChat, .aiAssistant:
             return []
         }
     }
 
     private var hasAnyChats: Bool {
-        !sessions.isEmpty || !instagramThreads.isEmpty
+        switch filter {
+        case .internalChat:
+            return !teamThreads.isEmpty
+        case .instagram, .whatsApp, .facebook, .shopify, .mail:
+            return !leadThreads.isEmpty
+        case .aiAssistant:
+            return !aiSessions.isEmpty
+        default:
+            return !leadThreads.isEmpty || !teamThreads.isEmpty
+        }
     }
 
     private enum InboxEntry: Identifiable {
-        case session(GrooChatSession)
         case instagram(ChatThread)
+        case team(ChatThread)
+        case patientLocal(ChatThread)
+        case aiSession(GrooChatSession)
 
         var id: String {
             switch self {
-            case .session(let s): return "s-\(s.id.uuidString)"
             case .instagram(let t): return "ig-\(t.id.uuidString)"
+            case .team(let t): return "team-\(t.id.uuidString)"
+            case .patientLocal(let t): return "patient-\(t.id.uuidString)"
+            case .aiSession(let s): return "ai-\(s.id.uuidString)"
             }
         }
 
         var sortDate: Date {
             switch self {
-            case .session(let s): return s.updatedAt
             case .instagram(let t): return t.lastActivityAt ?? .distantPast
+            case .team(let t): return t.lastActivityAt ?? .distantPast
+            case .patientLocal(let t): return t.lastActivityAt ?? .distantPast
+            case .aiSession(let s): return s.updatedAt
             }
         }
     }
 
-    private var sortedSessions: [GrooChatSession] {
-        sessions.sorted { $0.updatedAt > $1.updatedAt }
+    private var sortedLeadThreads: [ChatThread] {
+        leadThreads.sorted { ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast) }
     }
 
-    private var sortedInstagramThreads: [ChatThread] {
-        instagramThreads.sorted { ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast) }
+    private var sortedTeamThreads: [ChatThread] {
+        teamThreads.sorted { ($0.lastActivityAt ?? .distantPast) > ($1.lastActivityAt ?? .distantPast) }
+    }
+
+    private var sortedAISessions: [GrooChatSession] {
+        aiSessions.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var patientLocalThreadsVisible: [ChatThread] {
+        let base = chatInbox.patientLocalThreads.filter { chatInbox.isVisibleInMainInbox($0.id) }
+        if q.isEmpty { return base }
+        return base.filter {
+            $0.title.lowercased().contains(q) || $0.preview.lowercased().contains(q)
+        }
     }
 
     private var inboxEntries: [InboxEntry] {
-        let ig = sortedInstagramThreads.map(InboxEntry.instagram)
-        let asst = sortedSessions.map(InboxEntry.session)
+        let leads = sortedLeadThreads.map(InboxEntry.instagram)
+        let team = sortedTeamThreads.map(InboxEntry.team)
+        let patients = patientLocalThreadsVisible.map(InboxEntry.patientLocal)
+        let ai = sortedAISessions.map(InboxEntry.aiSession)
         switch filter {
-        case .instagram:
-            return ig
-        case .assistant:
-            return asst
-        case .all, .unread:
-            return (ig + asst).sorted { $0.sortDate > $1.sortDate }
+        case .instagram, .whatsApp, .facebook, .shopify, .mail:
+            return leads
+        case .internalChat:
+            return team
+        case .aiAssistant:
+            return ai
+        case .all:
+            return (leads + team + patients).sorted { $0.sortDate > $1.sortDate }
+        case .unread:
+            return (leads + team + patients + ai).sorted { $0.sortDate > $1.sortDate }
         }
+    }
+
+    private var showArchivedEntry: Bool {
+        q.isEmpty && (filter == .all || filter == .unread)
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    Color.clear
-                        .frame(height: headerContentHeight)
-                        .animation(.easeInOut(duration: 0.22), value: isSearchVisible)
+            List {
+                Color.clear
+                    .frame(height: listHeaderSpacerHeight)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
 
-                    ForEach(Array(inboxEntries.enumerated()), id: \.element.id) { index, entry in
-                        switch entry {
-                        case .instagram(let thread):
-                            Button {
-                                onOpenInstagram(thread)
-                            } label: {
-                                GrooInboxConversationRow(
-                                    title: thread.title,
-                                    preview: thread.preview.isEmpty ? "Mensaje de Instagram" : thread.preview,
-                                    date: thread.lastActivityAt ?? Date(),
-                                    timeLabel: thread.time.isEmpty ? nil : thread.time,
-                                    unreadCount: effectiveInstagramUnread(for: thread),
-                                    avatarURL: thread.avatarCarURL,
-                                    avatarAccessToken: auth.session?.accessToken,
-                                    avatarInitial: thread.avatarInitial,
-                                    socialSource: thread.socialSource ?? .instagram
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                        case .session(let session):
-                            Button {
-                                onOpenSession(session.id)
-                            } label: {
-                                GrooInboxConversationRow(
-                                    title: displayTitle(session),
-                                    preview: session.preview,
-                                    date: session.updatedAt,
-                                    unreadCount: unreadCount(for: session),
-                                    isPinned: index == 0 && filter == .all && query.isEmpty
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if index < inboxEntries.count - 1 {
+                if showArchivedEntry {
+                    Button {
+                        showArchivedChats = true
+                    } label: {
+                        GrooArchivedInboxRow(
+                            previewNames: archivedPreviewNames,
+                            unreadCount: chatInbox.archivedUnreadCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.white)
+                    .overlay(alignment: .bottom) {
+                        if !inboxEntries.isEmpty {
                             Divider()
                                 .overlay(Color.black.opacity(0.08))
-                                .padding(.leading, 82)
+                                .padding(.leading, 94)
                         }
                     }
+                }
 
-                    if !hasAnyChats {
-                        if filter == .instagram {
-                            emptyInstagramContent
+                ForEach(inboxEntries) { entry in
+                    inboxEntryButton(for: entry)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.white)
+                    .overlay(alignment: .bottom) {
+                        if entry.id != inboxEntries.last?.id {
+                            Divider()
+                                .overlay(Color.black.opacity(0.08))
+                                .padding(.leading, 94)
+                        }
+                    }
+                }
+
+                if !hasAnyChats {
+                    Group {
+                        if let platform = filter.leadPlatform {
+                            emptyLeadContent(for: platform)
+                        } else if filter == .internalChat {
+                            emptyInternalChatContent
+                        } else if filter == .aiAssistant {
+                            emptyAIChatContent
                         } else {
                             emptyInboxContent
                         }
                     }
-
-                    Color.clear.frame(height: 100)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.white)
                 }
-                .frame(maxWidth: .infinity)
+
+                Color.clear
+                    .frame(height: 100)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
+            .listStyle(.plain)
+            .listRowSpacing(0)
+            .scrollContentBackground(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.white)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { _, newValue in
-                scrollOffset = max(0, newValue)
+                // Cuantizar: menos invalidaciones del body al hacer flick rápido.
+                let offset = max(0, newValue)
+                let quantized = (offset / 2).rounded() * 2
+                guard abs(quantized - searchScrollOffset) >= 2 else { return }
+                searchScrollOffset = quantized
             }
-            .refreshable {
-                await onRefreshInstagram?()
+            .onChange(of: query) { _, newQuery in
+                if !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    searchScrollOffset = 0
+                }
             }
+
+            /// Blur difuminado fijo arriba (sin pull-to-refresh).
+            GrooChatTheme.floatingBlurChrome()
+                .frame(height: stickyChromeHeight)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
 
             stickyInboxHeader
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white.ignoresSafeArea())
+        .navigationDestination(isPresented: $showArchivedChats) {
+            GrooArchivedChatsView(
+                onOpenInstagram: onOpenInstagram,
+                onOpenTeam: onOpenTeam,
+                onOpenPatientLocal: onOpenPatientLocal
+            )
+        }
         .toolbar(.hidden, for: .navigationBar)
     }
 
     private var stickyInboxHeader: some View {
         VStack(spacing: 0) {
-            titleRow
+            Text("Chats")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
 
-            if isSearchVisible {
-                searchBar
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .top)),
-                            removal: .opacity.combined(with: .move(edge: .top))
-                        )
-                    )
-            }
+            /// Aplastado continuo por altura (sin scale hacia arriba).
+            searchBar
+                .padding(.horizontal, 14)
+                .frame(height: searchVisibleHeight, alignment: .center)
+                .clipped()
+                .opacity(searchCollapseProgress >= 0.99 ? 0 : 1)
+                .allowsHitTesting(searchCollapseProgress < 0.45)
+                .padding(.bottom, searchBarBottomGap * (1 - searchCollapseProgress))
+                .accessibilityHidden(searchCollapseProgress >= 0.99)
+
+            /// Debajo del buscador; no sustituye ni desplaza la fila de filtros.
+            ChatVoiceMiniPlayerSlot(bottomPadding: 8)
 
             filterRow
         }
-        .padding(.top, 6)
-        .background {
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                Color.white.opacity(0.55)
-            }
-            .ignoresSafeArea(edges: .top)
-        }
-        .overlay(alignment: .bottom) {
-            Divider()
-                .overlay(Color.black.opacity(0.08))
-        }
-        .animation(.easeInOut(duration: 0.22), value: isSearchVisible)
-    }
-
-    private var titleRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Button {} label: {
-                Text("Editar")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background { GrooChatTheme.glassPillBackground() }
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
-
-            Text("Chats")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.9))
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 14) {
-                Button(action: onNewChat) {
-                    Image(systemName: "plus.circle.dashed")
-                        .font(.system(size: 18, weight: .semibold))
-                }
-                Button(action: onNewChat) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-            }
-            .foregroundStyle(Color.black.opacity(0.85))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background { GrooChatTheme.glassPillBackground() }
-        }
-        .padding(.horizontal, 14)
+        .padding(.top, 8)
     }
 
     private var searchBar: some View {
@@ -400,6 +719,7 @@ struct GrooChatInboxView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.35))
+                .opacity(searchContentFade)
             TextField(
                 "",
                 text: $query,
@@ -411,66 +731,111 @@ struct GrooChatInboxView: View {
             .tint(GrooChatTheme.telegramBlue)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .opacity(searchContentFade)
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.black.opacity(0.28))
                 }
                 .buttonStyle(.plain)
+                .opacity(searchContentFade)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .frame(height: max(searchVisibleHeight, 0.001))
         .background {
             Capsule(style: .continuous)
                 .fill(Color.black.opacity(0.06))
         }
+        .clipped()
+    }
+
+    private var unreadFilterCount: Int {
+        let leads = chatInbox.liveThreads
+            .filter { $0.kind == .lead && chatInbox.isVisibleInMainInbox($0.id) }
+            .reduce(0) { $0 + effectiveLeadUnread(for: $1) }
+        let team = teamThreads.reduce(0) { $0 + effectiveTeamUnread(for: $1) }
+        let ai = groo.sessions.reduce(0) { $0 + aiUnreadCount(for: $1) }
+        return leads + team + ai
+    }
+
+    private func filterTitle(for item: GrooInboxFilter) -> String {
+        if item == .unread, unreadFilterCount > 0 {
+            return "\(item.rawValue) \(unreadFilterCount)"
+        }
+        return item.rawValue
     }
 
     private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(GrooInboxFilter.allCases) { item in
-                    Button {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            filter = item
-                        }
-                    } label: {
-                        Text(item.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(filter == item ? GrooChatTheme.telegramBlue : Color.black.opacity(0.45))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(filter == item ? GrooChatTheme.telegramBlue.opacity(0.12) : Color.clear)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(GrooInboxFilter.allCases) { item in
+                        GrooClinicDesign.FilterChip(
+                            title: filterTitle(for: item),
+                            isSelected: filter == item
+                        ) {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                filter = item
                             }
+                        }
+                        .id(item.id)
                     }
-                    .buttonStyle(GrooChatPressStyle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+            .padding(.bottom, 6)
+            .onAppear {
+                proxy.scrollTo(filter.id, anchor: .center)
+            }
+            .onChange(of: filter) { _, newFilter in
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    proxy.scrollTo(newFilter.id, anchor: .center)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
         }
-        .padding(.bottom, 2)
     }
 
-    private var emptyInstagramContent: some View {
+    private func leadPreviewPlaceholder(for platform: ChatSocialPlatform?) -> String {
+        switch platform {
+        case .instagram: return "Mensaje de Instagram"
+        case .whatsApp: return "Mensaje de WhatsApp"
+        case .facebook: return "Mensaje de Facebook"
+        case .shopify: return "Mensaje de Shopify"
+        case .mail: return "Mensaje de Mail"
+        case nil: return "Mensaje"
+        }
+    }
+
+    @ViewBuilder
+    private func emptyLeadContent(for platform: ChatSocialPlatform) -> some View {
         VStack(spacing: 14) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(GrooBrand.primary)
-                .padding(.top, 36)
-            Text("No Instagram chats yet")
+            Group {
+                switch platform {
+                case .instagram:
+                    Image(systemName: "camera.fill")
+                case .whatsApp:
+                    Image(systemName: "phone.fill")
+                case .facebook:
+                    Image(systemName: "f.circle.fill")
+                case .shopify:
+                    Image(systemName: "bag.fill")
+                case .mail:
+                    Image(systemName: "envelope.fill")
+                }
+            }
+            .font(.system(size: 28, weight: .semibold))
+            .foregroundStyle(GrooBrand.primary)
+            .padding(.top, 36)
+
+            Text(emptyLeadTitle(for: platform))
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-            Text("Escribe un DM a @smilestudiowellness desde otra cuenta de Instagram. Luego baja para refrescar.")
+
+            Text(emptyLeadSubtitle(for: platform))
                 .font(.system(size: 14))
                 .foregroundStyle(GrooChatTheme.metaText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            Text("Si no aparece: en Meta suscribe el webhook field “messages”.")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.black.opacity(0.35))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
         }
@@ -478,57 +843,314 @@ struct GrooChatInboxView: View {
         .padding(.bottom, 80)
     }
 
-    private var emptyInboxContent: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(GrooBrand.primarySoft)
-                    .frame(width: 110, height: 110)
-                Image("GrooCharacter")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 86, height: 86)
-            }
-            .padding(.top, 40)
+    private func emptyLeadTitle(for platform: ChatSocialPlatform) -> String {
+        switch platform {
+        case .instagram: return "Sin chats de Instagram"
+        case .whatsApp: return "Sin chats de WhatsApp"
+        case .facebook: return "Sin chats de Facebook"
+        case .shopify: return "Sin conversaciones de Shopify"
+        case .mail: return "Sin correos"
+        }
+    }
 
-            Text(query.isEmpty ? "No conversations yet" : "No results")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+    private func emptyLeadSubtitle(for platform: ChatSocialPlatform) -> String {
+        switch platform {
+        case .instagram:
+            return "Escribe un DM a @smilestudiowellness desde otra cuenta de Instagram. Luego baja para refrescar."
+        case .whatsApp:
+            return "Los mensajes de WhatsApp Business aparecerán aquí cuando lleguen al CRM."
+        case .facebook:
+            return "Los mensajes de Facebook Messenger aparecerán aquí cuando estén conectados."
+        case .shopify:
+            return "Los pedidos y mensajes vinculados a Shopify aparecerán aquí."
+        case .mail:
+            return "Los correos conectados al CRM aparecerán aquí."
+        }
+    }
+
+    private var emptyInboxContent: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(GrooBrand.primary)
+                .padding(.top, 36)
+            Text(query.isEmpty ? "Sin conversaciones" : "Sin resultados")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
             Text(
                 query.isEmpty
-                    ? "Start messaging your clinic team or ask \(GrooBrand.appName) about appointments and patients."
-                    : "Try another name or keyword."
+                    ? "Los mensajes de Instagram, WhatsApp, Facebook, Shopify y Mail aparecen aquí. El chat interno es solo para personas del equipo con la app."
+                    : "Prueba otro nombre o palabra clave."
             )
-            .font(.system(size: 15))
+            .font(.system(size: 14))
             .foregroundStyle(GrooChatTheme.metaText)
             .multilineTextAlignment(.center)
-            if query.isEmpty {
-                Button(action: onNewChat) {
-                    Text("Start conversation")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 14)
-                        .background(Capsule().fill(GrooBrand.primary))
-                }
-                .buttonStyle(GrooChatPressStyle())
-            }
+            .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 28)
         .padding(.bottom, 120)
     }
 
-    private func displayTitle(_ session: GrooChatSession) -> String {
-        if session.title.hasPrefix("Session") { return "\(GrooBrand.appName) Clinic" }
+    private var emptyInternalChatContent: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(GrooBrand.primary)
+                .padding(.top, 36)
+            Text("Chat interno del equipo")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+            Text(
+                communityVM.directory.filter { $0.userId != auth.session?.user.id }.isEmpty
+                    ? "Cuando haya más personas con la app en tu clínica, verás aquí el grupo y los mensajes privados del equipo."
+                    : "Solo personas con la app GControl pueden chatear aquí. Abre un chat con un compañero o con el grupo «Mi equipo»."
+            )
+            .font(.system(size: 14))
+            .foregroundStyle(GrooChatTheme.metaText)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 120)
+    }
+
+    private var emptyAIChatContent: some View {
+        VStack(spacing: 14) {
+            Image("ClinicAIChatIcon")
+                .resizable()
+                .scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(Circle())
+                .padding(.top, 36)
+            Text("Historial con la IA")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+            Text("Aquí verás tus conversaciones con la IA de la clínica. Pulsa el icono flotante abajo a la derecha para empezar una nueva.")
+                .font(.system(size: 14))
+                .foregroundStyle(GrooChatTheme.metaText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Button {
+                onOpenAISession(groo.startNewSession())
+            } label: {
+                Text("Nueva conversación")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(GrooBrand.primary))
+            }
+            .buttonStyle(GrooChatPressStyle())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 120)
+    }
+
+    private func aiSessionTitle(_ session: GrooChatSession) -> String {
+        if session.title.hasPrefix("Session") {
+            return "\(GrooBrand.appName) IA"
+        }
         return session.title
     }
 
-    private func unreadCount(for session: GrooChatSession) -> Int {
+    private func aiUnreadCount(for session: GrooChatSession) -> Int {
         GrooAppStore.unreadCount(in: session)
     }
 
-    private func effectiveInstagramUnread(for thread: ChatThread) -> Int {
+    @ViewBuilder
+    private func inboxEntryButton(for entry: InboxEntry) -> some View {
+        switch entry {
+        case .instagram(let thread):
+            Button {
+                onOpenInstagram(thread)
+            } label: {
+                GrooInboxConversationRow(
+                    title: thread.title,
+                    preview: thread.preview.isEmpty
+                        ? leadPreviewPlaceholder(for: thread.socialSource)
+                        : thread.preview,
+                    date: thread.lastActivityAt ?? Date(),
+                    timeLabel: thread.time.isEmpty ? nil : thread.time,
+                    unreadCount: effectiveLeadUnread(for: thread),
+                    isPinned: chatInbox.effectivePinned(thread),
+                    isVerified: thread.isVerified,
+                    avatarURL: thread.avatarCarURL,
+                    avatarAccessToken: auth.session?.accessToken,
+                    avatarInitial: thread.avatarInitial,
+                    socialSource: thread.socialSource
+                )
+                .equatable()
+            }
+            .buttonStyle(.plain)
+
+        case .patientLocal(let thread):
+            Button {
+                onOpenPatientLocal(thread)
+            } label: {
+                GrooInboxConversationRow(
+                    title: thread.title,
+                    preview: thread.preview.isEmpty ? "Chat de prueba" : thread.preview,
+                    date: thread.lastActivityAt ?? Date(),
+                    timeLabel: thread.time.isEmpty ? nil : thread.time,
+                    unreadCount: 0,
+                    isPinned: chatInbox.effectivePinned(thread),
+                    avatarURL: thread.avatarCarURL,
+                    avatarInitial: thread.avatarInitial,
+                    socialSource: nil
+                )
+                .equatable()
+            }
+            .buttonStyle(.plain)
+
+        case .team(let thread):
+            Button {
+                onOpenTeam(thread)
+            } label: {
+                GrooInboxConversationRow(
+                    title: thread.title,
+                    preview: thread.preview,
+                    date: thread.lastActivityAt ?? Date(),
+                    timeLabel: thread.time.isEmpty ? nil : thread.time,
+                    unreadCount: effectiveTeamUnread(for: thread),
+                    isPinned: chatInbox.effectivePinned(thread),
+                    inboxThread: thread,
+                    teamAccessToken: auth.session?.accessToken,
+                    teamCurrentUserId: auth.session?.user.id
+                )
+                .equatable()
+            }
+            .buttonStyle(.plain)
+
+        case .aiSession(let session):
+            Button {
+                onOpenAISession(session.id)
+            } label: {
+                GrooInboxConversationRow(
+                    title: aiSessionTitle(session),
+                    preview: session.preview,
+                    date: session.updatedAt,
+                    unreadCount: aiUnreadCount(for: session),
+                    usesClinicAIAvatar: true
+                )
+                .equatable()
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func effectiveLeadUnread(for thread: ChatThread) -> Int {
         chatInbox.effectiveUnread(thread) ?? 0
+    }
+
+    private func effectiveTeamUnread(for thread: ChatThread) -> Int {
+        chatInbox.effectiveUnread(thread) ?? 0
+    }
+}
+
+// MARK: - Carpeta Archivados
+
+struct GrooArchivedChatsView: View {
+    @EnvironmentObject private var chatInbox: ChatInboxStore
+    @EnvironmentObject private var auth: AuthViewModel
+    var onOpenInstagram: (ChatThread) -> Void
+    var onOpenTeam: (ChatThread) -> Void
+    var onOpenPatientLocal: (ChatThread) -> Void = { _ in }
+
+    private var threads: [ChatThread] {
+        chatInbox.archivedThreads
+    }
+
+    var body: some View {
+        List {
+            if threads.isEmpty {
+                ContentUnavailableView {
+                    Label("Sin archivados", systemImage: "archivebox")
+                } description: {
+                    Text("Los chats archivados aparecerán aquí.")
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.white)
+            } else {
+                ForEach(Array(threads.enumerated()), id: \.element.id) { index, thread in
+                    Button {
+                        open(thread)
+                    } label: {
+                        archivedRow(for: thread)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            chatInbox.unarchiveThread(thread)
+                        } label: {
+                            Label("Sacar de archivados", systemImage: "tray.and.arrow.up")
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.white)
+                    .overlay(alignment: .bottom) {
+                        if index < threads.count - 1 {
+                            Divider()
+                                .overlay(Color.black.opacity(0.08))
+                                .padding(.leading, 94)
+                        }
+                    }
+                }
+            }
+
+            Color.clear
+                .frame(height: 40)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color.white)
+        .navigationTitle("Chats archivados")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func archivedRow(for thread: ChatThread) -> some View {
+        switch thread.kind {
+        case .lead, .patientLocal:
+            GrooInboxConversationRow(
+                title: thread.title,
+                preview: thread.preview.isEmpty ? "Mensaje archivado" : thread.preview,
+                date: thread.lastActivityAt ?? Date(),
+                timeLabel: thread.time.isEmpty ? nil : thread.time,
+                unreadCount: chatInbox.effectiveUnread(thread) ?? 0,
+                isPinned: chatInbox.effectivePinned(thread),
+                isVerified: thread.isVerified,
+                avatarURL: thread.avatarCarURL,
+                avatarAccessToken: auth.session?.accessToken,
+                avatarInitial: thread.avatarInitial,
+                socialSource: thread.socialSource
+            )
+        case .teamGroup, .teamDirect:
+            GrooInboxConversationRow(
+                title: thread.title,
+                preview: thread.preview,
+                date: thread.lastActivityAt ?? Date(),
+                timeLabel: thread.time.isEmpty ? nil : thread.time,
+                unreadCount: chatInbox.effectiveUnread(thread) ?? 0,
+                isPinned: chatInbox.effectivePinned(thread),
+                inboxThread: thread,
+                teamAccessToken: auth.session?.accessToken,
+                teamCurrentUserId: auth.session?.user.id
+            )
+            .equatable()
+        }
+    }
+
+    private func open(_ thread: ChatThread) {
+        switch thread.kind {
+        case .lead:
+            onOpenInstagram(thread)
+        case .teamGroup, .teamDirect:
+            onOpenTeam(thread)
+        case .patientLocal:
+            onOpenPatientLocal(thread)
+        }
     }
 }
 
@@ -585,7 +1207,7 @@ struct GrooCalendarView: View {
                 }
             }
             .navigationTitle("Agenda")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -1196,61 +1818,105 @@ struct GrooPatientsView: View {
     @State private var filter: GrooPatientListFilter = .all
     @State private var showAddPatient = false
     @State private var selectedPatientId: GrooPatientRoute?
+    @State private var searchScrollOffset: CGFloat = 0
+
+    private let searchBarExpandedHeight: CGFloat = 40
+    private let searchBarBottomGap: CGFloat = 14
+    private let searchCollapseDistance: CGFloat = 64
 
     private var patients: [GrooPatient] {
         groo.filteredPatients(query: query, filter: filter)
     }
 
+    private var searchCollapseProgress: CGFloat {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty { return 0 }
+        return min(1, max(0, searchScrollOffset / searchCollapseDistance))
+    }
+
+    private var searchVisibleHeight: CGFloat {
+        max(0, searchBarExpandedHeight * (1 - searchCollapseProgress))
+    }
+
+    private var searchBlockHeight: CGFloat {
+        searchVisibleHeight + searchBarBottomGap * (1 - searchCollapseProgress)
+    }
+
+    private var headerContentHeight: CGFloat {
+        8 + searchBlockHeight + 40 + 12
+    }
+
+    private var searchContentFade: Double {
+        let p = Double(searchCollapseProgress)
+        return max(0, min(1, pow(1 - p, 1.65)))
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                GrooClinicDesign.ScreenBackground()
-
-                VStack(spacing: 0) {
-                    VStack(spacing: 14) {
-                        patientsSearchBar
-                        patientsKPIStrip
-                        patientsFilterRow
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .background(Color.white)
+            ZStack(alignment: .top) {
+                List {
+                    Color.clear
+                        .frame(height: headerContentHeight)
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
 
                     if patients.isEmpty {
                         patientsEmptyState
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     } else {
-                        List {
-                            Section {
-                                ForEach(patients) { patient in
-                                    Button {
-                                        selectedPatientId = GrooPatientRoute(id: patient.id)
-                                    } label: {
-                                        patientListRow(patient)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                }
-                            } header: {
-                                GrooClinicDesign.SectionHeader(
-                                    title: "Directorio clínico",
-                                    subtitle: "\(patients.count) pacientes · última visita reciente primero"
-                                )
+                        GrooClinicDesign.SectionHeader(
+                            title: "Directorio clínico",
+                            subtitle: "\(patients.count) pacientes · última visita reciente primero"
+                        )
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+
+                        ForEach(patients) { patient in
+                            Button {
+                                selectedPatientId = GrooPatientRoute(id: patient.id)
+                            } label: {
+                                patientListRow(patient)
                             }
+                            .buttonStyle(.plain)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(GrooClinicDesign.screenBackground)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, newValue in
+                    let offset = max(0, newValue)
+                    guard abs(offset - searchScrollOffset) > 0.4 else { return }
+                    searchScrollOffset = offset
+                }
+                .onChange(of: query) { _, newQuery in
+                    if !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        searchScrollOffset = 0
+                    }
+                }
+
+                patientsStickyHeader
             }
+            .background(GrooClinicDesign.ScreenBackground())
             .navigationTitle("Pacientes")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAddPatient = true } label: {
                         Image(systemName: "person.badge.plus")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(GrooBrand.primary)
                     }
                 }
@@ -1271,24 +1937,49 @@ struct GrooPatientsView: View {
         }
     }
 
-    private var patientsKPIStrip: some View {
-        GrooClinicDesign.KPIStrip(items: [
-            (label: "Registrados", value: "\(groo.patients.count)", icon: "person.2.fill"),
-            (label: "Recurrentes", value: "\(groo.clinicReturningPatientsCount)", icon: "arrow.triangle.2.circlepath"),
-            (label: "Visitas", value: "\(groo.clinicTotalVisits)", icon: "stethoscope"),
-        ])
+    private var patientsStickyHeader: some View {
+        VStack(spacing: 0) {
+            patientsSearchBar
+                .padding(.horizontal, 16)
+                .frame(height: searchVisibleHeight, alignment: .center)
+                .clipped()
+                .opacity(searchCollapseProgress >= 0.99 ? 0 : 1)
+                .allowsHitTesting(searchCollapseProgress < 0.45)
+                .padding(.bottom, searchBarBottomGap * (1 - searchCollapseProgress))
+                .accessibilityHidden(searchCollapseProgress >= 0.99)
+
+            patientsFilterRow
+                .padding(.horizontal, 16)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background {
+            GrooChatTheme.floatingBlurChrome()
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var patientsFilterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(GrooPatientListFilter.allCases) { option in
-                    GrooClinicDesign.FilterChip(
-                        title: option.label,
-                        isSelected: filter == option
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.2)) { filter = option }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(GrooPatientListFilter.allCases) { option in
+                        GrooClinicDesign.FilterChip(
+                            title: option.label,
+                            isSelected: filter == option
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.2)) { filter = option }
+                        }
+                        .id(option.id)
                     }
+                }
+            }
+            .onAppear {
+                proxy.scrollTo(filter.id, anchor: .center)
+            }
+            .onChange(of: filter) { _, newFilter in
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    proxy.scrollTo(newFilter.id, anchor: .center)
                 }
             }
         }
@@ -1297,7 +1988,9 @@ struct GrooPatientsView: View {
     private var patientsSearchBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(GrooBrand.primary.opacity(0.75))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.35))
+                .opacity(searchContentFade)
             TextField(
                 "",
                 text: $query,
@@ -1309,24 +2002,24 @@ struct GrooPatientsView: View {
             .tint(GrooBrand.primary)
             .textInputAutocapitalization(.words)
             .autocorrectionDisabled()
+            .opacity(searchContentFade)
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.black.opacity(0.28))
                 }
                 .buttonStyle(.plain)
+                .opacity(searchContentFade)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: max(searchVisibleHeight, 0.001))
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(red: 0.97, green: 0.98, blue: 1.0))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(GrooBrand.primary.opacity(0.12), lineWidth: 1)
-                }
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.06))
         }
+        .clipped()
     }
 
     private func patientListRow(_ patient: GrooPatient) -> some View {
@@ -1439,7 +2132,7 @@ struct GrooPatientsView: View {
                     .tint(GrooBrand.primary)
             }
         }
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 320)
     }
 
     private func openPendingPatientIfNeeded() {
@@ -1456,6 +2149,7 @@ private struct GrooPatientRoute: Identifiable, Hashable {
 struct GrooPatientProfileView: View {
     let patient: GrooPatient
     @EnvironmentObject private var groo: GrooAppStore
+    @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var tabRouter: MainTabRouter
     @State private var showAddRecord = false
     @State private var showSchedule = false
@@ -1591,7 +2285,8 @@ struct GrooPatientProfileView: View {
                 showAddRecord = true
             }
             GrooClinicDesign.QuickAction(title: "Chat", icon: "message.fill") {
-                groo.startChat(for: livePatient)
+                /// Chat local (barra normal: fotos, audio, texto) — no mentor AI.
+                _ = chatInbox.ensurePatientLocalThread(for: livePatient)
                 tabRouter.openChat()
             }
         }

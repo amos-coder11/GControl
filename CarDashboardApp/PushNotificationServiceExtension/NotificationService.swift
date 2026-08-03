@@ -1,12 +1,12 @@
 import UserNotifications
+import UniformTypeIdentifiers
 
-/// Añade este archivo a un target **Notification Service Extension** en Xcode
-/// (File → New → Target → Notification Service Extension) con bundle id
-/// `com.groo.app.PushNotificationServiceExtension` y embútelo en la app principal.
-/// La push debe llevar `mutable-content: 1` (ya lo envía la Edge Function `send-message-push`).
+/// Descarga la foto del contacto / remitente y la adjunta a la notificación
+/// (requiere `mutable-content: 1` + `drflow.avatar_url` o `drflow.image_url`).
 final class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
+    private var downloadTask: URLSessionDownloadTask?
 
     override func didReceive(
         _ request: UNNotificationRequest,
@@ -20,51 +20,84 @@ final class NotificationService: UNNotificationServiceExtension {
             return
         }
 
-        let userInfo = bestAttemptContent.userInfo
-        guard let drflow = userInfo["drflow"] as? [String: Any],
-              let urlString = drflow["avatar_url"] as? String,
-              !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let url = URL(string: urlString)
-        else {
+        guard let imageURL = Self.imageURL(from: bestAttemptContent.userInfo) else {
             contentHandler(bestAttemptContent)
             return
         }
 
-        let task = URLSession.shared.downloadTask(with: url) { [weak self] localURL, _, _ in
+        downloadTask = URLSession.shared.downloadTask(with: imageURL) { [weak self] localURL, response, _ in
             guard let self, let contentHandler = self.contentHandler, let best = self.bestAttemptContent else { return }
             defer { contentHandler(best) }
 
             guard let localURL else { return }
 
-            let ext = url.pathExtension.lowercased()
-            let fileExtension: String
-            switch ext {
-            case "jpg", "jpeg": fileExtension = "jpg"
-            case "png", "webp": fileExtension = "png"
-            default: fileExtension = "jpg"
-            }
+            let mime = (response as? HTTPURLResponse)?
+                .value(forHTTPHeaderField: "Content-Type")?
+                .lowercased() ?? ""
+            let (fileExtension, typeHint) = Self.fileType(url: imageURL, mime: mime)
 
             let dest = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent(UUID().uuidString + "." + fileExtension)
             try? FileManager.default.removeItem(at: dest)
+
             do {
                 try FileManager.default.copyItem(at: localURL, to: dest)
+                var options: [String: Any] = [:]
+                if let typeHint {
+                    options[UNNotificationAttachmentOptionsTypeHintKey] = typeHint
+                }
                 let attachment = try UNNotificationAttachment(
-                    identifier: "avatar",
+                    identifier: "notification-image",
                     url: dest,
-                    options: [UNNotificationAttachmentOptionsTypeHintKey: "public.jpeg"]
+                    options: options.isEmpty ? nil : options
                 )
                 best.attachments = [attachment]
             } catch {
-                // Sin adjunto si falla la copia o el tipo
+                // Sin adjunto si falla la descarga/copia
             }
         }
-        task.resume()
+        downloadTask?.resume()
     }
 
     override func serviceExtensionTimeWillExpire() {
+        downloadTask?.cancel()
         if let contentHandler, let bestAttemptContent {
             contentHandler(bestAttemptContent)
         }
+    }
+
+    /// Prioriza media del mensaje; si no hay, usa avatar del contacto/remitente.
+    private static func imageURL(from userInfo: [AnyHashable: Any]) -> URL? {
+        let drflow = userInfo["drflow"] as? [String: Any]
+        let candidates: [String?] = [
+            drflow?["image_url"] as? String,
+            drflow?["media_url"] as? String,
+            drflow?["avatar_url"] as? String,
+            userInfo["image_url"] as? String,
+            userInfo["avatar_url"] as? String,
+        ]
+        for raw in candidates {
+            guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty,
+                  let url = URL(string: s),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https"
+            else { continue }
+            return url
+        }
+        return nil
+    }
+
+    private static func fileType(url: URL, mime: String) -> (String, String?) {
+        let ext = url.pathExtension.lowercased()
+        if mime.contains("png") || ext == "png" {
+            return ("png", UTType.png.identifier)
+        }
+        if mime.contains("webp") || ext == "webp" {
+            return ("webp", UTType.webP.identifier)
+        }
+        if mime.contains("gif") || ext == "gif" {
+            return ("gif", UTType.gif.identifier)
+        }
+        return ("jpg", UTType.jpeg.identifier)
     }
 }

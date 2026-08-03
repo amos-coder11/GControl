@@ -94,7 +94,13 @@ export async function resolveInstagramBusinessId() {
 export async function fetchInstagramUserProfile(igsid) {
   if (!igsid) return null;
   // profile_pic es el campo de Instagram Login; name/username pueden faltar.
-  const fieldSets = ["name,username,profile_pic", "username,profile_pic", "username"];
+  const fieldSets = [
+    "name,username,profile_pic,is_verified_user",
+    "username,profile_pic,is_verified_user",
+    "name,username,profile_pic",
+    "username,profile_pic",
+    "username",
+  ];
   for (const fields of fieldSets) {
     const res = await graphRequest(String(igsid), { query: { fields } });
     if (res.ok) {
@@ -102,6 +108,11 @@ export async function fetchInstagramUserProfile(igsid) {
         name: res.json?.name || null,
         username: res.json?.username || null,
         profilePic: res.json?.profile_pic || res.json?.profile_picture_url || null,
+        isVerified: Boolean(
+          res.json?.is_verified_user ??
+            res.json?.is_verified ??
+            res.json?.verified
+        ),
       };
     }
   }
@@ -118,6 +129,7 @@ export async function enrichConversationProfile(conversationId, igsid) {
   updateConversationProfile(conversationId, {
     contact_name: display,
     contact_photo_url: profile.profilePic,
+    contact_verified: profile.isVerified,
   });
   return profile;
 }

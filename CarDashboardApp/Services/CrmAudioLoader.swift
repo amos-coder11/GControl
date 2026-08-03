@@ -46,8 +46,21 @@ enum CrmAudioLoader {
 
     private static func needsAuthorization(for url: URL) -> Bool {
         guard let host = url.host?.lowercased() else {
-            return url.path.hasPrefix("/api/")
+            return url.path.hasPrefix("/api/") || url.path.contains("/media/")
         }
-        return host.contains("drflowbackend") || host.contains("drflow")
+        // Backend CRM / Instagram (misma lógica que ChatInboxStore).
+        if host.contains("drflowbackend")
+            || host.contains("drflow")
+            || host.contains("smilestudio-backend")
+            || host.contains("groo-ig-backend")
+            || host.contains("onrender.com") {
+            return true
+        }
+        // Misma host que CRM_BACKEND_BASE_URL.
+        if let backendHost = CrmChatService.baseURL.host?.lowercased(),
+           host == backendHost || host.hasSuffix(".\(backendHost)") {
+            return true
+        }
+        return false
     }
 }

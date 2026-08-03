@@ -5,13 +5,17 @@ enum ChatSocialPlatform: Hashable {
     case instagram
     case whatsApp
     case facebook
+    case shopify
+    case mail
 }
 
-/// Tipo de hilo: leads comerciales vs chat interno del equipo.
+/// Tipo de hilo: leads comerciales vs chat interno del equipo vs pacientes de prueba (local).
 enum ChatThreadKind: Hashable {
     case lead
     case teamGroup
     case teamDirect
+    /// Chat local de paciente (pruebas: fotos, audio, texto) — no usa CRM ni mentor AI.
+    case patientLocal
 }
 
 /// Hilo de chat (lista + navegación a conversación).

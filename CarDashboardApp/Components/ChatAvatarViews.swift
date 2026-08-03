@@ -22,66 +22,120 @@ struct ChatSocialBadgeView: View {
                 }
             case .facebook:
                 DrflowSocialIcon(platform: .facebook, size: iconSize)
+            case .shopify:
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.59, green: 0.75, blue: 0.22))
+                    Image(systemName: "bag.fill")
+                        .font(.system(size: iconSize, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            case .mail:
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.35, green: 0.55, blue: 0.95))
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: iconSize, weight: .bold))
+                        .foregroundStyle(.white)
+                }
             }
         }
     }
 }
 
-/// Insignia circular (blanco + borde rosa) como Telegram / Instagram DM.
+/// Insignia circular encima del avatar (Telegram / Instagram DM).
 struct GrooSocialAvatarBadge: View {
     let platform: ChatSocialPlatform
     var diameter: CGFloat = 22
 
-    private var iconSize: CGFloat { max(10, diameter * 0.52) }
+    private var iconSize: CGFloat { max(11, diameter * 0.58) }
 
     var body: some View {
-        ChatSocialBadgeView(platform: platform, iconSize: iconSize)
-            .frame(width: iconSize, height: iconSize)
-            .frame(width: diameter, height: diameter)
-            .background(Circle().fill(Color.white))
-            .overlay {
-                Circle()
-                    .strokeBorder(GrooAvatarPalette.vividPink.opacity(0.95), lineWidth: 1.5)
-            }
-            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+        ZStack {
+            Circle()
+                .fill(Color.white)
+            ChatSocialBadgeView(platform: platform, iconSize: iconSize)
+                .frame(width: iconSize, height: iconSize)
+            Circle()
+                .strokeBorder(badgeBorderStyle, lineWidth: max(1.5, diameter * 0.08))
+        }
+        .frame(width: diameter, height: diameter)
+        .shadow(color: .black.opacity(0.14), radius: 2.5, y: 1)
+        .accessibilityHidden(true)
+    }
+
+    private var badgeBorderStyle: AnyShapeStyle {
+        switch platform {
+        case .instagram:
+            AnyShapeStyle(
+                AngularGradient(
+                    colors: [
+                        Color(red: 0.96, green: 0.77, blue: 0.35),
+                        Color(red: 0.96, green: 0.35, blue: 0.45),
+                        Color(red: 0.78, green: 0.22, blue: 0.72),
+                        Color(red: 0.45, green: 0.30, blue: 0.92),
+                        Color(red: 0.96, green: 0.77, blue: 0.35),
+                    ],
+                    center: .center
+                )
+            )
+        case .whatsApp:
+            AnyShapeStyle(Color(red: 0.15, green: 0.78, blue: 0.41))
+        case .facebook:
+            AnyShapeStyle(Color(red: 0.09, green: 0.47, blue: 0.95))
+        case .shopify:
+            AnyShapeStyle(Color(red: 0.59, green: 0.75, blue: 0.22))
+        case .mail:
+            AnyShapeStyle(Color(red: 0.35, green: 0.55, blue: 0.95))
+        }
     }
 }
 
-/// Avatar de bandeja: inicial / foto + insignia de red.
+/// Avatar de bandeja: inicial / foto + insignia de red encima.
 struct GrooInboxAvatarView: View {
     let title: String
     var avatarURL: URL? = nil
     var avatarAccessToken: String? = nil
     var avatarInitial: String? = nil
     var socialSource: ChatSocialPlatform? = nil
-    var size: CGFloat = 54
+    var size: CGFloat = 60
 
-    private var badgeSize: CGFloat { max(20, size * 0.40) }
+    private var badgeSize: CGFloat { max(18, size * 0.36) }
+    private var badgeOutset: CGFloat { badgeSize * 0.28 }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if let avatarURL {
-                ChatAsyncContactPhoto(
-                    url: avatarURL,
-                    accessToken: avatarAccessToken,
-                    fallbackInitial: avatarInitial ?? GrooAvatarPalette.initial(from: title),
-                    fallbackColor: GrooAvatarPalette.color(for: title),
-                    diameter: size
-                )
-            } else {
-                GrooLetterAvatar(
-                    name: title,
-                    size: size,
-                    initialOverride: avatarInitial
-                )
+            Group {
+                if let avatarURL {
+                    ChatAsyncContactPhoto(
+                        url: avatarURL,
+                        accessToken: avatarAccessToken,
+                        fallbackInitial: avatarInitial ?? GrooAvatarPalette.initial(from: title),
+                        colorSeed: title,
+                        diameter: size
+                    )
+                } else {
+                    GrooLetterAvatar(
+                        name: title,
+                        size: size,
+                        initialOverride: avatarInitial
+                    )
+                }
+            }
+            .overlay {
+                Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
             }
 
             if let socialSource {
                 GrooSocialAvatarBadge(platform: socialSource, diameter: badgeSize)
-                    .offset(x: size * 0.04, y: size * 0.04)
+                    .offset(x: badgeOutset * 0.55, y: badgeOutset * 0.55)
+                    .zIndex(10)
             }
         }
         .frame(width: size, height: size)
+        // Deja salir el badge sin recortarlo.
+        .padding(.trailing, socialSource == nil ? 0 : badgeOutset)
+        .padding(.bottom, socialSource == nil ? 0 : badgeOutset)
     }
 }
 
@@ -91,8 +145,12 @@ struct ChatThreadAvatarView: View {
     let thread: ChatThread
     var accessToken: String?
     var diameter: CGFloat = 56
+    /// En ficha de perfil se oculta el badge (IG/WA) para centrar la foto.
+    var showsSocialBadge: Bool = true
 
-    private var badgeSize: CGFloat { max(18, diameter * 0.38) }
+    private var badgeSize: CGFloat { max(16, diameter * 0.36) }
+    private var badgeOutset: CGFloat { badgeSize * 0.28 }
+    private var showBadge: Bool { showsSocialBadge && thread.socialSource != nil }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -102,17 +160,17 @@ struct ChatThreadAvatarView: View {
                         url: url,
                         accessToken: accessToken,
                         fallbackInitial: thread.avatarInitial,
-                        fallbackColor: GrooAvatarPalette.color(for: thread.title),
+                        colorSeed: thread.title,
                         diameter: diameter
                     )
                 } else if let icon = thread.avatarIcon {
                     ZStack {
                         Circle()
-                            .fill(GrooAvatarPalette.color(for: thread.title))
+                            .fill(GrooAvatarPalette.style(for: thread.title).background)
                             .frame(width: diameter, height: diameter)
                         Image(systemName: icon)
                             .font(.system(size: diameter * 0.38, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
+                            .foregroundStyle(.white)
                     }
                 } else {
                     GrooLetterAvatar(
@@ -122,13 +180,19 @@ struct ChatThreadAvatarView: View {
                     )
                 }
             }
+            .overlay {
+                Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
+            }
 
-            if let platform = thread.socialSource {
+            if showBadge, let platform = thread.socialSource {
                 GrooSocialAvatarBadge(platform: platform, diameter: badgeSize)
-                    .offset(x: diameter * 0.04, y: diameter * 0.04)
+                    .offset(x: badgeOutset * 0.55, y: badgeOutset * 0.55)
+                    .zIndex(10)
             }
         }
         .frame(width: diameter, height: diameter)
+        .padding(.trailing, showBadge ? badgeOutset : 0)
+        .padding(.bottom, showBadge ? badgeOutset : 0)
     }
 }
 
@@ -152,16 +216,7 @@ struct TeamDirectoryProfileAvatar: View {
                     .scaledToFill()
             } else {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.25, green: 0.45, blue: 0.95),
-                                Color(red: 0.45, green: 0.25, blue: 0.85),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(GrooAvatarPalette.style(for: row.resolvedDisplayName).background)
                 Text(initials(for: row.resolvedDisplayName))
                     .font(.system(size: diameter * 0.28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -260,15 +315,17 @@ struct TeamGroupChatListAvatar: View {
 /// Avatar en la lista de Chat: leads con coche/insignia; equipo con fotos reales del directorio.
 struct ChatInboxListAvatarView: View {
     let thread: ChatThread
-    let directory: [CommunityProfilesService.DirectoryRow]
     var accessToken: String?
     var currentUserId: UUID?
     var localProfileImage: UIImage?
     var localInitials: String?
     var diameter: CGFloat = 56
+    var showsSocialBadge: Bool = true
+
+    @EnvironmentObject private var communityVM: DashboardCommunityViewModel
 
     private var teamPeersExcludingSelf: [CommunityProfilesService.DirectoryRow] {
-        directory
+        communityVM.directory
             .filter { $0.userId != currentUserId }
             .sorted {
                 $0.resolvedDisplayName.localizedCaseInsensitiveCompare($1.resolvedDisplayName) == .orderedAscending
@@ -278,7 +335,7 @@ struct ChatInboxListAvatarView: View {
     var body: some View {
         switch thread.kind {
         case .teamDirect:
-            if let row = directory.first(where: { $0.userId == thread.peerUserId }) {
+            if let row = communityVM.directory.first(where: { $0.userId == thread.peerUserId }) {
                 TeamDirectoryProfileAvatar(
                     row: row,
                     accessToken: accessToken,
@@ -287,7 +344,11 @@ struct ChatInboxListAvatarView: View {
                     localInitialsOverride: row.userId == currentUserId ? localInitials : nil
                 )
             } else {
-                ChatThreadAvatarView(thread: thread, diameter: diameter)
+                ChatThreadAvatarView(
+                    thread: thread,
+                    diameter: diameter,
+                    showsSocialBadge: showsSocialBadge
+                )
             }
         case .teamGroup:
             TeamGroupChatListAvatar(
@@ -295,8 +356,13 @@ struct ChatInboxListAvatarView: View {
                 accessToken: accessToken,
                 diameter: diameter
             )
-        case .lead:
-            ChatThreadAvatarView(thread: thread, accessToken: accessToken, diameter: diameter)
+        case .lead, .patientLocal:
+            ChatThreadAvatarView(
+                thread: thread,
+                accessToken: accessToken,
+                diameter: diameter,
+                showsSocialBadge: showsSocialBadge
+            )
         }
     }
 }
@@ -310,7 +376,7 @@ struct ChatAsyncContactPhoto: View {
     let url: URL
     var accessToken: String?
     var fallbackInitial: String?
-    var fallbackColor: Color
+    var colorSeed: String
     var diameter: CGFloat
 
     @State private var uiImage: UIImage?
@@ -337,19 +403,17 @@ struct ChatAsyncContactPhoto: View {
     }
 
     private var taskKey: String {
-        "\(url.absoluteString)|\(accessToken ?? "")"
+        AvatarRepository.cacheKey(stableId: colorSeed, url: url)
     }
 
     private var fallbackCircle: some View {
-        let seed = fallbackInitial ?? "?"
-        let color = GrooAvatarPalette.color(for: seed)
-        return Circle()
-            .fill(color)
+        Circle()
+            .fill(GrooAvatarPalette.style(for: colorSeed).background)
             .overlay {
                 if let initial = fallbackInitial?.first {
                     Text(String(initial).uppercased())
                         .font(.system(size: diameter * 0.42, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
+                        .foregroundStyle(.white)
                 } else {
                     Image(systemName: "person.fill")
                         .font(.system(size: diameter * 0.38, weight: .medium))
@@ -360,12 +424,17 @@ struct ChatAsyncContactPhoto: View {
 
     private func load() async {
         loadFailed = false
-        uiImage = nil
-        let img = await CrmContactPhotoLoader.load(url: url, accessToken: accessToken)
+        // No borrar la imagen actual: en cache hit evita parpadeo y relayout al reciclar celdas.
+        let img = await AvatarRepository.shared.image(
+            stableId: colorSeed,
+            url: url,
+            accessToken: accessToken
+        )
         await MainActor.run {
             if let img {
                 uiImage = img
-            } else {
+                loadFailed = false
+            } else if uiImage == nil {
                 loadFailed = true
             }
         }

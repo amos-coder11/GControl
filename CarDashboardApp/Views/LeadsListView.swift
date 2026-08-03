@@ -46,13 +46,13 @@ struct LeadsListView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 28)
             }
+            .morphingRefreshable {
+                await vm.load()
+            }
             .frame(maxWidth: .infinity)
         }
         .navigationTitle("Leads")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable {
-            await vm.load()
-        }
         .task {
             if vm.leads.isEmpty, !vm.isLoading {
                 await vm.load()

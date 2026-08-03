@@ -10,13 +10,14 @@ struct GrooDentalArchParams: Equatable {
 
 struct GrooDentalArch3DView: UIViewRepresentable {
     var params: GrooDentalArchParams
+    var allowsCameraControl: Bool = true
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView(frame: .zero)
         view.backgroundColor = .clear
         view.isOpaque = false
         view.antialiasingMode = .multisampling4X
-        view.allowsCameraControl = true
+        view.allowsCameraControl = allowsCameraControl
         view.autoenablesDefaultLighting = false
         view.scene = GrooDentalArchSceneBuilder.makeScene(params: params)
         view.pointOfView = view.scene?.rootNode.childNode(withName: "camera", recursively: true)
@@ -24,6 +25,7 @@ struct GrooDentalArch3DView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
+        uiView.allowsCameraControl = allowsCameraControl
         GrooDentalArchSceneBuilder.update(uiView.scene, params: params)
     }
 }

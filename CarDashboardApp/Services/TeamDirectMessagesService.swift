@@ -28,6 +28,10 @@ enum TeamDirectMessagesService {
         let body: String
     }
 
+    private struct BodyPatch: Encodable {
+        let body: String
+    }
+
     private struct MarkReadParams: Encodable {
         let p_peer: UUID
     }
@@ -84,6 +88,28 @@ enum TeamDirectMessagesService {
         try await client
             .rpc("mark_team_direct_thread_read", params: MarkReadParams(p_peer: peerUserId))
             .execute()
+    }
+
+    static func updateBody(id: UUID, body: String, client: SupabaseClient) async throws -> Row {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "TeamDirectMessages", code: 0, userInfo: [NSLocalizedDescriptionKey: "Vacío"])
+        }
+        if ContentModerationFilter.containsObjectionableContent(trimmed) {
+            throw NSError(
+                domain: "TeamDirectMessages",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "El mensaje incluye lenguaje no permitido."]
+            )
+        }
+        return try await client
+            .from(tableName)
+            .update(BodyPatch(body: trimmed))
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
     }
 
     static func decodeInsert(_ action: InsertAction) throws -> Row {

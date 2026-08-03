@@ -35,6 +35,7 @@ import {
   getConversation,
   listConversations,
   listMessages,
+  updateOutgoingMessageText,
   markConversationRead,
   resetInstagramStore,
   setAiActive,
@@ -448,6 +449,26 @@ app.get("/api/whatsapp/get_messages", (req, res) => {
   }
   const limit = Number(req.query.limit) || 100;
   return res.status(200).json({ data: listMessages(conversationId, limit) });
+});
+
+app.post("/api/whatsapp/edit_message", (req, res) => {
+  const conversationId = String(req.body?.conversationId || "");
+  const messageId = String(req.body?.messageId || "");
+  const text = String(req.body?.textContent || req.body?.text || "").trim();
+  if (!conversationId || !messageId || !text) {
+    return res.status(400).json({ error: "invalid_request" });
+  }
+  const result = updateOutgoingMessageText(conversationId, messageId, text);
+  if (!result.ok) {
+    const status =
+      result.error === "edit_window_expired"
+        ? 403
+        : result.error === "not_outgoing"
+          ? 403
+          : 404;
+    return res.status(status).json(result);
+  }
+  return res.status(200).json({ ok: true, data: result.message });
 });
 
 app.post("/api/whatsapp/mark_read", (req, res) => {

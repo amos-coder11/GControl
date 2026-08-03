@@ -107,8 +107,6 @@ struct DashboardLeadsHomeSection: View {
                         label: WorkdayStore.formatHoursShort(seconds: workdayStore.weekTotalWorkedSeconds)
                     )
                     Spacer(minLength: 0)
-                    legendDot(color: .cyan, label: "\(workdayStore.weekTotalCalls) llamadas")
-                    Spacer(minLength: 0)
                     legendDot(
                         color: Color(red: 0.35, green: 0.85, blue: 0.45),
                         label: "\(workdayStore.weekTotalMessages) msgs"
@@ -237,11 +235,7 @@ struct DashboardLeadsHomeSection: View {
     }
 
     private func recentLeadRow(_ thread: ChatThread) -> some View {
-        let phone = chatInbox.contactPhone(for: thread)
-        let phoneLabel = chatInbox.contactPhoneDisplay(for: thread)
         let status = leadStatus(for: thread)
-        let canCall = chatInbox.canCallLead(thread)
-        let callTint = leadCallTint(for: thread)
 
         return HStack(alignment: .center, spacing: 12) {
             leadAvatar(thread)
@@ -270,20 +264,6 @@ struct DashboardLeadsHomeSection: View {
                         .font(.system(size: 11, weight: .medium))
                 }
                 .foregroundStyle(.white.opacity(0.38))
-                if canCall, let phoneLabel {
-                    Button {
-                        if let phone { PhoneCallLauncher.call(phone) }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(phoneLabel)
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundStyle(callTint)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -293,11 +273,6 @@ struct DashboardLeadsHomeSection: View {
                     tint: Color(red: 0.12, green: 0.72, blue: 0.38)
                 ) {
                     openThread(thread)
-                }
-                if canCall, phone != nil {
-                    leadActionCircle(icon: "phone.fill", tint: callTint) {
-                        callLead(thread)
-                    }
                 }
                 leadActionCircle(icon: "chevron.right", tint: Color.white.opacity(0.18)) {
                     openThread(thread)
@@ -329,26 +304,6 @@ struct DashboardLeadsHomeSection: View {
 
     private func openThread(_ thread: ChatThread) {
         tabRouter.selected = .chat
-    }
-
-    private func callLead(_ thread: ChatThread) {
-        guard let phone = chatInbox.contactPhone(for: thread) else { return }
-        PhoneCallLauncher.call(phone)
-    }
-
-    private func leadCallTint(for thread: ChatThread) -> Color {
-        switch thread.socialSource {
-        case .instagram:
-            return Color(red: 0.79, green: 0.38, blue: 0.92)
-        case .whatsApp:
-            return Color(red: 0.12, green: 0.72, blue: 0.38)
-        default:
-            return .cyan
-        }
-    }
-
-    private func matchedPhone(for thread: ChatThread) -> String? {
-        chatInbox.contactPhone(for: thread)
     }
 
     private func leadStatus(for thread: ChatThread) -> (label: String, color: Color) {

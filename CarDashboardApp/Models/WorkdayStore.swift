@@ -49,7 +49,7 @@ enum WorkdayActivityKind: String, Codable, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
-        case .enJornada: Color(red: 0.22, green: 0.78, blue: 0.45)
+        case .enJornada: Color(red: 0.18, green: 0.72, blue: 0.42)
         case .descanso: Color(red: 0.96, green: 0.76, blue: 0.28)
         case .reunion: Color(red: 0.62, green: 0.42, blue: 0.95)
         case .horasExtras: Color(red: 0.32, green: 0.62, blue: 0.98)
@@ -121,7 +121,7 @@ private struct WorkdayTodayPayload: Codable {
 // MARK: - Horario oficial del concesionario
 
 enum DealershipOpeningHours {
-    static let locationTitle = "Pozuelo de Alarcón / Las Rozas (Europolis)"
+    static let locationTitle = "Smile Studio Dentistry"
 
     private struct DayWindow {
         let openHour: Int
@@ -130,13 +130,13 @@ enum DealershipOpeningHours {
         let closeMinute: Int
     }
 
-    private static let weekdayWindow = DayWindow(openHour: 10, openMinute: 0, closeHour: 19, closeMinute: 30)
-    private static let saturdayWindow = DayWindow(openHour: 11, openMinute: 0, closeHour: 14, closeMinute: 0)
+    private static let weekdayWindow = DayWindow(openHour: 8, openMinute: 0, closeHour: 19, closeMinute: 0)
+    private static let saturdayWindow = DayWindow(openHour: 8, openMinute: 30, closeHour: 15, closeMinute: 0)
 
     static let weeklySummary: [(label: String, hours: String)] = [
-        ("Lunes a viernes", "10:00 – 19:30 h"),
-        ("Sábados", "11:00 – 14:00 h"),
-        ("Domingos", "Cerrado"),
+        ("Lunes a viernes", "8:00 – 19:00"),
+        ("Sábado", "8:30 – 15:00"),
+        ("Domingo", "Cerrado"),
     ]
 
     private static func window(for date: Date = Date()) -> DayWindow? {
@@ -231,6 +231,7 @@ final class WorkdayStore: ObservableObject {
         switchActivity(.enJornada, at: now)
         startTicking()
         persistToday()
+        syncActiveJornadaNotification(playsSound: true)
     }
 
     func switchActivity(_ kind: WorkdayActivityKind) {
@@ -264,6 +265,10 @@ final class WorkdayStore: ObservableObject {
         history.insert(record, at: 0)
         saveHistory()
         persistToday()
+        let worked = elapsedFormatted
+        Task {
+            await WorkdayNotificationService.showJornadaFinished(workedFormatted: worked)
+        }
     }
 
     /// Permite continuar la jornada del mismo día tras haberla finalizado.
@@ -276,6 +281,7 @@ final class WorkdayStore: ObservableObject {
         switchActivity(.enJornada, at: Date())
         startTicking()
         persistToday()
+        syncActiveJornadaNotification(playsSound: true)
     }
 
     func recordCall() {
@@ -345,8 +351,17 @@ final class WorkdayStore: ObservableObject {
 
     // MARK: - Formato
 
+    /// Tiempo mostrado en UI: se calcula al vuelo para no invalidar todo el árbol cada segundo.
     var elapsedFormatted: String {
-        Self.formatDuration(seconds: elapsedSeconds)
+        Self.formatDuration(seconds: liveElapsedSeconds)
+    }
+
+    /// Segundos actuales de trabajo (incluye segmento abierto).
+    var liveElapsedSeconds: Int {
+        if isActive, !isDayFinished {
+            return Int(workingSeconds(upTo: Date()))
+        }
+        return elapsedSeconds
     }
 
     var jornadaStartLabel: String? {
@@ -397,6 +412,7 @@ final class WorkdayStore: ObservableObject {
         currentKind = kind
         refreshElapsed()
         persistToday()
+        syncActiveJornadaNotification(playsSound: false)
     }
 
     private func closeOpenSegment(at date: Date) {
@@ -417,15 +433,38 @@ final class WorkdayStore: ObservableObject {
         }
     }
 
+    /// Ticker solo para notificaciones (cada 60 s) y snapshot persistido.
+    /// La UI del reloj usa `TimelineView` + `liveElapsedSeconds` (sin publicar cada segundo).
     private func startTicking() {
         tickTask?.cancel()
         tickTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
                 await MainActor.run {
-                    self?.refreshElapsed()
+                    guard let self else { return }
+                    guard self.isActive, !self.isDayFinished else { return }
+                    self.refreshElapsed()
+                    self.syncActiveJornadaNotification(playsSound: false)
                 }
             }
+        }
+    }
+
+    func syncActiveJornadaNotification(playsSound: Bool = false) {
+        guard isActive, !isDayFinished else {
+            Task { await WorkdayNotificationService.clearActiveJornada() }
+            return
+        }
+        let elapsed = elapsedFormatted
+        let activity = currentKind?.title
+        let started = jornadaStartTime
+        Task {
+            await WorkdayNotificationService.updateActiveJornada(
+                elapsedFormatted: elapsed,
+                activityTitle: activity,
+                startedAt: started,
+                playsSound: playsSound
+            )
         }
     }
 
@@ -445,6 +484,7 @@ final class WorkdayStore: ObservableObject {
         messagesRespondedToday = 0
         elapsedSeconds = 0
         persistToday()
+        Task { await WorkdayNotificationService.clearActiveJornada() }
     }
 
     private func loadToday() {
@@ -461,6 +501,9 @@ final class WorkdayStore: ObservableObject {
             resetForNewDay()
         }
         refreshElapsed()
+        if isActive, !isDayFinished {
+            syncActiveJornadaNotification(playsSound: false)
+        }
     }
 
     private func persistToday() {
@@ -510,4 +553,5 @@ final class WorkdayStore: ObservableObject {
 extension Notification.Name {
     static let phoneCallDidStart = Notification.Name("Drflow.phoneCallDidStart")
     static let messageDidRespond = Notification.Name("Drflow.messageDidRespond")
+    static let grooOpenWorkday = Notification.Name("Groo.openWorkday")
 }

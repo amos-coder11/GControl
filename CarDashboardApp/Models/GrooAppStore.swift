@@ -1242,6 +1242,15 @@ final class GrooAppStore: ObservableObject {
         save()
     }
 
+    func deleteSession(_ id: UUID) {
+        sessions.removeAll { $0.id == id }
+        if activeSessionId == id {
+            activeSessionId = sessions.first?.id
+        }
+        ensureWelcomeSession()
+        save()
+    }
+
     func prepareChatNavigation(to sessionId: UUID? = nil) {
         ensureWelcomeSession()
         let target = sessionId ?? activeSessionId

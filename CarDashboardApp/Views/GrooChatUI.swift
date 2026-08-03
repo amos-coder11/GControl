@@ -1,4 +1,40 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Swipe atrás (edge swipe) con barra de navegación oculta
+
+extension View {
+    /// Reactiva el gesto iOS de deslizar desde el borde izquierdo para volver,
+    /// aunque el back button del NavigationStack esté oculto.
+    func enableSwipeBackToPop() -> some View {
+        background(GrooSwipeBackController())
+    }
+}
+
+private struct GrooSwipeBackController: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard let pop = navigationController?.interactivePopGestureRecognizer else { return }
+            pop.isEnabled = true
+            pop.delegate = self
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            false
+        }
+    }
+}
 
 // MARK: - Theme
 
@@ -131,6 +167,7 @@ enum GrooChatTheme {
                 endPoint: .bottom
             )
         }
+        .compositingGroup()
         .allowsHitTesting(false)
     }
 
@@ -162,6 +199,7 @@ enum GrooChatTheme {
                 endPoint: .bottom
             )
         }
+        .compositingGroup()
         .allowsHitTesting(false)
     }
 }
@@ -271,12 +309,20 @@ enum GrooClinicDesign {
         var body: some View {
             Button(action: action) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isSelected ? .white : DrflowTheme.textSecondary)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected ? .white : Color.black.opacity(0.78))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background {
-                        Capsule().fill(isSelected ? GrooBrand.primary : Color.black.opacity(0.05))
+                        Capsule(style: .continuous)
+                            .fill(isSelected ? GrooBrand.primary : Color.white)
+                    }
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                isSelected ? Color.clear : Color.black.opacity(0.12),
+                                lineWidth: 1
+                            )
                     }
             }
             .buttonStyle(.plain)
@@ -327,9 +373,10 @@ struct GrooSoftStickyHeaderBar: View {
     }
 }
 
-/// Header con el mismo blanco del fondo de la app (status bar siempre + barra al scroll).
+/// Header flotante con difuminado Apple (contenido pasa por detrás al scroll).
 struct GrooActiveScrollHeader<Content: View>: View {
     var isVisible: Bool
+    var useBlurChrome: Bool = true
     var backgroundColor: Color = DrflowTheme.background
     @ViewBuilder var content: () -> Content
 
@@ -345,15 +392,20 @@ struct GrooActiveScrollHeader<Content: View>: View {
         }
         .frame(maxWidth: .infinity)
         .background {
-            backgroundColor
-                .ignoresSafeArea(edges: .top)
+            if useBlurChrome {
+                GrooChatTheme.floatingBlurChrome()
+                    .ignoresSafeArea(edges: .top)
+            } else {
+                backgroundColor
+                    .ignoresSafeArea(edges: .top)
+            }
         }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.black.opacity(isVisible ? 0.04 : 0))
                 .frame(height: 0.5)
         }
-        .shadow(color: .black.opacity(isVisible ? 0.04 : 0), radius: 6, y: 2)
+        .shadow(color: .black.opacity(isVisible && !useBlurChrome ? 0.04 : 0), radius: 6, y: 2)
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isVisible)
         .allowsHitTesting(isVisible)
         .accessibilityHidden(!isVisible)
@@ -416,22 +468,96 @@ struct GrooChatWallpaper: View {
 
 // MARK: - Avatar
 
-/// Paleta de avatares: dos rosas fuertes alternados por nombre.
-enum GrooAvatarPalette {
-    /// #FAC1FF
-    static let softPink = Color(red: 250 / 255, green: 193 / 255, blue: 255 / 255)
-    /// #FC97FF
-    static let vividPink = Color(red: 252 / 255, green: 151 / 255, blue: 255 / 255)
+/// Avatares sin foto: 4 variantes con gradiente entre dos colores cada una.
+private enum GrooAvatarColors {
+    static func hex(_ value: UInt32) -> Color {
+        Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
 
-    static let colors: [Color] = [softPink, vividPink]
+    static let blueDeep = hex(0x005EEC)
+    static let blueSky = hex(0x00A6EC)
+    static let magenta = hex(0xEC00C9)
+    static let purple = hex(0xB338FF)
+    static let mint = hex(0x00EC92)
+    static let green = hex(0x34C759)
+    static let gold = hex(0xECC900)
+    static let lime = hex(0xE1FF00)
+}
 
-    static func color(for seed: String) -> Color {
+enum GrooAvatarStyle: CaseIterable {
+    case blue
+    case purple
+    case green
+    case yellow
+
+    var background: AnyShapeStyle {
+        switch self {
+        case .blue:
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [GrooAvatarColors.blueSky, GrooAvatarColors.blueDeep],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        case .purple:
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [GrooAvatarColors.purple, GrooAvatarColors.magenta],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        case .green:
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [GrooAvatarColors.mint, GrooAvatarColors.green],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        case .yellow:
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [GrooAvatarColors.lime, GrooAvatarColors.gold],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
+    }
+
+    static func forSeed(_ seed: String) -> GrooAvatarStyle {
         let key = seed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !key.isEmpty else { return colors[0] }
+        guard !key.isEmpty else { return allCases[0] }
         let hash = key.unicodeScalars.reduce(into: 0) { partial, scalar in
             partial = partial &* 31 &+ Int(scalar.value)
         }
-        return colors[abs(hash) % colors.count]
+        return allCases[abs(hash) % allCases.count]
+    }
+}
+
+enum GrooAvatarPalette {
+    static func style(for seed: String) -> GrooAvatarStyle {
+        GrooAvatarStyle.forSeed(seed)
+    }
+
+    /// Color representativo (p. ej. placeholders que solo aceptan `Color`).
+    static func color(for seed: String) -> Color {
+        switch style(for: seed) {
+        case .blue:
+            GrooAvatarColors.blueDeep
+        case .purple:
+            GrooAvatarColors.purple
+        case .green:
+            GrooAvatarColors.green
+        case .yellow:
+            GrooAvatarColors.gold
+        }
     }
 
     static func initial(from name: String) -> String {
@@ -455,18 +581,18 @@ struct GrooLetterAvatar: View {
         return GrooAvatarPalette.initial(from: name)
     }
 
-    private var fill: Color {
-        GrooAvatarPalette.color(for: name)
+    private var avatarStyle: GrooAvatarStyle {
+        GrooAvatarPalette.style(for: name)
     }
 
     var body: some View {
         Circle()
-            .fill(fill)
+            .fill(avatarStyle.background)
             .frame(width: size, height: size)
             .overlay {
                 Text(letter)
                     .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.72))
+                    .foregroundStyle(.white)
             }
             .accessibilityLabel(name)
     }
@@ -678,82 +804,90 @@ struct GrooChatImageLightbox: View {
     }
 }
 
-/// Onda de voz estilo WhatsApp / iOS: barras reales en lo reproducido, puntos en lo pendiente.
+/// Onda de voz estilo Telegram: barras continuas (azul = reproducido, gris = pendiente).
+/// Siempre cabe en el ancho del contenedor (reesamplea barras; no desborda).
 struct VoiceMessageWaveformStrip: View {
     let bars: [CGFloat]
     let progress: CGFloat
     var isLoading: Bool = false
     var accentColor: Color = GrooChatTheme.telegramBlue
+    var inactiveColor: Color = Color.black.opacity(0.2)
     var stripHeight: CGFloat = 28
+    var barWidth: CGFloat = 2.2
+    var spacing: CGFloat = 2.2
     var onSeek: ((CGFloat) -> Void)? = nil
-
-    private var displayBars: [CGFloat] {
-        if bars.isEmpty {
-            return (0 ..< 28).map { i in
-                0.18 + 0.42 * (0.5 + 0.5 * sin(Double(i) * 0.41))
-            }
-        }
-        return bars
-    }
+    var onSeekActive: ((Bool) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width
+            let width = max(1, geo.size.width)
             let height = geo.size.height
-            let count = displayBars.count
-            let gap: CGFloat = 2.5
-            let totalGaps = CGFloat(max(0, count - 1)) * gap
-            let barW = max(2, (width - totalGaps) / CGFloat(count))
+            let maxCount = max(8, Int(floor((width + spacing) / (barWidth + spacing))))
+            let samples = Self.resample(bars.isEmpty ? Self.placeholder(count: maxCount) : bars, to: maxCount)
+            let count = samples.count
+            let totalGaps = CGFloat(max(0, count - 1)) * spacing
+            let barW = min(barWidth, max(1.5, (width - totalGaps) / CGFloat(max(1, count))))
+            let contentW = CGFloat(count) * barW + totalGaps
             let clampedProgress = min(1, max(0, progress))
 
-            ZStack(alignment: .leading) {
-                HStack(alignment: .center, spacing: gap) {
-                    ForEach(Array(displayBars.enumerated()), id: \.offset) { index, amplitude in
-                        let segment = count > 1 ? CGFloat(index) / CGFloat(count - 1) : 0
-                        let played = segment <= clampedProgress
-
-                        if played {
-                            RoundedRectangle(cornerRadius: min(2, barW * 0.5), style: .continuous)
-                                .fill(accentColor.opacity(0.35 + 0.55 * Double(amplitude)))
-                                .frame(
-                                    width: barW,
-                                    height: max(3, amplitude * height)
-                                )
-                                .frame(height: height, alignment: .center)
-                        } else {
-                            Circle()
-                                .fill(Color.black.opacity(isLoading ? 0.12 : 0.2))
-                                .frame(width: min(3.5, barW), height: min(3.5, barW))
-                                .frame(width: barW, height: height, alignment: .center)
-                        }
-                    }
-                }
-                .frame(width: width, height: height, alignment: .center)
-
-                if clampedProgress > 0.01, !isLoading {
-                    Circle()
-                        .fill(accentColor)
-                        .frame(width: 8, height: 8)
-                        .shadow(color: accentColor.opacity(0.35), radius: 2, y: 1)
-                        .offset(x: scrubberX(width: width, progress: clampedProgress))
+            HStack(alignment: .center, spacing: spacing) {
+                ForEach(Array(samples.enumerated()), id: \.offset) { index, amplitude in
+                    let segment = count > 1 ? CGFloat(index) / CGFloat(count - 1) : 0
+                    let played = segment <= clampedProgress
+                    RoundedRectangle(cornerRadius: min(1.5, barW * 0.5), style: .continuous)
+                        .fill(
+                            played
+                                ? accentColor.opacity(0.4 + 0.55 * Double(amplitude))
+                                : inactiveColor.opacity(isLoading ? 0.45 : 0.85)
+                        )
+                        .frame(width: barW, height: max(3, amplitude * height * 0.92))
+                        .frame(height: height, alignment: .center)
                 }
             }
-            .frame(width: width, height: height)
+            .frame(width: min(contentW, width), height: height, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(isLoading && bars.isEmpty ? 0.55 : 1)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard let onSeek else { return }
+                        onSeekActive?(true)
+                        let fraction = min(1, max(0, value.location.x / width))
+                        onSeek(fraction)
+                    }
                     .onEnded { value in
                         guard let onSeek else { return }
-                        let fraction = min(1, max(0, value.location.x / max(width, 1)))
+                        let fraction = min(1, max(0, value.location.x / width))
                         onSeek(fraction)
+                        onSeekActive?(false)
                     }
             )
         }
+        .frame(maxWidth: .infinity)
         .frame(height: stripHeight)
+        .clipped()
     }
 
-    private func scrubberX(width: CGFloat, progress: CGFloat) -> CGFloat {
-        min(max(0, progress * width - 4), max(0, width - 8))
+    private static func placeholder(count: Int) -> [CGFloat] {
+        (0 ..< count).map { i in
+            0.18 + 0.42 * (0.5 + 0.5 * sin(Double(i) * 0.41))
+        }
+    }
+
+    private static func resample(_ source: [CGFloat], to count: Int) -> [CGFloat] {
+        guard count > 0 else { return [] }
+        guard !source.isEmpty else { return placeholder(count: count) }
+        if source.count == count { return source }
+        if source.count == 1 { return Array(repeating: source[0], count: count) }
+        return (0 ..< count).map { i in
+            let t = Double(i) / Double(count - 1)
+            let src = t * Double(source.count - 1)
+            let lo = Int(floor(src))
+            let hi = min(source.count - 1, lo + 1)
+            let f = CGFloat(src - Double(lo))
+            return source[lo] * (1 - f) + source[hi] * f
+        }
     }
 }
 
@@ -913,35 +1047,147 @@ struct GrooChatPressStyle: ButtonStyle {
     }
 }
 
-struct GrooInboxConversationRow: View {
+struct GrooVerifiedBadge: View {
+    var size: CGFloat = 14
+
+    var body: some View {
+        Image(systemName: "checkmark.seal.fill")
+            .font(.system(size: size, weight: .semibold))
+            .foregroundStyle(GrooChatTheme.telegramBlue)
+            .accessibilityLabel("Verificado")
+    }
+}
+
+// MARK: - Fila «Chats archivados» (estilo Telegram)
+
+struct GrooArchivedInboxRow: View {
+    var previewNames: String = ""
+    var unreadCount: Int = 0
+
+    private let avatarSize: CGFloat = 60
+    private let archiveBlue = Color(red: 0 / 255, green: 122 / 255, blue: 236 / 255)
+    private let archiveIndigo = Color(red: 9 / 255, green: 0 / 255, blue: 255 / 255)
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [archiveBlue, archiveIndigo],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: avatarSize, height: avatarSize)
+                Image(systemName: "archivebox.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Chats archivados")
+                    .font(.system(size: 17, weight: unreadCount > 0 ? .semibold : .regular))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .lineLimit(1)
+
+                Text(previewNames.isEmpty ? " " : previewNames)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.4))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if unreadCount > 0 {
+                Text("\(min(unreadCount, 99))")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(white: 0.62)))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(minHeight: 76, alignment: .center)
+        .contentShape(Rectangle())
+    }
+}
+
+struct GrooInboxConversationRow: View, Equatable {
     let title: String
     let preview: String
     let date: Date
     var timeLabel: String? = nil
     var unreadCount: Int = 0
     var isPinned: Bool = false
+    var isVerified: Bool = false
     var avatarURL: URL? = nil
     var avatarAccessToken: String? = nil
     var avatarInitial: String? = nil
     var socialSource: ChatSocialPlatform? = nil
+    var inboxThread: ChatThread? = nil
+    var teamAccessToken: String? = nil
+    var teamCurrentUserId: UUID? = nil
+    var usesClinicAIAvatar: Bool = false
+
+    static func == (lhs: GrooInboxConversationRow, rhs: GrooInboxConversationRow) -> Bool {
+        lhs.title == rhs.title
+            && lhs.preview == rhs.preview
+            && lhs.date == rhs.date
+            && lhs.timeLabel == rhs.timeLabel
+            && lhs.unreadCount == rhs.unreadCount
+            && lhs.isPinned == rhs.isPinned
+            && lhs.isVerified == rhs.isVerified
+            && lhs.avatarURL == rhs.avatarURL
+            && lhs.avatarInitial == rhs.avatarInitial
+            && lhs.socialSource == rhs.socialSource
+            && lhs.inboxThread?.id == rhs.inboxThread?.id
+            && lhs.inboxThread?.preview == rhs.inboxThread?.preview
+            && lhs.teamAccessToken == rhs.teamAccessToken
+            && lhs.teamCurrentUserId == rhs.teamCurrentUserId
+            && lhs.usesClinicAIAvatar == rhs.usesClinicAIAvatar
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            GrooInboxAvatarView(
-                title: title,
-                avatarURL: avatarURL,
-                avatarAccessToken: avatarAccessToken,
-                avatarInitial: avatarInitial,
-                socialSource: socialSource,
-                size: 54
-            )
+            if let inboxThread {
+                ChatInboxListAvatarView(
+                    thread: inboxThread,
+                    accessToken: teamAccessToken,
+                    currentUserId: teamCurrentUserId,
+                    diameter: 60
+                )
+            } else if usesClinicAIAvatar {
+                Image("ClinicAIChatIcon")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 60)
+                    .clipShape(Circle())
+                    .overlay {
+                        Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
+                    }
+            } else {
+                GrooInboxAvatarView(
+                    title: title,
+                    avatarURL: avatarURL,
+                    avatarAccessToken: avatarAccessToken,
+                    avatarInitial: avatarInitial,
+                    socialSource: socialSource,
+                    size: 60
+                )
+            }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
                         .font(.system(size: 17, weight: unreadCount > 0 ? .semibold : .regular))
                         .foregroundStyle(Color.black.opacity(0.92))
                         .lineLimit(1)
+                    if isVerified {
+                        GrooVerifiedBadge(size: 15)
+                    }
                     Spacer(minLength: 6)
                     Text(timeLabel ?? relativeDate(date))
                         .font(.system(size: 14, weight: .regular))
@@ -971,14 +1217,21 @@ struct GrooInboxConversationRow: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 7)
-        .frame(minHeight: 70)
+        .padding(.vertical, 8)
+        .frame(minHeight: 76)
         .contentShape(Rectangle())
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+
     private func relativeDate(_ date: Date) -> String {
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
+        if cal.isDateInToday(date) { return Self.timeFormatter.string(from: date) }
         if cal.isDateInYesterday(date) { return "Ayer" }
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: Date())).day ?? 99
         if days < 7 {
@@ -1093,7 +1346,7 @@ struct GrooCrmQuickRepliesBar: View {
                     Button {
                         onSelect(reply)
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 5) {
                             Image(systemName: reply.icon)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(GrooBrand.primary)
@@ -1104,20 +1357,35 @@ struct GrooCrmQuickRepliesBar: View {
                                 .foregroundStyle(Color.black.opacity(0.78))
                                 .lineLimit(1)
                         }
-                        .padding(.leading, 6)
-                        .padding(.trailing, 14)
-                        .padding(.vertical, 6)
-                        .background { GrooChatTheme.glassPillBackground() }
+                        .padding(.leading, 2)
+                        .padding(.trailing, 8)
+                        .padding(.vertical, 2)
+                        .background { chipBackground }
                     }
                     .buttonStyle(GrooChatPressStyle())
                     .disabled(isDisabled)
                 }
             }
-            .padding(.horizontal, 14)
+            // Mismo inset horizontal que el botón de archivo (paperclip) del compositor.
+            .padding(.horizontal, 10)
             .padding(.top, 10)
             .padding(.bottom, 4)
         }
         .scrollIndicators(.hidden)
+    }
+
+    /// Pill sin sombra, alineado visualmente con el compositor.
+    private var chipBackground: some View {
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.55))
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.75), lineWidth: 0.5)
+            }
     }
 }
 

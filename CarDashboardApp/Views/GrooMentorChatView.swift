@@ -56,19 +56,17 @@ struct GrooMentorChatView: View {
                             onBudget: { showBudgetSheet = true }
                         )
                     }
-                    GrooChatComposerBar(
-                        text: $draft,
-                        isSending: isSending,
-                        focused: $focused,
-                        onSend: { Task { await send(draft) } },
-                        showsBlurBackground: false
-                    )
+                    mentorAIComposerBar
+                        .padding(.horizontal, 15)
+                        .padding(.top, 6)
+                        .padding(.bottom, 10)
                 }
                 .background {
                     GrooChatTheme.floatingBlurChromeBottom()
                         .ignoresSafeArea(edges: .bottom)
                 }
             }
+            .zIndex(20)
         }
         .background {
             GrooChatWallpaper().ignoresSafeArea()
@@ -76,6 +74,8 @@ struct GrooMentorChatView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbarVisibility(.hidden, for: .tabBar)
+        .navigationBarBackButtonHidden(true)
+        .enableSwipeBackToPop()
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: linkedPatient?.id)
         .sheet(isPresented: $groo.showPaywall) {
             GrooPremiumPaywallView()
@@ -102,9 +102,136 @@ struct GrooMentorChatView: View {
 
     /// Espacio reservado para compositor (+ panel paciente).
     private var bottomChromeHeight: CGFloat {
-        var h: CGFloat = 72
+        var h: CGFloat = focused ? 168 : 78
         if linkedPatient != nil { h += 96 }
         return h
+    }
+
+    /// Rosa/salmón del contenedor abierto (CustomBottomBar).
+    private var mentorComposerAccent: Color {
+        Color(red: 0.98, green: 0.36, blue: 0.48)
+    }
+
+    /// Azul del botón waveform (estado cerrado estilo ChatGPT, modo día).
+    private var mentorComposerVoiceBlue: Color {
+        Color(red: 0.20, green: 0.48, blue: 0.96)
+    }
+
+    private var mentorComposerCanSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+    }
+
+    /// Barra CustomBottomBar solo en el chat de IA (mentor).
+    private var mentorAIComposerBar: some View {
+        let fillColor = Color.gray.opacity(0.15)
+        return AnimatedBottomBar(
+            highlightWhenEmpty: false,
+            hint: "Preguntar a \(GrooBrand.appName)",
+            tint: mentorComposerAccent,
+            surfaceColor: .white,
+            collapsedLayout: .inlineChatGPT,
+            text: $draft,
+            isFocused: $focused
+        ) {
+            Button {
+                focused = true
+            } label: {
+                Image(systemName: "plus")
+                    .fontWeight(.medium)
+                    .foregroundStyle(Color.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(fillColor, in: .circle)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                focused = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(Color.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(fillColor, in: .circle)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                focused = true
+            } label: {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(Color.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(fillColor, in: .circle)
+            }
+            .buttonStyle(.plain)
+        } trailingAction: {
+            Button {
+                if focused {
+                    if mentorComposerCanSend {
+                        Task { await send(draft) }
+                    } else {
+                        focused = false
+                    }
+                } else {
+                    focused = true
+                }
+            } label: {
+                ZStack {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(
+                            mentorComposerCanSend
+                                ? mentorComposerAccent.gradient
+                                : mentorComposerAccent.opacity(0.45).gradient,
+                            in: .circle
+                        )
+                        .blur(radius: focused ? 0 : 5)
+                        .opacity(focused ? 1 : 0)
+
+                    Image(systemName: "mic")
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.9))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .blur(radius: focused ? 5 : 0)
+                        .opacity(focused ? 0 : 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+        } mainAction: {
+            Button {
+                if mentorComposerCanSend {
+                    Task { await send(draft) }
+                } else {
+                    focused = true
+                }
+            } label: {
+                Group {
+                    if focused {
+                        Image(systemName: mentorComposerCanSend ? "arrow.up" : "paperplane.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(mentorComposerCanSend ? Color.white : Color.primary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background {
+                                if mentorComposerCanSend {
+                                    Circle().fill(mentorComposerAccent.gradient)
+                                }
+                            }
+                    } else {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background {
+                                Circle().fill(mentorComposerVoiceBlue)
+                            }
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+        }
     }
 
     // MARK: - Header (blur flotante, sin barra sólida)
@@ -196,15 +323,11 @@ struct GrooMentorChatView: View {
                                 .padding(.vertical, 12)
                         }
 
-                        let prev = index > 0 ? messages[index - 1] : nil
                         let next = index + 1 < messages.count ? messages[index + 1] : nil
-                        let isFirst = prev?.isUser != msg.isUser
-                            || (prev != nil && !Calendar.current.isDate(prev!.createdAt, inSameDayAs: msg.createdAt))
                         let isLast = next?.isUser != msg.isUser
                             || (next != nil && !Calendar.current.isDate(next!.createdAt, inSameDayAs: msg.createdAt))
 
                         messageRow(msg, isLastInGroup: isLast)
-                            .padding(.top, isFirst ? 8 : 2)
                             .id(msg.id)
                             .transition(.asymmetric(
                                 insertion: .scale(scale: 0.96).combined(with: .opacity),
@@ -221,9 +344,10 @@ struct GrooMentorChatView: View {
                             .id("stream")
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 10)
                 .padding(.top, 62)
                 .padding(.bottom, bottomChromeHeight)
+                .animation(.easeOut(duration: 0.22), value: focused)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .scrollDismissesKeyboard(.interactively)
@@ -276,7 +400,7 @@ struct GrooMentorChatView: View {
         Group {
             if msg.isUser {
                 HStack {
-                    Spacer(minLength: 56)
+                    Spacer(minLength: 48)
                     GrooMessageBubbleView(
                         text: msg.text,
                         time: msg.createdAt,
@@ -308,14 +432,14 @@ struct GrooMentorChatView: View {
                     { imageLightboxItem = .local(img) }
                 }
             )
-            Spacer(minLength: 56)
+            Spacer(minLength: 48)
         }
     }
 
     private var typingRow: some View {
         HStack(alignment: .bottom, spacing: 0) {
             GrooTypingIndicatorBubble()
-            Spacer(minLength: 56)
+            Spacer(minLength: 48)
         }
         .padding(.top, 8)
     }

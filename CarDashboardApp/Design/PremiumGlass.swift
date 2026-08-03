@@ -24,7 +24,7 @@ enum DrflowTheme {
 /// Marca Groo — color primario azul `#598afa` (alineado con AccentColor `#0095ff`).
 enum GrooBrand {
     /// Nombre visible de la app (App Store, cabeceras, copy).
-    static let appName = "GControl"
+    static let appName = "Drgsmile"
     /// Azul principal de marca.
     static let purple = Color(red: 0.35, green: 0.55, blue: 0.98)
     /// Alias semántico del color primario.

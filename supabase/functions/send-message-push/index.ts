@@ -75,6 +75,22 @@ function truncate(s: string, max: number): string {
   return t.slice(0, max - 1) + "…";
 }
 
+/** Convierte rutas de Storage en URL pública HTTPS (necesaria para la Notification Service Extension). */
+function absoluteAvatarUrl(
+  ref: string | null | undefined,
+  supabaseUrl: string,
+): string | null {
+  if (!ref) return null;
+  const t = String(ref).trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return t;
+  const bucket = (Deno.env.get("AVATAR_BUCKET") || "avatars").trim() || "avatars";
+  const path = t.replace(/^\/+/, "");
+  const base = supabaseUrl.replace(/\/+$/, "");
+  return `${base}/storage/v1/object/public/${bucket}/${path}`;
+}
+
 const TEAM_DIRECT_VOICE_PREFIX = "DRFLOW_VOICE_V1:";
 
 function dmPushBodyPreview(body: string): string {
@@ -228,7 +244,10 @@ Deno.serve(async (req) => {
     const title = String(body.title || "Instagram").trim() || "Instagram";
     const alertBody = truncate(String(body.body || "Nuevo mensaje"), 180);
     const threadId = String(body.thread_id || "");
-    const avatarUrl = (body.avatar_url as string | null) || null;
+    const avatarUrl = absoluteAvatarUrl(
+      (body.avatar_url as string | null) || null,
+      supabaseUrl,
+    );
 
     let deviceQuery = supabase.from("user_apns_devices").select("device_token, user_id");
     const recipientIds = Array.isArray(body.recipient_user_ids)
@@ -248,6 +267,7 @@ Deno.serve(async (req) => {
       deviceCount: tokens.length,
       apnsSandbox: sandbox,
       bundleId,
+      hasAvatar: Boolean(avatarUrl),
     });
 
     if (tokens.length === 0) {
@@ -335,7 +355,10 @@ Deno.serve(async (req) => {
 
       const senderName = (profile?.full_name as string | null)?.trim() ||
         "Usuario";
-      const avatarUrl = (profile?.avatar_url as string | null) || null;
+      const avatarUrl = absoluteAvatarUrl(
+        (profile?.avatar_url as string | null) || null,
+        supabaseUrl,
+      );
 
       const { data: dmRecipientPrefs } = await supabase
         .from(profilesTable)
@@ -437,7 +460,10 @@ Deno.serve(async (req) => {
 
       const senderName = (profile?.full_name as string | null)?.trim() ||
         "Usuario";
-      const avatarUrl = (profile?.avatar_url as string | null) || null;
+      const avatarUrl = absoluteAvatarUrl(
+        (profile?.avatar_url as string | null) || null,
+        supabaseUrl,
+      );
 
       const { data: devices, error: devErr } = await supabase
         .from("user_apns_devices")
@@ -561,7 +587,10 @@ Deno.serve(async (req) => {
 
       const senderName = (profile?.full_name as string | null)?.trim() ||
         "Usuario";
-      const avatarUrl = (profile?.avatar_url as string | null) || null;
+      const avatarUrl = absoluteAvatarUrl(
+        (profile?.avatar_url as string | null) || null,
+        supabaseUrl,
+      );
 
       const { data: devices, error: taskDevErr } = await supabase
         .from("user_apns_devices")

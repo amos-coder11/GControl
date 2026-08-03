@@ -371,17 +371,21 @@ export function handleInstagramEvent(req, res) {
     })
   );
 
-  // Enrich name + profile photo asynchronously (don't block Meta ACK).
-  if (customerIds.length > 0) {
-    Promise.allSettled(
-      customerIds.map((id) => enrichConversationProfile(`ig:${id}`, id))
-    ).catch(() => {});
-  }
-
-  // Push APNs + respuesta automática IA (Zelle / pagos).
-  if (incomingMessages.length > 0) {
+  // Enrich + push fuera del ACK a Meta: la foto de perfil debe estar lista
+  // antes de enviar APNs para que la notificación lleve imagen.
+  if (incomingMessages.length > 0 || customerIds.length > 0) {
     Promise.allSettled(
       incomingMessages.map(async (msg) => {
+        const igUserId = String(msg.conversationId || "").startsWith("ig:")
+          ? String(msg.conversationId).slice(3)
+          : null;
+        if (igUserId) {
+          try {
+            await enrichConversationProfile(msg.conversationId, igUserId);
+          } catch (err) {
+            console.warn("[instagram/webhook] enrich before push failed", msg.conversationId, err?.message || err);
+          }
+        }
         const aiResult = await maybeAutoReplyCrmMessage(msg);
         if (aiResult.ok) {
           console.info("[instagram/webhook] crm-ai replied", msg.conversationId);
@@ -392,6 +396,19 @@ export function handleInstagramEvent(req, res) {
         }
       })
     ).catch(() => {});
+
+    // Enrich restantes (sin mensaje nuevo en este batch).
+    const withMsg = new Set(
+      incomingMessages
+        .map((m) => String(m.conversationId || "").replace(/^ig:/, ""))
+        .filter(Boolean)
+    );
+    const leftover = customerIds.filter((id) => !withMsg.has(id));
+    if (leftover.length > 0) {
+      Promise.allSettled(
+        leftover.map((id) => enrichConversationProfile(`ig:${id}`, id))
+      ).catch(() => {});
+    }
   }
 
   return res.status(200).json({ ok: true, stored });
